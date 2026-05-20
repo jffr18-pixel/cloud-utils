@@ -2,7 +2,7 @@
 
 A small collection of Python utility functions for everyday use.
 
-## Funcions
+## Functions
 
 - `calculator.py` — basic arithmetic operations (add, subtract, multiply, divide)
 
@@ -17,7 +17,7 @@ print(multiply(2, 7))  # 14
 print(divide(9, 3))    # 3.0
 ```
 
-## Runing tests
+## Running tests
 
 ```bash
 python -m pytest tests/
