@@ -8,6 +8,28 @@ import logging
 import sys
 from pathlib import Path
 
+
+def _request_admin() -> None:
+    """Re-launch with UAC elevation if not already admin (Windows only)."""
+    if sys.platform != 'win32':
+        return
+    import ctypes
+    try:
+        if ctypes.windll.shell32.IsUserAnAdmin():
+            return
+    except Exception:
+        return
+    script = str(Path(__file__).resolve())
+    args   = ' '.join(f'"{a}"' for a in sys.argv[1:])
+    ret    = ctypes.windll.shell32.ShellExecuteW(
+        None, 'runas', sys.executable, f'"{script}" {args}', None, 1
+    )
+    if ret > 32:
+        sys.exit(0)
+
+
+_request_admin()
+
 from cert_manager import config as cfg_module
 from cert_manager import cert_scanner, cert_validator, reporter, scheduler_setup
 from cert_manager.notifier import notify

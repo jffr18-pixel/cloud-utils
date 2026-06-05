@@ -10,6 +10,31 @@ import tkinter.filedialog as filedialog
 from datetime import datetime, timezone
 from pathlib import Path
 
+
+def _request_admin() -> None:
+    """Re-launch this script with UAC elevation if not already running as admin (Windows only)."""
+    if sys.platform != 'win32':
+        return
+    import ctypes
+    try:
+        if ctypes.windll.shell32.IsUserAnAdmin():
+            return  # already elevated
+    except Exception:
+        return
+    # Build the re-launch command: python "gui.py" [args...]
+    script = str(Path(__file__).resolve())
+    args   = ' '.join(f'"{a}"' for a in sys.argv[1:])
+    ret    = ctypes.windll.shell32.ShellExecuteW(
+        None, 'runas', sys.executable, f'"{script}" {args}', None, 1
+    )
+    # ret > 32 means ShellExecute succeeded (UAC accepted)
+    # ret <= 32 means error or user cancelled — continue without elevation
+    if ret > 32:
+        sys.exit(0)
+
+
+_request_admin()
+
 import customtkinter as ctk
 try:
     from PIL import Image as _PILImage
