@@ -11,9 +11,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import customtkinter as ctk
+from PIL import Image
 
 from cert_manager import cert_scanner, cert_validator, reporter
 from cert_manager import config as cfg_module
+
+# Carpeta de assets junto al script
+_ASSETS = Path(__file__).parent / 'assets'
 
 # ── Paleta Burocracia Zero ───────────────────────────────────────────────────
 PRIMARY     = '#9373B2'   # Violeta
@@ -155,6 +159,21 @@ def section_label(parent, text: str):
                  ).pack(anchor='w', padx=16, pady=(14, 4))
 
 
+def _load_logo_image(width: int = 180, height: int = 56) -> 'ctk.CTkImage | None':
+    """Returns a CTkImage from assets/logo_bz.png, or None if not found."""
+    for name in ('logo_bz.png', 'logo.png', 'logo_bz.jpg', 'logo.jpg'):
+        p = _ASSETS / name
+        if p.exists():
+            try:
+                img = Image.open(p).convert('RGBA')
+                img.thumbnail((width, height), Image.LANCZOS)
+                return ctk.CTkImage(light_image=img, dark_image=img,
+                                    size=(img.width, img.height))
+            except Exception:
+                pass
+    return None
+
+
 def tbl_header(parent, cols: list):
     hdr = ctk.CTkFrame(parent, fg_color=PRIMARY, corner_radius=8)
     hdr.pack(fill='x', pady=(0, 4))
@@ -228,14 +247,23 @@ class App(ctk.CTk):
         sb.pack_propagate(False)
         self._sb = sb
 
-        # Logo
+        # Logo — carga imagen si existe en assets/, de lo contrario usa texto de marca
         logo = ctk.CTkFrame(sb, fg_color=PRIMARY_DK, corner_radius=0, height=90)
         logo.pack(fill='x')
         logo.pack_propagate(False)
-        ctk.CTkLabel(logo, text='🔐', font=ctk.CTkFont(size=28)).pack(pady=(18, 0))
-        ctk.CTkLabel(logo, text='CertManager',
-                     font=ctk.CTkFont(size=14, weight='bold'), text_color=ACCENT,
-                     ).pack(pady=(2, 14))
+        logo_img = _load_logo_image(width=180, height=60)
+        if logo_img:
+            ctk.CTkLabel(logo, image=logo_img, text='').pack(expand=True)
+        else:
+            # Fallback tipográfico con colores de marca
+            top = ctk.CTkFrame(logo, fg_color='transparent')
+            top.pack(expand=True)
+            ctk.CTkLabel(top, text='Burocracia',
+                         font=ctk.CTkFont(size=15, weight='bold'),
+                         text_color=ACCENT).pack()
+            ctk.CTkLabel(top, text='Zero  🔐',
+                         font=ctk.CTkFont(size=13),
+                         text_color='#ffffff').pack()
 
         # Nav
         nav = [
@@ -853,29 +881,33 @@ class ServiciosPage(ctk.CTkFrame):
     def _build(self):
         from cert_manager import servicios
 
-        cert_path = self.cfg['dehu']['cert_pfx_path'].strip().strip('"\'')
-        password  = self.cfg['dehu'].get('cert_password', '').strip()
         dest_base = Path(self.cfg['general']['download_folder']) / 'servicios'
+        history   = servicios.load_history()
 
-        if not cert_path:
-            warn = ctk.CTkFrame(self, fg_color='#fff8e1', corner_radius=10,
-                                border_width=1, border_color='#ffe082')
-            warn.pack(fill='x', padx=20, pady=(0, 10))
-            ctk.CTkLabel(warn, text='⚠  Sin certificado configurado. Ve a ⚙️ Configuración.',
-                         text_color='#7b3f00', font=ctk.CTkFont(size=12)).pack(padx=16, pady=10)
+        # Aviso informativo (cómo funciona el flujo)
+        info = ctk.CTkFrame(self, fg_color=PRIMARY_LT, corner_radius=10,
+                            border_width=1, border_color=BORDER)
+        info.pack(fill='x', padx=20, pady=(0, 10))
+        ctk.CTkLabel(info,
+                     text='ℹ️  Cómo funciona: haz clic en "Abrir portal" para acceder con tu '
+                          'certificado instalado en el navegador. Descarga el PDF del portal y, '
+                          'luego, pulsa "Guardar PDF" para que la app lo organice y registre.',
+                     font=ctk.CTkFont(size=11), text_color=PRIMARY_DK,
+                     wraplength=820, anchor='w').pack(padx=14, pady=10)
 
         scroll = ctk.CTkScrollableFrame(self, fg_color='transparent')
         scroll.pack(fill='both', expand=True, padx=20, pady=(0, 16))
 
         for svc in servicios.SERVICES:
-            self._service_card(scroll, svc, cert_path, password, dest_base)
+            self._service_card(scroll, svc, dest_base, history.get(svc['id'], []))
 
-    def _service_card(self, parent, svc: dict, cert_path: str, password: str, dest_base: Path):
+    def _service_card(self, parent, svc: dict, dest_base: Path, history: list):
         c = card(parent)
         c.pack(fill='x', pady=8)
 
+        # ── Cabecera ───────────────────────────────────────────────────────────
         hdr = ctk.CTkFrame(c, fg_color='transparent')
-        hdr.pack(fill='x', padx=16, pady=(14, 6))
+        hdr.pack(fill='x', padx=16, pady=(14, 0))
         ctk.CTkLabel(hdr, text=svc['icon'], font=ctk.CTkFont(size=30)).pack(side='left', padx=(0, 12))
 
         title_box = ctk.CTkFrame(hdr, fg_color='transparent')
@@ -887,77 +919,87 @@ class ServiciosPage(ctk.CTkFrame):
                      font=ctk.CTkFont(size=11), text_color=TEXT_MUTED,
                      anchor='w').pack(anchor='w')
 
+        # Última descarga registrada (si hay)
+        if history:
+            last = history[0]
+            badge_f = ctk.CTkFrame(hdr, fg_color=SUCCESS_LT, corner_radius=8)
+            badge_f.pack(side='right', padx=4)
+            ctk.CTkLabel(badge_f,
+                         text=f'✓  Última: {last["date"]}',
+                         font=ctk.CTkFont(size=10), text_color=SUCCESS,
+                         padx=8, pady=4).pack()
+
         divider(c)
 
+        # ── Descripción ────────────────────────────────────────────────────────
         ctk.CTkLabel(c, text=svc['description'],
                      font=ctk.CTkFont(size=12), text_color=TEXT_MUTED,
-                     anchor='w', wraplength=680).pack(anchor='w', padx=16, pady=(8, 6))
+                     anchor='w', wraplength=680).pack(anchor='w', padx=16, pady=(8, 4))
 
-        # Hint sobre cómo funciona
-        ctk.CTkLabel(c,
-                     text='💡  Intenta descarga directa; si el portal lo requiere, se abre el navegador automáticamente.',
-                     font=ctk.CTkFont(size=10), text_color=TEXT_MUTED,
-                     anchor='w').pack(anchor='w', padx=16, pady=(0, 8))
+        # ── Pasos ──────────────────────────────────────────────────────────────
+        steps = ctk.CTkFrame(c, fg_color='#f8f6fc', corner_radius=8)
+        steps.pack(fill='x', padx=16, pady=(0, 8))
+        paso_txt = (
+            '  Paso 1 → Abre el portal   |   '
+            'Paso 2 → Descarga el PDF en el portal   |   '
+            'Paso 3 → Pulsa "Guardar PDF" aquí'
+        )
+        ctk.CTkLabel(steps, text=paso_txt, font=ctk.CTkFont(size=10),
+                     text_color=TEXT_MUTED).pack(padx=10, pady=6, anchor='w')
 
+        # ── Botones ────────────────────────────────────────────────────────────
         brow = ctk.CTkFrame(c, fg_color='transparent')
         brow.pack(fill='x', padx=16, pady=(0, 14))
 
         status_lbl = ctk.CTkLabel(brow, text='', font=ctk.CTkFont(size=11), text_color=TEXT_MUTED)
-        auto_btn   = [None]   # mutable ref para deshabilitar mientras carga
-
-        def do_auto(s=svc, sl=status_lbl):
-            if not cert_path:
-                sl.configure(text='⚠  Configura primero tu certificado en ⚙️ Configuración',
-                             text_color=WARNING)
-                return
-            sl.configure(text='⏳  Intentando descarga directa...', text_color=TEXT_MUTED)
-            if auto_btn[0]:
-                auto_btn[0].configure(state='disabled')
-            threading.Thread(
-                target=self._run_download, args=(s, cert_path, password, dest_base, sl, auto_btn),
-                daemon=True,
-            ).start()
 
         def do_browser(s=svc, sl=status_lbl):
             from cert_manager import servicios as sv
             sv.open_in_browser(s)
-            sl.configure(text='🌐  Navegador abierto — usa tu certificado para identificarte', text_color=SUCCESS)
+            sl.configure(text='🌐  Portal abierto — identifícate y descarga el PDF', text_color=SUCCESS)
             if self.app:
-                self.app.set_status(f'Portal {s["name"]} abierto en el navegador')
+                self.app.set_status(f'Portal abierto: {s["name"]}')
 
-        btn = action_btn(brow, '🚀  Obtener documento', PRIMARY, do_auto, width=195)
-        btn.pack(side='left', padx=(0, 8))
-        auto_btn[0] = btn
-        action_btn(brow, '🌐  Abrir portal', '#546e7a', do_browser, width=145).pack(side='left', padx=(0, 12))
+        def do_save(s=svc, sl=status_lbl, card_widget=c, hist=history):
+            path = filedialog.askopenfilename(
+                title=f'Selecciona el PDF de {s["name"]}',
+                filetypes=[('PDF', '*.pdf'), ('Todos', '*.*')],
+            )
+            if not path:
+                return
+            from cert_manager import servicios as sv
+            result = sv.organize_pdf(s, Path(path), dest_base)
+            if result['ok']:
+                p = result['path']
+                sl.configure(text=f'✓  Guardado: {p.name}', text_color=SUCCESS)
+                if self.app:
+                    self.app.set_status(f'{s["name"]} organizado en {dest_base}')
+                messagebox.showinfo(
+                    'PDF organizado',
+                    f'✓  {s["name"]}\n\nGuardado como:\n{p}\n\nCarpeta: {dest_base}',
+                )
+                # Refresh the page to show updated history
+                if self.app:
+                    self.app._show('servicios')
+            else:
+                sl.configure(text=f'✗  Error: {result["error"][:60]}', text_color=DANGER)
+
+        action_btn(brow, '🌐  Abrir portal', PRIMARY, do_browser, width=160).pack(side='left', padx=(0, 8))
+        action_btn(brow, '📂  Guardar PDF', SUCCESS, do_save, width=148).pack(side='left', padx=(0, 12))
         status_lbl.pack(side='left', padx=4)
 
-    def _run_download(self, svc: dict, cert_path: str, password: str,
-                      dest_base: Path, status_lbl, auto_btn):
-        from cert_manager import servicios
-        result = servicios.try_download(svc, cert_path, password, dest_base)
-        self.after(0, lambda: self._on_result(svc, result, status_lbl, auto_btn))
-
-    def _on_result(self, svc: dict, result: dict, status_lbl, auto_btn):
-        if auto_btn[0]:
-            auto_btn[0].configure(state='normal')
-
-        if result['ok']:
-            p = result['path']
-            status_lbl.configure(text=f'✓  Guardado: {p.name}', text_color=SUCCESS)
-            if self.app:
-                self.app.set_status(f'{svc["name"]} descargado: {p}')
-            messagebox.showinfo('Descarga completada',
-                                f'✓  {svc["name"]}\n\nGuardado en:\n{p}')
-        else:
-            # Fallo silencioso: abre el navegador directamente sin preguntar
-            status_lbl.configure(
-                text='🌐  Abriendo portal en el navegador...', text_color=TEXT_MUTED)
-            if self.app:
-                self.app.set_status(f'{svc["name"]}: abriendo portal con navegador')
-            from cert_manager import servicios
-            servicios.open_in_browser(svc)
-            status_lbl.configure(
-                text='🌐  Navegador abierto — identifícate con tu certificado', text_color=SUCCESS)
+        # ── Historial de descargas ─────────────────────────────────────────────
+        if history:
+            hist_f = ctk.CTkFrame(c, fg_color='transparent')
+            hist_f.pack(fill='x', padx=16, pady=(0, 12))
+            ctk.CTkLabel(hist_f, text='Descargas registradas:',
+                         font=ctk.CTkFont(size=10, weight='bold'),
+                         text_color=TEXT_MUTED).pack(anchor='w')
+            for entry in history[:3]:
+                ctk.CTkLabel(hist_f,
+                             text=f'  {entry["date"]}  →  {Path(entry["path"]).name}',
+                             font=ctk.CTkFont(size=10), text_color=TEXT_MUTED,
+                             anchor='w').pack(anchor='w')
 
 
 class ReportPage(ctk.CTkFrame):

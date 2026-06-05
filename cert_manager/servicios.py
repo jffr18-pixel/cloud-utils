@@ -1,16 +1,25 @@
 """
-Servicios gubernamentales: descarga automática + apertura en navegador.
+Servicios gubernamentales con certificado digital.
 
-Modo «Automático + navegador»: intenta un GET autenticado con el certificado
-PKCS12 del usuario; si la respuesta no es un PDF, ofrece abrir el portal
-en el navegador para que el usuario descargue manualmente.
+Realidad técnica: TGSS Importass y AEAT usan autenticación JavaScript/CL@VE
+que requiere navegador real. No existe API pública para descarga directa.
+
+Flujo implementado:
+  1. Abrir portal correcto en el navegador (el usuario se autentica con su cert)
+  2. El usuario descarga el PDF manualmente
+  3. La app organiza el PDF en la carpeta de destino y lleva un registro
 """
+import json
 import logging
+import shutil
 import webbrowser
 from datetime import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Ruta del registro de descargas manuales
+_HISTORY_FILE = Path.home() / '.cert_manager' / 'servicios_history.json'
 
 SERVICES = [
     {
@@ -20,97 +29,107 @@ SERVICES = [
         'icon': '👷',
         'description': (
             'Historial completo de periodos cotizados, empresas, '
-            'situaciones de alta/baja y días acumulados.'
+            'situaciones de alta/baja y total de días cotizados.'
         ),
-        # Portal Importass — autenticación con certificado en el navegador
-        'url_browser': 'https://importass.seg-social.es/',
-        'url_auto': 'https://importass.seg-social.es/importass-sede/jsp/SS/PortalSS/inicio.html',
-        'filename': 'vida_laboral',
+        # URL directa al servicio dentro de Importass (requiere login con cert)
+        'url_browser': (
+            'https://portal.seg-social.gob.es/wps/portal/importass/importass/'
+            'Categorias/Vida+laboral+e+informes/Informes+sobre+tu+situacion+laboral/'
+            'Informe+de+tu+vida+laboral'
+        ),
+        'filename_prefix': 'vida_laboral',
     },
     {
         'id': 'corriente_hacienda',
-        'name': 'Certificado al corriente (AEAT)',
+        'name': 'Certificado al corriente — AEAT',
         'organismo': 'Agencia Tributaria (AEAT)',
         'icon': '🏛',
         'description': (
-            'Certificado que acredita el cumplimiento de tus obligaciones '
-            'tributarias ante la Agencia Tributaria.'
+            'Certificado de estar al corriente de las obligaciones tributarias '
+            'ante la Agencia Tributaria (necesario para contratos con la Administración).'
         ),
-        # Sede electrónica AEAT — procedimiento G322
-        'url_browser': 'https://sede.agenciatributaria.gob.es/Sede/procedimientoinicio/G322.shtml',
-        'url_auto': 'https://www.agenciatributaria.es/wlpl/PRET-R080/R080CONTServlet',
-        'filename': 'certificado_aeat',
+        # Procedimiento G304 — certificado tributario de estar al corriente
+        'url_browser': (
+            'https://sede.agenciatributaria.gob.es/Sede/procedimientoini/G304.shtml'
+        ),
+        'filename_prefix': 'certificado_aeat_corriente',
     },
     {
         'id': 'bases_cotizacion',
-        'name': 'Bases de Cotización SS',
+        'name': 'Informe de Bases de Cotización',
         'organismo': 'Seguridad Social (TGSS)',
         'icon': '📊',
         'description': (
-            'Informe detallado de las bases de cotización por periodos '
-            'y contingencias (jubilación, desempleo, etc.).'
+            'Bases de cotización por periodos y contingencias '
+            '(jubilación, desempleo, enfermedad, etc.).'
         ),
-        # Portal Importass — misma autenticación, servicio distinto
-        'url_browser': 'https://importass.seg-social.es/',
-        'url_auto': 'https://importass.seg-social.es/importass-sede/jsp/SS/PortalSS/inicio.html',
-        'filename': 'bases_cotizacion',
+        'url_browser': (
+            'https://portal.seg-social.gob.es/wps/portal/importass/importass/'
+            'Categorias/Vida+laboral+e+informes/Informes+de+tus+cotizaciones/'
+            'Informe+de+bases+de+cotizacion'
+        ),
+        'filename_prefix': 'bases_cotizacion',
     },
 ]
 
 
+# ── Historial ─────────────────────────────────────────────────────────────────
+
+def load_history() -> dict:
+    """Returns {service_id: [{'date': ..., 'path': ...}, ...]}"""
+    if _HISTORY_FILE.exists():
+        try:
+            return json.loads(_HISTORY_FILE.read_text(encoding='utf-8'))
+        except Exception:
+            pass
+    return {}
+
+
+def _save_history(history: dict) -> None:
+    _HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _HISTORY_FILE.write_text(
+        json.dumps(history, ensure_ascii=False, indent=2), encoding='utf-8'
+    )
+
+
+# ── Acciones ──────────────────────────────────────────────────────────────────
+
 def open_in_browser(service: dict) -> None:
-    """Opens the service portal in the default system browser."""
+    """Opens the service portal in the default browser."""
     webbrowser.open(service['url_browser'])
 
 
-def try_download(service: dict, cert_pfx_path: str, cert_password: str,
-                 dest_folder: Path) -> dict:
+def organize_pdf(service: dict, source_path: Path, dest_folder: Path) -> dict:
     """
-    Attempts an authenticated PDF download using the PKCS12 certificate.
+    Copies a manually-downloaded PDF into dest_folder with a proper name
+    and records the download in the history.
 
-    Returns {'ok': True, 'path': Path} on success, or
-            {'ok': False, 'error': str} when the portal requires
-            interactive navigation (use open_in_browser as fallback).
+    Returns {'ok': True, 'path': Path} or {'ok': False, 'error': str}.
     """
-    import requests
-
-    dest_folder.mkdir(parents=True, exist_ok=True)
-    date_str = datetime.now().strftime('%Y%m%d_%H%M')
-    dest = dest_folder / f"{service['filename']}_{date_str}.pdf"
-
-    session = requests.Session()
-    session.headers['User-Agent'] = (
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-        'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-    )
     try:
-        try:
-            from requests_pkcs12 import Pkcs12Adapter
-            pw = cert_password.encode() if cert_password else None
-            session.mount(
-                'https://',
-                Pkcs12Adapter(pkcs12_filename=cert_pfx_path, pkcs12_password=pw),
-            )
-        except ImportError:
-            logger.warning('requests_pkcs12 no disponible; la autenticación podría fallar.')
+        dest_folder.mkdir(parents=True, exist_ok=True)
+        date_str = datetime.now().strftime('%Y%m%d')
+        dest = dest_folder / f"{service['filename_prefix']}_{date_str}.pdf"
 
-        resp = session.get(service['url_auto'], timeout=25, verify=True, allow_redirects=True)
-        ct = resp.headers.get('content-type', '').lower()
+        # Avoid overwriting an existing file
+        counter = 1
+        while dest.exists():
+            dest = dest_folder / f"{service['filename_prefix']}_{date_str}_{counter}.pdf"
+            counter += 1
 
-        if resp.status_code == 200 and 'pdf' in ct:
-            dest.write_bytes(resp.content)
-            logger.info('Descargado: %s', dest)
-            return {'ok': True, 'path': dest}
+        shutil.copy2(source_path, dest)
+        logger.info('PDF organizado: %s → %s', source_path, dest)
 
-        return {
-            'ok': False,
-            'error': (
-                f'El portal respondió con HTTP {resp.status_code}. '
-                'Este servicio requiere navegación interactiva. '
-                'Usa "Abrir en navegador" para acceder con tu certificado.'
-            ),
-        }
+        # Update history
+        history = load_history()
+        history.setdefault(service['id'], []).insert(0, {
+            'date': datetime.now().strftime('%d/%m/%Y %H:%M'),
+            'path': str(dest),
+        })
+        # Keep last 10 entries per service
+        history[service['id']] = history[service['id']][:10]
+        _save_history(history)
+
+        return {'ok': True, 'path': dest}
     except Exception as exc:
         return {'ok': False, 'error': str(exc)}
-    finally:
-        session.close()
