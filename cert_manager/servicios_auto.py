@@ -81,6 +81,13 @@ _SERVICES_CFG = {
 _CERT_DIALOG_WAIT = 8
 
 
+def selenium_available() -> bool:
+    """True si selenium y webdriver-manager están instalados."""
+    import importlib.util
+    return (importlib.util.find_spec('selenium') is not None
+            and importlib.util.find_spec('webdriver_manager') is not None)
+
+
 def _build_driver(download_dir: Path):
     """
     Creates a visible Edge WebDriver with the download folder configured.
@@ -198,6 +205,18 @@ def download_service(
     cfg = _SERVICES_CFG.get(service_id)
     if not cfg:
         return {'ok': False, 'error': f'Servicio no configurado: {service_id}'}
+
+    if not selenium_available():
+        return {
+            'ok': False,
+            'reason': 'no_selenium',
+            'error': (
+                'Falta el módulo "selenium" para la descarga automática.\n\n'
+                'Instálalo abriendo PowerShell en la carpeta de la app y ejecutando:\n'
+                '    pip install -r requirements.txt\n\n'
+                'Mientras tanto, puedes usar "🌐 Abrir portal" + "📂 Guardar PDF".'
+            ),
+        }
 
     def _cb(msg: str):
         logger.info(msg)

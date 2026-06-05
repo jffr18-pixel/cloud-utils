@@ -1308,6 +1308,16 @@ class ServiciosPage(ctk.CTkFrame):
                         self.after(500, lambda: self.app.refresh_page('servicios') if self.app else None)
                     else:
                         _set_status(f'✗  {final["error"][:80]}', DANGER)
+                elif result.get('reason') == 'no_selenium':
+                    # Falta selenium: explica cómo instalar y ofrece el navegador
+                    _set_status('⚠  Falta "selenium" — usa "🌐 Abrir portal"', WARNING)
+                    def offer():
+                        if messagebox.askyesno(
+                            'Descarga automática no disponible',
+                            result['error'] + '\n\n¿Abrir el portal en el navegador ahora?',
+                        ):
+                            sv.open_in_browser(s)
+                    self.after(0, offer)
                 else:
                     _set_status(f'⚠  {result["error"][:100]}', WARNING)
 
