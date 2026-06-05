@@ -19,6 +19,7 @@ win10toast>=0.9; sys_platform == "win32"
 
 # Interfaz gráfica
 customtkinter>=5.2.0
+Pillow>=10.0.0
 
 # Tests
 pytest>=7.4.0

@@ -11,7 +11,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import customtkinter as ctk
-from PIL import Image
+try:
+    from PIL import Image as _PILImage
+except ImportError:
+    _PILImage = None
 
 from cert_manager import cert_scanner, cert_validator, reporter
 from cert_manager import config as cfg_module
@@ -160,13 +163,15 @@ def section_label(parent, text: str):
 
 
 def _load_logo_image(width: int = 180, height: int = 56) -> 'ctk.CTkImage | None':
-    """Returns a CTkImage from assets/logo_bz.png, or None if not found."""
+    """Returns a CTkImage from assets/logo_bz.png, or None if not found / PIL unavailable."""
+    if _PILImage is None:
+        return None
     for name in ('logo_bz.png', 'logo.png', 'logo_bz.jpg', 'logo.jpg'):
         p = _ASSETS / name
         if p.exists():
             try:
-                img = Image.open(p).convert('RGBA')
-                img.thumbnail((width, height), Image.LANCZOS)
+                img = _PILImage.open(p).convert('RGBA')
+                img.thumbnail((width, height), _PILImage.LANCZOS)
                 return ctk.CTkImage(light_image=img, dark_image=img,
                                     size=(img.width, img.height))
             except Exception:
