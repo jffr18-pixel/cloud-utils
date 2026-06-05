@@ -24,10 +24,344 @@ from revision import (
 )
 
 st.set_page_config(
-    page_title="Revision de expedientes de extranjeria",
-    page_icon="📁",
+    page_title="Burocracia Zero · Extranjeria",
+    page_icon="⚖️",
     layout="wide",
 )
+
+# --------------------------------------------------------------------------- #
+#  Burocracia Zero — CSS global
+# --------------------------------------------------------------------------- #
+_CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif !important;
+}
+
+/* ── SIDEBAR ──────────────────────────────────────────────── */
+[data-testid="stSidebar"] {
+    background-color: #0D0B12 !important;
+    border-right: 1px solid #2A243A !important;
+}
+[data-testid="stSidebar"] > div:first-child {
+    padding-top: 1.2rem;
+}
+[data-testid="stSidebar"] * {
+    color: #E0D9EF !important;
+}
+[data-testid="stSidebar"] hr {
+    border-color: #2A243A !important;
+}
+[data-testid="stSidebar"] .stSelectbox label,
+[data-testid="stSidebar"] .stTextInput label,
+[data-testid="stSidebar"] .stNumberInput label,
+[data-testid="stSidebar"] .stCaption,
+[data-testid="stSidebar"] small {
+    color: #8A7FA8 !important;
+    font-size: 0.78rem !important;
+}
+[data-testid="stSidebar"] [data-baseweb="select"] > div {
+    background-color: #18132A !important;
+    border-color: #3A2F56 !important;
+    border-radius: 8px !important;
+    color: #E0D9EF !important;
+}
+[data-testid="stSidebar"] [data-baseweb="input"] > div {
+    background-color: #18132A !important;
+    border-color: #3A2F56 !important;
+    border-radius: 8px !important;
+}
+[data-testid="stSidebar"] [data-baseweb="input"] input {
+    color: #E0D9EF !important;
+}
+/* Nav radio */
+[data-testid="stSidebar"] .stRadio > div {
+    gap: 2px;
+}
+[data-testid="stSidebar"] .stRadio label {
+    display: block !important;
+    padding: 8px 14px !important;
+    border-radius: 8px !important;
+    color: #C4BAD8 !important;
+    font-size: 0.88rem !important;
+    font-weight: 400 !important;
+    cursor: pointer !important;
+    transition: background 0.15s, color 0.15s !important;
+}
+[data-testid="stSidebar"] .stRadio label:hover {
+    background-color: #231A38 !important;
+    color: #FFFFFF !important;
+}
+[data-testid="stSidebar"] .stRadio [aria-checked="true"] + label,
+[data-testid="stSidebar"] .stRadio label:has(input:checked) {
+    background-color: #9373B2 !important;
+    color: #FFFFFF !important;
+    font-weight: 600 !important;
+}
+/* Success/info chips in sidebar */
+[data-testid="stSidebar"] [data-testid="stAlert"] {
+    background-color: #18132A !important;
+    border-left-color: #9373B2 !important;
+}
+[data-testid="stSidebar"] [data-testid="stAlert"] * {
+    color: #C4BAD8 !important;
+}
+
+/* ── MAIN LAYOUT ──────────────────────────────────────────── */
+.main .block-container {
+    padding-top: 2rem !important;
+    padding-bottom: 3rem !important;
+    max-width: 1200px !important;
+}
+
+/* ── HEADINGS ─────────────────────────────────────────────── */
+h1 {
+    font-size: 1.75rem !important;
+    font-weight: 700 !important;
+    color: #0D0B12 !important;
+    padding-bottom: 0.4rem !important;
+    border-bottom: 3px solid #9373B2 !important;
+    margin-bottom: 1.2rem !important;
+}
+h2, h3 {
+    font-weight: 600 !important;
+    color: #1A1426 !important;
+}
+
+/* ── PRIMARY BUTTONS ──────────────────────────────────────── */
+button[kind="primary"],
+.stButton > button[data-testid*="primary"],
+.stButton > button[kind="primary"] {
+    background: #9373B2 !important;
+    color: #FFFFFF !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    font-size: 0.88rem !important;
+    padding: 0.5rem 1.4rem !important;
+    box-shadow: 0 2px 8px rgba(147,115,178,0.30) !important;
+    transition: all 0.18s !important;
+}
+.stButton > button[kind="primary"]:hover {
+    background: #7D5F9E !important;
+    box-shadow: 0 4px 14px rgba(147,115,178,0.45) !important;
+    transform: translateY(-1px) !important;
+}
+/* Secondary / default buttons */
+.stButton > button:not([kind="primary"]) {
+    background: #FFFFFF !important;
+    color: #9373B2 !important;
+    border: 1.5px solid #9373B2 !important;
+    border-radius: 8px !important;
+    font-weight: 500 !important;
+    font-size: 0.88rem !important;
+    transition: all 0.18s !important;
+}
+.stButton > button:not([kind="primary"]):hover {
+    background: #F5F2FA !important;
+    border-color: #7D5F9E !important;
+}
+
+/* ── DOWNLOAD BUTTONS ─────────────────────────────────────── */
+[data-testid="stDownloadButton"] > button {
+    background: #FFEA63 !important;
+    color: #0D0B12 !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    font-size: 0.86rem !important;
+    box-shadow: 0 2px 6px rgba(255,234,99,0.35) !important;
+    transition: all 0.18s !important;
+}
+[data-testid="stDownloadButton"] > button:hover {
+    background: #F5DE52 !important;
+    box-shadow: 0 4px 12px rgba(255,234,99,0.5) !important;
+    transform: translateY(-1px) !important;
+}
+
+/* ── FORM SUBMIT ──────────────────────────────────────────── */
+[data-testid="stFormSubmitButton"] > button {
+    background: #9373B2 !important;
+    color: #FFFFFF !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    box-shadow: 0 2px 8px rgba(147,115,178,0.30) !important;
+    transition: all 0.18s !important;
+}
+[data-testid="stFormSubmitButton"] > button:hover {
+    background: #7D5F9E !important;
+}
+
+/* ── METRICS ──────────────────────────────────────────────── */
+[data-testid="stMetric"] {
+    background: #FFFFFF !important;
+    border: 1px solid #E4DCF2 !important;
+    border-radius: 12px !important;
+    padding: 1rem 1.4rem !important;
+    box-shadow: 0 2px 10px rgba(147,115,178,0.08) !important;
+}
+[data-testid="stMetricLabel"] p {
+    color: #6B5F82 !important;
+    font-size: 0.75rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.6px !important;
+    font-weight: 500 !important;
+}
+[data-testid="stMetricValue"] {
+    color: #9373B2 !important;
+    font-weight: 700 !important;
+    font-size: 2rem !important;
+}
+
+/* ── EXPANDERS ────────────────────────────────────────────── */
+[data-testid="stExpander"] {
+    border: 1px solid #E4DCF2 !important;
+    border-radius: 10px !important;
+    margin-bottom: 6px !important;
+    overflow: hidden !important;
+    background: #FFFFFF !important;
+}
+[data-testid="stExpander"] details summary {
+    padding: 10px 16px !important;
+    background: #FAFAFA !important;
+    font-weight: 500 !important;
+}
+[data-testid="stExpander"] details summary:hover {
+    background: #F5F2FA !important;
+}
+[data-testid="stExpander"] details[open] summary {
+    background: #F0EBF8 !important;
+    color: #5E3A8C !important;
+    border-bottom: 1px solid #E4DCF2 !important;
+}
+
+/* ── ALERTS ───────────────────────────────────────────────── */
+[data-testid="stAlert"] {
+    border-radius: 10px !important;
+    border-left-width: 4px !important;
+}
+[data-testid="stAlert"][data-baseweb*="positive"],
+div[class*="stSuccess"] {
+    background-color: #EDFAED !important;
+    border-left-color: #2E7D32 !important;
+}
+[data-testid="stAlert"][data-baseweb*="negative"],
+div[class*="stError"] {
+    background-color: #FFF0F0 !important;
+    border-left-color: #C62828 !important;
+}
+[data-testid="stAlert"][data-baseweb*="warning"],
+div[class*="stWarning"] {
+    background-color: #FFFDE7 !important;
+    border-left-color: #FFEA63 !important;
+}
+[data-testid="stAlert"][data-baseweb*="info"],
+div[class*="stInfo"] {
+    background-color: #F5F0FB !important;
+    border-left-color: #9373B2 !important;
+}
+
+/* ── INPUTS ───────────────────────────────────────────────── */
+[data-baseweb="input"] > div,
+[data-baseweb="textarea"] > div {
+    border-color: #D9D0EC !important;
+    border-radius: 8px !important;
+    transition: border-color 0.15s !important;
+}
+[data-baseweb="input"] > div:focus-within,
+[data-baseweb="textarea"] > div:focus-within {
+    border-color: #9373B2 !important;
+    box-shadow: 0 0 0 2px rgba(147,115,178,0.18) !important;
+}
+[data-baseweb="select"] > div:first-child {
+    border-color: #D9D0EC !important;
+    border-radius: 8px !important;
+}
+[data-baseweb="select"] > div:first-child:focus-within {
+    border-color: #9373B2 !important;
+    box-shadow: 0 0 0 2px rgba(147,115,178,0.18) !important;
+}
+
+/* ── PROGRESS BAR ─────────────────────────────────────────── */
+[data-testid="stProgress"] > div > div > div > div {
+    background-color: #9373B2 !important;
+}
+
+/* ── DATAFRAME ────────────────────────────────────────────── */
+[data-testid="stDataFrame"] {
+    border-radius: 10px !important;
+    overflow: hidden !important;
+    border: 1px solid #E4DCF2 !important;
+}
+
+/* ── DATA EDITOR ──────────────────────────────────────────── */
+[data-testid="stDataEditor"] {
+    border-radius: 10px !important;
+    overflow: hidden !important;
+    border: 1px solid #E4DCF2 !important;
+}
+
+/* ── DIVIDER ──────────────────────────────────────────────── */
+hr {
+    border-color: #E4DCF2 !important;
+    margin: 1.5rem 0 !important;
+}
+
+/* ── TABS ─────────────────────────────────────────────────── */
+[data-baseweb="tab-list"] {
+    border-bottom-color: #E4DCF2 !important;
+}
+[data-baseweb="tab"] {
+    color: #6B5F82 !important;
+    font-weight: 500 !important;
+}
+[data-baseweb="tab"][aria-selected="true"] {
+    color: #9373B2 !important;
+    border-bottom-color: #9373B2 !important;
+    font-weight: 600 !important;
+}
+
+/* ── CHECKBOX / RADIO ─────────────────────────────────────── */
+[data-testid="stCheckbox"] label {
+    font-size: 0.88rem !important;
+}
+
+/* ── CAPTION / SMALL TEXT ─────────────────────────────────── */
+.stCaption, small, [data-testid="stCaptionContainer"] {
+    color: #6B5F82 !important;
+    font-size: 0.78rem !important;
+}
+
+/* ── PAGE SUBTITLE STRIP ──────────────────────────────────── */
+.bz-page-subtitle {
+    color: #6B5F82;
+    font-size: 0.875rem;
+    margin-top: -0.8rem;
+    margin-bottom: 1.5rem;
+}
+
+/* ── BADGE COLORS (checklist) ─────────────────────────────── */
+.bz-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    line-height: 1.4;
+}
+.bz-ok   { background:#E8F5E9; color:#1B5E20; }
+.bz-warn { background:#FFFDE7; color:#5D4037; border:1px solid #FFEA63; }
+.bz-soon { background:#FFF3E0; color:#E65100; }
+.bz-exp  { background:#FFEBEE; color:#B71C1C; }
+.bz-miss { background:#FCE4EC; color:#880E4F; }
+.bz-opt  { background:#F3F3F3; color:#555555; }
+</style>
+"""
 
 MODELOS = {
     "Claude Opus 4.8 (maxima precision)": "claude-opus-4-8",
@@ -62,7 +396,22 @@ def _slug(texto):
 # --------------------------------------------------------------------------- #
 def barra_lateral():
     with st.sidebar:
-        st.title("📁 Extranjeria")
+        st.markdown(
+            """
+            <div style="padding:0 4px 12px 4px;">
+              <div style="font-size:1.25rem;font-weight:800;color:#FFEA63;
+                          letter-spacing:-0.5px;line-height:1.1;">
+                BUROCRACIA ZERO
+              </div>
+              <div style="font-size:0.7rem;font-weight:600;color:#9373B2;
+                          letter-spacing:1.5px;text-transform:uppercase;
+                          margin-top:2px;">
+                Revision de Extranjeria
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         # Perfil de trabajo (cada uno con sus tramites, gestoria e historial)
         perfiles = config.listar_perfiles()
@@ -127,9 +476,11 @@ def barra_lateral():
 # --------------------------------------------------------------------------- #
 def pagina_revisar(api_key, modelo, dias_aviso):
     st.title("Revisar expediente")
-    st.caption(
-        "Sube los documentos (PDF o fotos de WhatsApp) y la herramienta los lee, "
-        "clasifica y comprueba que documentacion falta, esta caducada o tiene incidencias."
+    st.markdown(
+        '<p class="bz-page-subtitle">Sube los documentos (PDF o fotos de WhatsApp) y la '
+        "herramienta los lee, clasifica y comprueba que documentacion falta, esta caducada "
+        'o tiene incidencias.</p>',
+        unsafe_allow_html=True,
     )
 
     if not tramites.lista_tramites():
@@ -357,9 +708,11 @@ def _tabla_historial(registros, nombres_tramite):
 # --------------------------------------------------------------------------- #
 def pagina_caducidades():
     st.title("Avisos de caducidad")
-    st.caption(
-        "Documentos de expedientes ya revisados que estan caducados o caducaran "
-        "pronto, calculado a dia de hoy. Util para avisar al cliente con tiempo."
+    st.markdown(
+        '<p class="bz-page-subtitle">Documentos de expedientes ya revisados que estan caducados '
+        "o caducaran pronto, calculado a dia de hoy. Util para avisar al cliente con "
+        "tiempo.</p>",
+        unsafe_allow_html=True,
     )
     dias = st.slider("Mostrar lo que caduca en los proximos (dias)", 0, 365, 90, step=15)
     avisos = historial.proximas_caducidades(dias)
@@ -392,9 +745,11 @@ def pagina_caducidades():
 # --------------------------------------------------------------------------- #
 def pagina_tramites():
     st.title("Tramites y documentacion")
-    st.caption(
-        "Edita la documentacion exigida por cada tramite. Los cambios se guardan "
-        "en el perfil activo y se usan en las revisiones."
+    st.markdown(
+        '<p class="bz-page-subtitle">Edita la documentacion exigida por cada tramite. '
+        "Los cambios se guardan en el perfil activo y se usan en las "
+        "revisiones.</p>",
+        unsafe_allow_html=True,
     )
 
     with st.expander("➕ Crear un nuevo tramite"):
@@ -505,7 +860,11 @@ def pagina_tramites():
 # --------------------------------------------------------------------------- #
 def pagina_gestoria():
     st.title("Datos de la gestoria")
-    st.caption("Estos datos y el logo apareceran como membrete en informes y cartas.")
+    st.markdown(
+        '<p class="bz-page-subtitle">Estos datos y el logo apareceran como membrete '
+        "en informes y cartas.</p>",
+        unsafe_allow_html=True,
+    )
     cfg = config.cargar_config()
 
     nombre = st.text_input("Nombre de la gestoria", value=cfg.get("nombre_gestoria", ""))
@@ -907,7 +1266,11 @@ def pagina_seguimiento(api_key, modelo, dias_aviso):
 # --------------------------------------------------------------------------- #
 def pagina_calendario():
     st.title("Calendario de tareas")
-    st.caption("Recordatorios de todos los expedientes (presentaciones, renovaciones, consultas).")
+    st.markdown(
+        '<p class="bz-page-subtitle">Recordatorios de todos los expedientes '
+        "(presentaciones, renovaciones, consultas).</p>",
+        unsafe_allow_html=True,
+    )
     tareas = historial.todas_las_tareas(incluir_hechas=False)
     if not tareas:
         st.success("No hay tareas pendientes.")
@@ -930,7 +1293,11 @@ def pagina_calendario():
 # --------------------------------------------------------------------------- #
 def pagina_estadisticas():
     st.title("Estadisticas")
-    st.caption("Metricas del perfil activo a partir del historial de expedientes.")
+    st.markdown(
+        '<p class="bz-page-subtitle">Metricas del perfil activo a partir del historial '
+        "de expedientes.</p>",
+        unsafe_allow_html=True,
+    )
     e = historial.estadisticas()
     if e["total"] == 0:
         st.info("Aun no hay expedientes para calcular estadisticas.")
@@ -1011,6 +1378,7 @@ def pagina_ajustes():
 #  Main
 # --------------------------------------------------------------------------- #
 def main():
+    st.markdown(_CSS, unsafe_allow_html=True)
     pagina, api_key, modelo, dias_aviso = barra_lateral()
     if pagina == "Revisar expediente":
         pagina_revisar(api_key, modelo, dias_aviso)

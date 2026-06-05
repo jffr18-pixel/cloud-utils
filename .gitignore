@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
-.streamlit/
+.streamlit/secrets.toml
+.streamlit/*.cache
 venv/
 .env
 datos/
