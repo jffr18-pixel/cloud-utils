@@ -1,5 +1,12 @@
-"""Generacion del informe de revision del expediente en formato Markdown/texto."""
+"""Generacion del informe de revision del expediente.
 
+Formatos disponibles:
+  - generar_informe -> Markdown (cadena de texto)
+  - generar_docx    -> Word (.docx) en bytes
+  - generar_pdf     -> PDF en bytes
+"""
+
+import io
 from datetime import date
 
 from . import tramites
@@ -89,7 +96,7 @@ def generar_informe(checklist, no_identificados, tramite_id, solicitante="", hoy
             "Revisar manualmente:"
         )
         for doc in no_identificados:
-            lineas.append(f"- {doc['archivo']}: {doc.get('resumen', '')}")
+            lineas.append(f"- {doc.get('archivo', '-')}: {doc.get('resumen', '')}")
         lineas.append("")
 
     # Acciones recomendadas
@@ -170,3 +177,235 @@ def _acciones(faltan, caducados, avisos):
             vistas.add(a)
             unicas.append(a)
     return unicas
+
+
+def _contexto(checklist, tramite_id, solicitante, hoy):
+    """Datos comunes a todos los formatos del informe."""
+    if hoy is None:
+        hoy = date.today()
+    return {
+        "tramite": tramites.TRAMITES[tramite_id]["nombre"],
+        "solicitante": solicitante,
+        "hoy": hoy,
+        "listo": expediente_listo(checklist),
+        "faltan": [c for c in checklist if c["estado"] == "falta"],
+        "caducados": [c for c in checklist if c["estado"] == "caducado"],
+        "avisos": [
+            c for c in checklist if c["estado"] in ("con_incidencias", "proximo_a_caducar")
+        ],
+    }
+
+
+# --------------------------------------------------------------------------- #
+#  Word (.docx)
+# --------------------------------------------------------------------------- #
+def generar_docx(checklist, no_identificados, tramite_id, solicitante="", hoy=None):
+    """Genera el informe en formato Word y lo devuelve como bytes."""
+    from docx import Document  # import diferido para no exigir la dependencia siempre
+
+    ctx = _contexto(checklist, tramite_id, solicitante, hoy)
+    doc = Document()
+
+    doc.add_heading("Informe de revision de expediente", level=0)
+    doc.add_paragraph(f"Tramite: {ctx['tramite']}")
+    if solicitante:
+        doc.add_paragraph(f"Solicitante: {solicitante}")
+    doc.add_paragraph(f"Fecha de revision: {ctx['hoy'].isoformat()}")
+    veredicto = (
+        "LISTO PARA PRESENTAR (revisar avisos)"
+        if ctx["listo"]
+        else "NO LISTO: faltan documentos obligatorios o hay caducados"
+    )
+    p = doc.add_paragraph()
+    p.add_run("Resultado: ").bold = True
+    p.add_run(veredicto)
+
+    doc.add_heading("Resumen", level=1)
+    doc.add_paragraph(f"Documentos obligatorios que faltan: {len(ctx['faltan'])}")
+    doc.add_paragraph(f"Documentos caducados: {len(ctx['caducados'])}")
+    doc.add_paragraph(f"Documentos a revisar / proximos a caducar: {len(ctx['avisos'])}")
+
+    doc.add_heading("Checklist de documentacion", level=1)
+    tabla = doc.add_table(rows=1, cols=4)
+    tabla.style = "Light Grid Accent 1"
+    cab = tabla.rows[0].cells
+    cab[0].text, cab[1].text, cab[2].text, cab[3].text = (
+        "Estado",
+        "Documento",
+        "Obligatorio",
+        "Detalle",
+    )
+    for fila in checklist:
+        celdas = tabla.add_row().cells
+        celdas[0].text = _ICONO.get(fila["estado"], fila["estado"])
+        celdas[1].text = fila["nombre"]
+        celdas[2].text = "Si" if fila["obligatorio"] else "No"
+        celdas[3].text = _detalle_fila(fila)
+
+    doc.add_heading("Detalle de los documentos aportados", level=1)
+    aportados = [d for fila in checklist for d in fila["documentos"]] + no_identificados
+    if not aportados:
+        doc.add_paragraph("No se ha aportado ningun documento.")
+    for docu in aportados:
+        doc.add_heading(docu.get("tipo_nombre") or docu.get("archivo", "Documento"), level=2)
+        for linea in _lineas_documento_plano(docu):
+            doc.add_paragraph(linea, style="List Bullet")
+
+    if no_identificados:
+        doc.add_heading("Documentos no identificados", level=1)
+        for docu in no_identificados:
+            doc.add_paragraph(
+                f"{docu.get('archivo', '-')}: {docu.get('resumen', '')}", style="List Bullet"
+            )
+
+    doc.add_heading("Acciones recomendadas", level=1)
+    acciones = _acciones(ctx["faltan"], ctx["caducados"], ctx["avisos"])
+    if not acciones:
+        doc.add_paragraph("Sin acciones pendientes. Expediente completo.")
+    for accion in acciones:
+        doc.add_paragraph(accion, style="List Bullet")
+
+    doc.add_paragraph(
+        "Informe generado automaticamente como apoyo a la revision. "
+        "No sustituye el criterio profesional del gestor."
+    )
+
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    return buffer.getvalue()
+
+
+# --------------------------------------------------------------------------- #
+#  PDF
+# --------------------------------------------------------------------------- #
+def _latin1(texto):
+    """Adapta el texto a la codificacion de las fuentes base del PDF."""
+    if not texto:
+        return ""
+    reemplazos = {
+        "—": "-",
+        "–": "-",
+        "‘": "'",
+        "’": "'",
+        "“": '"',
+        "”": '"',
+        "…": "...",
+        " ": " ",
+        "€": "EUR",
+    }
+    for origen, destino in reemplazos.items():
+        texto = texto.replace(origen, destino)
+    return texto.encode("latin-1", "replace").decode("latin-1")
+
+
+def generar_pdf(checklist, no_identificados, tramite_id, solicitante="", hoy=None):
+    """Genera el informe en formato PDF y lo devuelve como bytes."""
+    from fpdf import FPDF  # import diferido
+
+    ctx = _contexto(checklist, tramite_id, solicitante, hoy)
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    def titulo(texto, tam=14):
+        pdf.set_font("Helvetica", "B", tam)
+        pdf.multi_cell(0, 7, _latin1(texto), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 10)
+
+    def parrafo(texto, negrita=False):
+        pdf.set_font("Helvetica", "B" if negrita else "", 10)
+        pdf.multi_cell(0, 5, _latin1(texto), new_x="LMARGIN", new_y="NEXT")
+
+    titulo("Informe de revision de expediente", 16)
+    parrafo(f"Tramite: {ctx['tramite']}")
+    if solicitante:
+        parrafo(f"Solicitante: {solicitante}")
+    parrafo(f"Fecha de revision: {ctx['hoy'].isoformat()}")
+    veredicto = (
+        "LISTO PARA PRESENTAR (revisar avisos)"
+        if ctx["listo"]
+        else "NO LISTO: faltan documentos obligatorios o hay caducados"
+    )
+    parrafo(f"Resultado: {veredicto}", negrita=True)
+    pdf.ln(2)
+
+    titulo("Resumen")
+    parrafo(f"- Documentos obligatorios que faltan: {len(ctx['faltan'])}")
+    parrafo(f"- Documentos caducados: {len(ctx['caducados'])}")
+    parrafo(f"- A revisar / proximos a caducar: {len(ctx['avisos'])}")
+    pdf.ln(2)
+
+    titulo("Checklist de documentacion")
+    pdf.set_font("Helvetica", "", 9)
+    with pdf.table(col_widths=(16, 44, 14, 46), text_align="LEFT") as tabla:
+        encabezado = tabla.row()
+        for celda in ("Estado", "Documento", "Oblig.", "Detalle"):
+            encabezado.cell(celda)
+        for fila in checklist:
+            row = tabla.row()
+            row.cell(_latin1(_ICONO.get(fila["estado"], fila["estado"])))
+            row.cell(_latin1(fila["nombre"]))
+            row.cell("Si" if fila["obligatorio"] else "No")
+            row.cell(_latin1(_detalle_fila(fila)))
+    pdf.ln(2)
+
+    titulo("Detalle de los documentos aportados")
+    aportados = [d for fila in checklist for d in fila["documentos"]] + no_identificados
+    if not aportados:
+        parrafo("No se ha aportado ningun documento.")
+    for docu in aportados:
+        parrafo(docu.get("tipo_nombre") or docu.get("archivo", "Documento"), negrita=True)
+        for linea in _lineas_documento_plano(docu):
+            parrafo(f"  - {linea}")
+        pdf.ln(1)
+
+    if no_identificados:
+        titulo("Documentos no identificados")
+        for docu in no_identificados:
+            parrafo(f"- {docu.get('archivo', '-')}: {docu.get('resumen', '')}")
+        pdf.ln(2)
+
+    titulo("Acciones recomendadas")
+    acciones = _acciones(ctx["faltan"], ctx["caducados"], ctx["avisos"])
+    if not acciones:
+        parrafo("- Sin acciones pendientes. Expediente completo.")
+    for accion in acciones:
+        parrafo(f"- {accion}")
+    pdf.ln(3)
+
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.multi_cell(
+        0,
+        4,
+        _latin1(
+            "Informe generado automaticamente como apoyo a la revision. "
+            "No sustituye el criterio profesional del gestor."
+        ),
+        new_x="LMARGIN",
+        new_y="NEXT",
+    )
+
+    salida = pdf.output()
+    return bytes(salida)
+
+
+def _lineas_documento_plano(doc):
+    """Lineas de detalle de un documento, en texto plano (para docx y pdf)."""
+    lineas = [f"Archivo: {doc.get('archivo', '-')}"]
+    if doc.get("titular"):
+        lineas.append(f"Titular: {doc['titular']}")
+    if doc.get("numero"):
+        lineas.append(f"Numero: {doc['numero']}")
+    if doc.get("pais_emision"):
+        lineas.append(f"Pais/autoridad: {doc['pais_emision']}")
+    if doc.get("fecha_emision"):
+        lineas.append(f"Fecha de emision: {doc['fecha_emision']}")
+    if doc.get("fecha_caducidad"):
+        lineas.append(f"Fecha de caducidad: {doc['fecha_caducidad']}")
+    lineas.append(f"Estado: {_ESTADO_DOC.get(doc.get('estado'), doc.get('estado', '-'))}")
+    lineas.append(f"Legibilidad: {doc.get('legibilidad', '-')}")
+    for inc in doc.get("incidencias", []):
+        lineas.append(f"Incidencia: {inc}")
+    if doc.get("resumen"):
+        lineas.append(f"Resumen: {doc['resumen']}")
+    return lineas

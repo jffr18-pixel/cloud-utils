@@ -8,6 +8,7 @@ import os
 from datetime import date
 
 import anthropic
+import pandas as pd
 import streamlit as st
 
 from revision import analizador, informe, tramites
@@ -105,8 +106,41 @@ def main():
         "Documentos del expediente (PDF, JPG, PNG)",
         type=analizador.extensiones_admitidas(),
         accept_multiple_files=True,
-        help="Puedes subir varias fotos y PDF a la vez. Cada archivo = un documento.",
+        help="Puedes subir varias fotos y PDF a la vez.",
     )
+
+    # ---------------------- Agrupacion de paginas/fotos ----------------------
+    grupos = None
+    if archivos:
+        st.markdown("##### Agrupar paginas de un mismo documento")
+        st.caption(
+            "Pon el **mismo numero de grupo** a las fotos que sean el mismo "
+            "documento (p.ej. las 4 fotos de un pasaporte). Por defecto cada "
+            "archivo se analiza por separado."
+        )
+        col_grupo = "Grupo (mismo nº = mismo documento)"
+        df = pd.DataFrame(
+            {
+                "Archivo": [a.name for a in archivos],
+                col_grupo: list(range(1, len(archivos) + 1)),
+            }
+        )
+        editado = st.data_editor(
+            df,
+            disabled=["Archivo"],
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                col_grupo: st.column_config.NumberColumn(
+                    min_value=1, step=1, format="%d"
+                )
+            },
+            key="editor_grupos",
+        )
+        grupos = {}
+        for i, archivo in enumerate(archivos):
+            clave = int(editado.iloc[i][col_grupo])
+            grupos.setdefault(clave, []).append((archivo.name, archivo.getvalue()))
 
     analizar = st.button("🔍 Analizar expediente", type="primary", disabled=not archivos)
 
@@ -120,16 +154,15 @@ def main():
 
         hoy = date.today()
         resultados = []
+        items = [grupos[k] for k in sorted(grupos)]
         barra = st.progress(0.0, text="Analizando documentos...")
-        for i, archivo in enumerate(archivos, start=1):
-            barra.progress(
-                i / len(archivos), text=f"Analizando {archivo.name} ({i}/{len(archivos)})"
-            )
+        for i, paginas in enumerate(items, start=1):
+            nombres = ", ".join(n for n, _ in paginas)
+            barra.progress(i / len(items), text=f"Analizando {nombres} ({i}/{len(items)})")
             try:
                 datos = analizador.analizar_documento(
                     cliente,
-                    archivo.getvalue(),
-                    archivo.name,
+                    paginas,
                     tramite_id,
                     modelo=modelo,
                     hoy=hoy,
@@ -137,7 +170,8 @@ def main():
                 )
             except Exception as exc:  # noqa: BLE001
                 datos = {
-                    "archivo": archivo.name,
+                    "archivo": nombres,
+                    "archivos": [n for n, _ in paginas],
                     "tipo_id": "no_identificado",
                     "tipo_nombre": "Error al analizar",
                     "estado": "desconocido",
@@ -205,13 +239,45 @@ def main():
         st.subheader("Informe de revision")
         st.markdown(texto_informe)
 
-        nombre_base = (solicitante or "expediente").strip().replace(" ", "_").lower()
-        st.download_button(
-            "⬇️ Descargar informe (.md)",
-            data=texto_informe,
-            file_name=f"informe_{nombre_base}_{hoy.isoformat()}.md",
-            mime="text/markdown",
-        )
+        nombre_base = (solicitante or "expediente").strip().replace(" ", "_").lower() or "expediente"
+        fecha = hoy.isoformat()
+        d1, d2, d3 = st.columns(3)
+        with d1:
+            st.download_button(
+                "⬇️ Markdown (.md)",
+                data=texto_informe,
+                file_name=f"informe_{nombre_base}_{fecha}.md",
+                mime="text/markdown",
+                use_container_width=True,
+            )
+        with d2:
+            try:
+                docx_bytes = informe.generar_docx(
+                    checklist, no_identificados, tramite_id, solicitante=solicitante, hoy=hoy
+                )
+                st.download_button(
+                    "⬇️ Word (.docx)",
+                    data=docx_bytes,
+                    file_name=f"informe_{nombre_base}_{fecha}.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True,
+                )
+            except Exception as exc:  # noqa: BLE001
+                st.caption(f"Word no disponible: {exc}")
+        with d3:
+            try:
+                pdf_bytes = informe.generar_pdf(
+                    checklist, no_identificados, tramite_id, solicitante=solicitante, hoy=hoy
+                )
+                st.download_button(
+                    "⬇️ PDF (.pdf)",
+                    data=pdf_bytes,
+                    file_name=f"informe_{nombre_base}_{fecha}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                )
+            except Exception as exc:  # noqa: BLE001
+                st.caption(f"PDF no disponible: {exc}")
 
 
 def _mostrar_documento(doc):

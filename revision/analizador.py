@@ -92,6 +92,16 @@ def _bloque_documento(nombre_archivo, datos):
     raise ValueError(f"Formato no admitido: {nombre_archivo}")
 
 
+def _bloques_documento(paginas):
+    """Construye los bloques de contenido para un documento de varias paginas.
+
+    paginas: lista de tuplas (nombre_archivo, datos_bytes). Cada foto o PDF se
+    convierte en un bloque; todas se envian juntas para analizarlas como un
+    unico documento (p.ej. las 4 fotos de un pasaporte).
+    """
+    return [_bloque_documento(nombre, datos) for nombre, datos in paginas]
+
+
 def _instruccion(tramite_id, hoy):
     tramite = tramites.TRAMITES[tramite_id]
     return (
@@ -101,6 +111,9 @@ def _instruccion(tramite_id, hoy):
         "como valor de tipo_id si el documento encaja; si no encaja con ninguno, usa "
         '"no_identificado"):\n'
         f"{tramites.resumen_tipos(tramite_id)}\n\n"
+        "Las imagenes o paginas adjuntas corresponden a UN UNICO documento (por "
+        "ejemplo, varias fotos de las distintas paginas de un mismo pasaporte o "
+        "contrato). Analizalas en conjunto y emite un solo resultado.\n\n"
         "Analiza el documento adjunto y devuelve un JSON con EXACTAMENTE estas claves:\n"
         "{\n"
         '  "tipo_id": string,            // identificador de la lista o "no_identificado"\n'
@@ -190,24 +203,25 @@ def _normalizar(datos):
 
 def analizar_documento(
     cliente,
-    datos_archivo,
-    nombre_archivo,
+    paginas,
     tramite_id,
     modelo=MODELO_POR_DEFECTO,
     hoy=None,
     dias_aviso=DIAS_AVISO_CADUCIDAD,
 ):
-    """Analiza un unico documento y devuelve el diccionario de resultados.
+    """Analiza un documento (una o varias paginas) y devuelve los resultados.
 
-    cliente:        instancia de anthropic.Anthropic
-    datos_archivo:  bytes del archivo
-    nombre_archivo: nombre original (se usa para detectar el formato)
-    tramite_id:     clave en tramites.TRAMITES
+    cliente:    instancia de anthropic.Anthropic
+    paginas:    lista de tuplas (nombre_archivo, datos_bytes). Varias paginas se
+                analizan juntas como un unico documento.
+    tramite_id: clave en tramites.TRAMITES
     """
     if hoy is None:
         hoy = date.today()
+    if not paginas:
+        raise ValueError("No se han aportado paginas para analizar.")
 
-    bloque = _bloque_documento(nombre_archivo, datos_archivo)
+    bloques = _bloques_documento(paginas)
     instruccion = _instruccion(tramite_id, hoy)
 
     respuesta = cliente.messages.create(
@@ -217,7 +231,7 @@ def analizar_documento(
         messages=[
             {
                 "role": "user",
-                "content": [bloque, {"type": "text", "text": instruccion}],
+                "content": bloques + [{"type": "text", "text": instruccion}],
             }
         ],
     )
@@ -225,7 +239,9 @@ def analizar_documento(
     texto = next((b.text for b in respuesta.content if b.type == "text"), "")
     datos = _normalizar(_extraer_json(texto))
     _recalcular_estado(datos, hoy, dias_aviso)
-    datos["archivo"] = nombre_archivo
+    nombres = [nombre for nombre, _ in paginas]
+    datos["archivos"] = nombres
+    datos["archivo"] = ", ".join(nombres)
     return datos
 
 

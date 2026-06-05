@@ -12,11 +12,14 @@ Aplicacion con interfaz grafica que lee la documentacion de un expediente
 ### Que hace
 
 - Lee fotos (JPG/PNG/WebP) y PDF — corrige la orientacion de las fotos de movil.
+- Permite **agrupar varias fotos como un solo documento** (p.ej. las 4 fotos de
+  un pasaporte) asignandoles el mismo numero de grupo.
 - Clasifica cada documento dentro de los exigidos por el tramite.
 - Extrae datos clave: titular, nº de pasaporte/NIE, pais, fechas.
 - Detecta documentos **caducados** o **proximos a caducar** (margen configurable).
 - Marca documentos **que faltan** (obligatorios y opcionales).
-- Genera un **informe de revision** descargable (Markdown) con acciones recomendadas.
+- Genera un **informe de revision** descargable en **Markdown, Word (.docx) y
+  PDF**, con acciones recomendadas.
 
 ### Tramites incluidos
 
