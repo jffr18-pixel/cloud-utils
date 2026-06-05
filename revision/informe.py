@@ -11,7 +11,7 @@ import os
 from datetime import date
 
 from . import tramites
-from .analizador import calcular_permanencia, comprobar_coherencia, expediente_listo
+from .analizador import calcular_permanencia, expediente_listo, incidencias_expediente
 
 _EXT_LOGO_PDF = (".png", ".jpg", ".jpeg")
 _EXT_LOGO_DOCX = (".png", ".jpg", ".jpeg", ".gif", ".bmp")
@@ -224,12 +224,12 @@ def _lineas_comprobaciones(checklist, no_identificados, tramite_id, hoy):
     docs = _todos_documentos(checklist, no_identificados)
     lineas = []
 
-    coherencia = comprobar_coherencia(docs)
-    if coherencia:
-        for aviso in coherencia:
-            lineas.append(f"Coherencia: {aviso}")
+    incidencias = incidencias_expediente(docs, hoy)
+    if incidencias:
+        for aviso in incidencias:
+            lineas.append(f"Aviso: {aviso}")
     else:
-        lineas.append("Coherencia: nombres y numeros coinciden entre los documentos.")
+        lineas.append("Coherencia: nombres, numeros y fechas coinciden entre los documentos.")
 
     permanencia = calcular_permanencia(docs, tramite_id, hoy=hoy)
     if permanencia:

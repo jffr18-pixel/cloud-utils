@@ -13,7 +13,15 @@ import anthropic
 import pandas as pd
 import streamlit as st
 
-from revision import analizador, config, historial, informe, tramites
+from revision import (
+    analizador,
+    comunicacion,
+    config,
+    ficha,
+    historial,
+    informe,
+    tramites,
+)
 
 st.set_page_config(
     page_title="Revision de expedientes de extranjeria",
@@ -76,7 +84,17 @@ def barra_lateral():
         st.divider()
         pagina = st.radio(
             "Menu",
-            ["Revisar expediente", "Historial", "Caducidades", "Tramites", "Gestoria"],
+            [
+                "Revisar expediente",
+                "Historial",
+                "Seguimiento",
+                "Caducidades",
+                "Calendario",
+                "Estadisticas",
+                "Tramites",
+                "Gestoria",
+                "Ajustes",
+            ],
             label_visibility="collapsed",
         )
         st.divider()
@@ -146,7 +164,7 @@ def pagina_revisar(api_key, modelo, dias_aviso):
         help="Puedes subir varias fotos y PDF a la vez.",
     )
 
-    items, grupos = None, None
+    items, grupos, modelo_sec = None, None, None
     if archivos:
         st.markdown("##### Agrupar paginas de un mismo documento")
         st.caption(
@@ -167,6 +185,15 @@ def pagina_revisar(api_key, modelo, dias_aviso):
             clave = int(editado.iloc[i][col_grupo])
             grupos.setdefault(clave, []).append((archivo.name, archivo.getvalue()))
         items = [grupos[k] for k in sorted(grupos)]
+
+        doble = st.checkbox(
+            "Doble verificacion (dos modelos revisan; mas fiable y mas lento)"
+        )
+        if doble:
+            nombres_mod = list(MODELOS)
+            idx_sec = 1 if MODELOS[nombres_mod[0]] == modelo else 0
+            sec = st.selectbox("Segundo modelo", nombres_mod, index=idx_sec)
+            modelo_sec = MODELOS[sec]
 
         c1, c2 = st.columns(2)
         analizar = c1.button("🔍 Analizar expediente", type="primary", use_container_width=True)
@@ -203,7 +230,8 @@ def pagina_revisar(api_key, modelo, dias_aviso):
             barra.progress(i / len(items), text=f"Analizando {nombres} ({i}/{len(items)})")
             try:
                 datos = analizador.analizar_documento(
-                    cliente, paginas, tramite_id, modelo=modelo, hoy=hoy, dias_aviso=dias_aviso
+                    cliente, paginas, tramite_id, modelo=modelo, hoy=hoy,
+                    dias_aviso=dias_aviso, modelo_secundario=modelo_sec,
                 )
             except Exception as exc:  # noqa: BLE001
                 datos = {
@@ -539,16 +567,16 @@ def mostrar_resultados(resultados, tramite_id, solicitante, hoy, prefijo="rev", 
     m2.metric("Caducados", caducados)
     m3.metric("A revisar / caducan pronto", avisos)
 
-    # Comprobaciones automaticas (coherencia + permanencia)
+    # Comprobaciones automaticas (coherencia + fechas + permanencia)
     docs_todos = [d for fila in checklist for d in fila["documentos"]] + no_identificados
-    coherencia = analizador.comprobar_coherencia(docs_todos)
+    incidencias = analizador.incidencias_expediente(docs_todos, hoy)
     permanencia = analizador.calcular_permanencia(docs_todos, tramite_id, hoy=hoy)
-    if coherencia or permanencia:
+    if incidencias or permanencia:
         st.subheader("Comprobaciones automaticas")
-        for aviso in coherencia:
+        for aviso in incidencias:
             st.warning(aviso)
-        if not coherencia:
-            st.caption("Coherencia: nombres y numeros coinciden entre los documentos.")
+        if not incidencias:
+            st.caption("Coherencia: nombres, numeros y fechas coinciden entre los documentos.")
         if permanencia:
             req = permanencia["requeridos"]
             if permanencia["anios"] is None:
@@ -652,6 +680,66 @@ def mostrar_resultados(resultados, tramite_id, solicitante, hoy, prefijo="rev", 
         except Exception as exc:  # noqa: BLE001
             st.caption(f"Carta Word no disponible: {exc}")
 
+    # Ficha estructurada (Excel / CSV)
+    st.subheader("Ficha del expediente (datos)")
+    meta_ficha = {"solicitante": solicitante, "tramite_id": tramite_id, "fecha": fecha}
+    e1, e2 = st.columns(2)
+    with e1:
+        try:
+            xlsx = ficha.exportar_excel(resultados, meta_ficha)
+            st.download_button(
+                "⬇️ Excel (.xlsx)", data=xlsx,
+                file_name=f"ficha_{nombre_base}_{fecha}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True, key=f"{prefijo}_xlsx",
+            )
+        except Exception as exc:  # noqa: BLE001
+            st.caption(f"Excel no disponible: {exc}")
+    e2.download_button(
+        "⬇️ CSV (.csv)", data=ficha.exportar_csv(resultados),
+        file_name=f"ficha_{nombre_base}_{fecha}.csv", mime="text/csv",
+        use_container_width=True, key=f"{prefijo}_csv",
+    )
+
+    # Enviar al cliente (WhatsApp / email)
+    st.subheader("Enviar al cliente")
+    col_wa, col_mail = st.columns(2)
+    with col_wa:
+        st.markdown("**WhatsApp**")
+        texto_wa = comunicacion.mensaje_whatsapp(checklist, tramite_id, solicitante, gestoria)
+        st.text_area("Mensaje", value=texto_wa, height=180, key=f"{prefijo}_wa")
+        tel = st.text_input("Telefono del cliente (con prefijo, opcional)", key=f"{prefijo}_tel")
+        enlace = comunicacion.enlace_whatsapp(texto_wa, tel)
+        st.markdown(f"[📲 Abrir en WhatsApp]({enlace})")
+    with col_mail:
+        st.markdown("**Email**")
+        with st.form(f"{prefijo}_form_email"):
+            destino = st.text_input("Email del cliente")
+            adjuntar = st.checkbox("Adjuntar informe PDF y carta Word", value=True)
+            enviar = st.form_submit_button("Enviar email")
+        if enviar:
+            adjuntos = []
+            if adjuntar:
+                try:
+                    adjuntos.append((
+                        f"informe_{nombre_base}.pdf",
+                        informe.generar_pdf(checklist, no_identificados, tramite_id,
+                                            solicitante=solicitante, hoy=hoy, gestoria=gestoria),
+                        "application/pdf",
+                    ))
+                    adjuntos.append((
+                        f"requerimiento_{nombre_base}.docx",
+                        informe.generar_requerimiento_docx(checklist, tramite_id,
+                                                           solicitante=solicitante,
+                                                           gestoria=gestoria, hoy=hoy),
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    ))
+                except Exception:  # noqa: BLE001
+                    pass
+            asunto = f"Documentacion de su tramite ({tramites.TRAMITES[tramite_id]['nombre']})"
+            ok, msg = comunicacion.enviar_email(gestoria, destino, asunto, carta, adjuntos)
+            (st.success if ok else st.error)(msg)
+
 
 def _mostrar_documento(doc, previews=None):
     cols = st.columns([2, 1])
@@ -701,6 +789,225 @@ def _vista_previa(doc, previews):
 
 
 # --------------------------------------------------------------------------- #
+#  Pagina: Seguimiento del expediente presentado
+# --------------------------------------------------------------------------- #
+def pagina_seguimiento(api_key, modelo, dias_aviso):
+    st.title("Seguimiento de expedientes")
+    st.info(
+        "El sistema oficial no ofrece una consulta automatica fiable, por lo que "
+        "el seguimiento del estado se registra a mano: cada vez que consultes "
+        "'Como va lo mio' con el nº de expediente, anota aqui el estado y la app "
+        "guarda la linea de tiempo. Programa un recordatorio en el Calendario."
+    )
+    registros = historial.listar()
+    if not registros:
+        st.info("Aun no hay expedientes. Revisa uno primero.")
+        return
+
+    etiquetas = {
+        r["id"]: f"{r['fecha'].replace('T', ' ')} · {r['solicitante'] or 'sin nombre'}"
+        for r in registros
+    }
+    eid = st.selectbox("Expediente", list(etiquetas), format_func=lambda i: etiquetas[i])
+    reg = historial.cargar(eid)
+    if not reg:
+        return
+
+    st.markdown("##### Datos de presentacion")
+    c1, c2, c3 = st.columns(3)
+    numero = c1.text_input("Nº de expediente", value=reg.get("numero_expediente", ""))
+    nie = c2.text_input("NIE", value=reg.get("nie", ""))
+    resultado = c3.selectbox(
+        "Resultado final",
+        ["pendiente", "aprobado", "denegado"],
+        index=["pendiente", "aprobado", "denegado"].index(reg.get("resultado_final", "pendiente"))
+        if reg.get("resultado_final") in ("pendiente", "aprobado", "denegado")
+        else 0,
+    )
+    b1, b2 = st.columns(2)
+    if b1.button("💾 Guardar datos de presentacion", type="primary"):
+        historial.marcar_presentado(eid, numero.strip(), nie.strip())
+        historial.marcar_resultado(eid, resultado)
+        st.success("Datos guardados.")
+        st.rerun()
+    if b2.button("🔒 Anonimizar (RGPD)"):
+        historial.anonimizar(eid)
+        st.success("Datos personales del expediente eliminados.")
+        st.rerun()
+
+    st.markdown("##### Linea de tiempo del expediente")
+    seguimiento = reg.get("seguimiento", [])
+    if seguimiento:
+        for ev in seguimiento:
+            st.write(f"- **{ev['fecha']}** — {ev['estado']}" + (f": {ev['nota']}" if ev.get("nota") else ""))
+    else:
+        st.caption("Sin anotaciones todavia.")
+    with st.form(f"seg_{eid}"):
+        estado = st.text_input("Nuevo estado (p.ej. 'En tramite', 'Requerido', 'Resuelto')")
+        nota = st.text_input("Nota (opcional)")
+        if st.form_submit_button("Anadir al seguimiento") and estado.strip():
+            historial.anadir_seguimiento(eid, estado.strip(), nota.strip())
+            st.rerun()
+
+    st.markdown("##### Tareas / recordatorios de este expediente")
+    for i, tarea in enumerate(reg.get("tareas", [])):
+        marca = "✅" if tarea.get("hecha") else "⬜"
+        cols = st.columns([4, 1])
+        cols[0].write(f"{marca} {tarea['fecha']} — {tarea['descripcion']}")
+        if not tarea.get("hecha") and cols[1].button("Hecha", key=f"t_{eid}_{i}"):
+            historial.marcar_tarea(eid, i, True)
+            st.rerun()
+    with st.form(f"tarea_{eid}"):
+        cols = st.columns([3, 2])
+        desc = cols[0].text_input("Nueva tarea")
+        fecha_t = cols[1].date_input("Fecha")
+        if st.form_submit_button("Anadir tarea") and desc.strip():
+            historial.anadir_tarea(eid, desc.strip(), fecha_t.isoformat())
+            st.rerun()
+
+    st.markdown("##### Anadir documentos al expediente (version nueva)")
+    st.caption(
+        "Si el cliente reenvia un documento (p.ej. un pasaporte renovado), subelo "
+        "aqui: sustituye al anterior, que queda archivado como version previa."
+    )
+    nuevos = st.file_uploader(
+        "Documentos nuevos", type=analizador.extensiones_admitidas(),
+        accept_multiple_files=True, key=f"add_{eid}",
+    )
+    if nuevos and st.button("Analizar y anadir al expediente"):
+        try:
+            cliente = obtener_cliente(api_key)
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"No se pudo iniciar el cliente de IA: {exc}")
+            return
+        resultados_nuevos = []
+        barra = st.progress(0.0, text="Analizando...")
+        for j, archivo in enumerate(nuevos, start=1):
+            barra.progress(j / len(nuevos), text=f"Analizando {archivo.name}")
+            try:
+                datos = analizador.analizar_documento(
+                    cliente, [(archivo.name, archivo.getvalue())], reg["tramite_id"],
+                    modelo=modelo, dias_aviso=dias_aviso,
+                )
+            except Exception as exc:  # noqa: BLE001
+                datos = {
+                    "archivo": archivo.name, "tipo_id": "no_identificado",
+                    "tipo_nombre": "Error", "estado": "desconocido",
+                    "incidencias": [str(exc)], "legibilidad": "-",
+                }
+            resultados_nuevos.append(datos)
+        barra.empty()
+        historial.anadir_documentos(eid, resultados_nuevos)
+        st.success("Documentos anadidos. Las versiones anteriores se han archivado.")
+        st.rerun()
+
+
+# --------------------------------------------------------------------------- #
+#  Pagina: Calendario de tareas
+# --------------------------------------------------------------------------- #
+def pagina_calendario():
+    st.title("Calendario de tareas")
+    st.caption("Recordatorios de todos los expedientes (presentaciones, renovaciones, consultas).")
+    tareas = historial.todas_las_tareas(incluir_hechas=False)
+    if not tareas:
+        st.success("No hay tareas pendientes.")
+        return
+    hoy = date.today().isoformat()
+    for t in tareas:
+        vencida = t["fecha"] < hoy
+        icono = "🔴" if vencida else "🗓️"
+        cols = st.columns([5, 1])
+        cols[0].write(
+            f"{icono} **{t['fecha']}** — {t['descripcion']}  _(— {t['solicitante']})_"
+        )
+        if cols[1].button("Hecha", key=f"cal_{t['expediente_id']}_{t['indice']}"):
+            historial.marcar_tarea(t["expediente_id"], t["indice"], True)
+            st.rerun()
+
+
+# --------------------------------------------------------------------------- #
+#  Pagina: Estadisticas
+# --------------------------------------------------------------------------- #
+def pagina_estadisticas():
+    st.title("Estadisticas")
+    st.caption("Metricas del perfil activo a partir del historial de expedientes.")
+    e = historial.estadisticas()
+    if e["total"] == 0:
+        st.info("Aun no hay expedientes para calcular estadisticas.")
+        return
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Expedientes", e["total"])
+    m2.metric("Completos a la primera", f"{e['porcentaje_completos']} %")
+    m3.metric("Aprobados", e["por_resultado"].get("aprobado", 0))
+
+    if e["por_tramite"]:
+        st.subheader("Expedientes por tramite")
+        st.bar_chart(pd.Series(e["por_tramite"]))
+    if e["por_resultado"]:
+        st.subheader("Resultado de los tramites")
+        st.bar_chart(pd.Series(e["por_resultado"]))
+    if e["fallos_doc"]:
+        st.subheader("Documentos que mas fallan (incidencias o caducados)")
+        st.bar_chart(pd.Series(e["fallos_doc"]))
+
+
+# --------------------------------------------------------------------------- #
+#  Pagina: Ajustes (SMTP, RGPD, copia de seguridad)
+# --------------------------------------------------------------------------- #
+def pagina_ajustes():
+    st.title("Ajustes")
+    cfg = config.cargar_config()
+
+    st.subheader("Envio de email (SMTP)")
+    st.caption("Necesario para enviar las cartas al cliente por correo.")
+    with st.form("smtp"):
+        c1, c2 = st.columns(2)
+        host = c1.text_input("Servidor SMTP", value=cfg.get("smtp_host", ""))
+        port = c2.number_input("Puerto", value=int(cfg.get("smtp_port", 587) or 587), step=1)
+        user = c1.text_input("Usuario", value=cfg.get("smtp_user", ""))
+        password = c2.text_input("Contrasena", value=cfg.get("smtp_password", ""), type="password")
+        remitente = c1.text_input("Remitente (From)", value=cfg.get("smtp_remitente", ""))
+        tls = c2.checkbox("Usar TLS (587)", value=bool(cfg.get("smtp_tls", True)))
+        if st.form_submit_button("💾 Guardar SMTP"):
+            cfg.update({
+                "smtp_host": host.strip(), "smtp_port": int(port),
+                "smtp_user": user.strip(), "smtp_password": password,
+                "smtp_remitente": remitente.strip(), "smtp_tls": tls,
+            })
+            config.guardar_config(cfg)
+            st.success("Configuracion de email guardada.")
+    st.caption("La contrasena se guarda en local. Usa una contrasena de aplicacion si tu correo lo permite.")
+
+    st.divider()
+    st.subheader("Proteccion de datos (RGPD)")
+    dias = st.number_input(
+        "Conservar expedientes (dias; 0 = sin limite)",
+        min_value=0, max_value=3650, value=int(cfg.get("rgpd_retencion_dias", 0) or 0), step=30,
+    )
+    cc1, cc2 = st.columns(2)
+    if cc1.button("Guardar retencion"):
+        cfg["rgpd_retencion_dias"] = int(dias)
+        config.guardar_config(cfg)
+        st.success("Guardado.")
+    if cc2.button("🧹 Borrar expedientes antiguos ahora"):
+        n = historial.borrar_antiguos(int(dias))
+        st.success(f"Eliminados {n} expediente(s) anteriores al limite.")
+
+    st.divider()
+    st.subheader("Copia de seguridad del perfil")
+    st.download_button(
+        "⬇️ Exportar perfil (.zip)",
+        data=config.exportar_perfil(),
+        file_name=f"copia_{config.PERFIL_ACTUAL or 'perfil'}.zip",
+        mime="application/zip",
+    )
+    subido = st.file_uploader("Importar perfil (.zip)", type=["zip"])
+    if subido is not None and st.button("Restaurar desde el ZIP"):
+        n = config.importar_perfil(subido.getvalue())
+        st.success(f"Restaurados {n} archivos. Recarga la pagina.")
+
+
+# --------------------------------------------------------------------------- #
 #  Main
 # --------------------------------------------------------------------------- #
 def main():
@@ -709,12 +1016,20 @@ def main():
         pagina_revisar(api_key, modelo, dias_aviso)
     elif pagina == "Historial":
         pagina_historial()
+    elif pagina == "Seguimiento":
+        pagina_seguimiento(api_key, modelo, dias_aviso)
     elif pagina == "Caducidades":
         pagina_caducidades()
+    elif pagina == "Calendario":
+        pagina_calendario()
+    elif pagina == "Estadisticas":
+        pagina_estadisticas()
     elif pagina == "Tramites":
         pagina_tramites()
     elif pagina == "Gestoria":
         pagina_gestoria()
+    elif pagina == "Ajustes":
+        pagina_ajustes()
 
 
 if __name__ == "__main__":

@@ -225,6 +225,61 @@ def _normalizar(datos):
     return base
 
 
+def _una_pasada(cliente, bloques, instruccion, modelo, hoy, dias_aviso):
+    """Una llamada a la IA para un documento; devuelve el dict normalizado."""
+    respuesta = cliente.messages.create(
+        model=modelo,
+        max_tokens=2000,
+        system=_SISTEMA,
+        messages=[{"role": "user", "content": bloques + [{"type": "text", "text": instruccion}]}],
+    )
+    texto = next((b.text for b in respuesta.content if b.type == "text"), "")
+    datos = _normalizar(_extraer_json(texto))
+    _recalcular_estado(datos, hoy, dias_aviso)
+    return datos
+
+
+# Orden de gravedad de los estados (para quedarse con el mas conservador).
+_GRAVEDAD = {
+    "caducado": 0,
+    "ilegible": 1,
+    "proximo_a_caducar": 2,
+    "desconocido": 3,
+    "sin_caducidad": 4,
+    "vigente": 5,
+}
+
+
+def _fundir(a, b):
+    """Combina dos analisis del mismo documento (doble verificacion).
+
+    Se queda con el estado mas conservador y registra como incidencias las
+    discrepancias entre ambos modelos.
+    """
+    res = dict(a)
+    incidencias = list(a.get("incidencias", []))
+    if a.get("tipo_id") != b.get("tipo_id"):
+        incidencias.append(
+            f"Doble verificacion: clasificacion distinta entre modelos "
+            f"('{a.get('tipo_id')}' vs '{b.get('tipo_id')}')."
+        )
+    if a.get("estado") != b.get("estado"):
+        incidencias.append(
+            f"Doble verificacion: estado distinto entre modelos "
+            f"('{a.get('estado')}' vs '{b.get('estado')}')."
+        )
+        if _GRAVEDAD.get(b.get("estado"), 9) < _GRAVEDAD.get(a.get("estado"), 9):
+            res["estado"] = b["estado"]
+    if a.get("fecha_caducidad") != b.get("fecha_caducidad"):
+        incidencias.append(
+            f"Doble verificacion: fecha de caducidad distinta "
+            f"('{a.get('fecha_caducidad')}' vs '{b.get('fecha_caducidad')}')."
+        )
+    res["incidencias"] = incidencias
+    res["doble_verificado"] = True
+    return res
+
+
 def analizar_documento(
     cliente,
     paginas,
@@ -232,13 +287,15 @@ def analizar_documento(
     modelo=MODELO_POR_DEFECTO,
     hoy=None,
     dias_aviso=DIAS_AVISO_CADUCIDAD,
+    modelo_secundario=None,
 ):
     """Analiza un documento (una o varias paginas) y devuelve los resultados.
 
-    cliente:    instancia de anthropic.Anthropic
-    paginas:    lista de tuplas (nombre_archivo, datos_bytes). Varias paginas se
-                analizan juntas como un unico documento.
-    tramite_id: clave en tramites.TRAMITES
+    cliente:           instancia de anthropic.Anthropic
+    paginas:           lista de tuplas (nombre_archivo, datos_bytes).
+    tramite_id:        clave en tramites.TRAMITES
+    modelo_secundario: si se indica, se hace una segunda pasada con ese modelo
+                       y se combinan (doble verificacion).
     """
     if hoy is None:
         hoy = date.today()
@@ -248,21 +305,11 @@ def analizar_documento(
     bloques = _bloques_documento(paginas)
     instruccion = _instruccion(tramite_id, hoy)
 
-    respuesta = cliente.messages.create(
-        model=modelo,
-        max_tokens=2000,
-        system=_SISTEMA,
-        messages=[
-            {
-                "role": "user",
-                "content": bloques + [{"type": "text", "text": instruccion}],
-            }
-        ],
-    )
+    datos = _una_pasada(cliente, bloques, instruccion, modelo, hoy, dias_aviso)
+    if modelo_secundario:
+        segundo = _una_pasada(cliente, bloques, instruccion, modelo_secundario, hoy, dias_aviso)
+        datos = _fundir(datos, segundo)
 
-    texto = next((b.text for b in respuesta.content if b.type == "text"), "")
-    datos = _normalizar(_extraer_json(texto))
-    _recalcular_estado(datos, hoy, dias_aviso)
     nombres = [nombre for nombre, _ in paginas]
     datos["archivos"] = nombres
     datos["archivo"] = ", ".join(nombres)
@@ -361,6 +408,49 @@ def comprobar_coherencia(resultados):
         )
 
     return avisos
+
+
+def comprobar_fechas(resultados, hoy=None):
+    """Detecta incoherencias de fechas entre documentos.
+
+    Avisa de fechas de emision futuras, caducidades anteriores a la emision y
+    contratos firmados antes de la fecha de permanencia/entrada acreditada.
+    """
+    if hoy is None:
+        hoy = date.today()
+    avisos = []
+
+    entradas = [_parse_fecha(d.get("fecha_acredita_desde")) for d in resultados]
+    entradas = [e for e in entradas if e]
+    entrada_min = min(entradas) if entradas else None
+
+    for doc in resultados:
+        nombre = doc.get("tipo_nombre") or doc.get("archivo", "documento")
+        emision = _parse_fecha(doc.get("fecha_emision"))
+        caducidad = _parse_fecha(doc.get("fecha_caducidad"))
+        if emision and emision > hoy:
+            avisos.append(f"{nombre}: la fecha de emision ({emision.isoformat()}) es futura.")
+        if emision and caducidad and caducidad < emision:
+            avisos.append(
+                f"{nombre}: la caducidad ({caducidad.isoformat()}) es anterior a la emision "
+                f"({emision.isoformat()})."
+            )
+        if (
+            doc.get("tipo_id") == "contrato_trabajo"
+            and emision
+            and entrada_min
+            and emision < entrada_min
+        ):
+            avisos.append(
+                f"{nombre}: el contrato ({emision.isoformat()}) es anterior a la permanencia "
+                f"acreditada ({entrada_min.isoformat()}); revisar coherencia."
+            )
+    return avisos
+
+
+def incidencias_expediente(resultados, hoy=None):
+    """Todas las incidencias transversales: coherencia + fechas."""
+    return comprobar_coherencia(resultados) + comprobar_fechas(resultados, hoy)
 
 
 # --------------------------------------------------------------------------- #

@@ -25,6 +25,15 @@ _CONFIG_DEFECTO = {
     "telefono": "",
     "email": "",
     "logo_path": "",
+    # Envio de email (SMTP)
+    "smtp_host": "",
+    "smtp_port": 587,
+    "smtp_user": "",
+    "smtp_password": "",
+    "smtp_remitente": "",
+    "smtp_tls": True,
+    # Proteccion de datos (RGPD): dias de conservacion (0 = sin limite)
+    "rgpd_retencion_dias": 0,
 }
 
 _EXT_LOGO = (".png", ".jpg", ".jpeg")
@@ -158,3 +167,40 @@ def inicializar():
         tramites.aplicar(custom)
     else:
         tramites.restablecer()
+
+
+# --------------------------- Copia de seguridad ----------------------------- #
+def exportar_perfil():
+    """Devuelve un ZIP (bytes) con toda la configuracion e historial del perfil."""
+    import io
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        if BASE_DIR.exists():
+            for ruta in BASE_DIR.rglob("*"):
+                if ruta.is_file():
+                    zf.write(ruta, ruta.relative_to(BASE_DIR).as_posix())
+    return buffer.getvalue()
+
+
+def importar_perfil(datos_zip):
+    """Restaura un perfil desde un ZIP exportado. Devuelve el nº de archivos."""
+    import io
+    import zipfile
+
+    _asegurar_dir()
+    n = 0
+    with zipfile.ZipFile(io.BytesIO(datos_zip)) as zf:
+        for nombre in zf.namelist():
+            if nombre.endswith("/"):
+                continue
+            # Evitar rutas con traversal (../) por seguridad.
+            destino = (BASE_DIR / nombre).resolve()
+            if not str(destino).startswith(str(BASE_DIR.resolve())):
+                continue
+            destino.parent.mkdir(parents=True, exist_ok=True)
+            destino.write_bytes(zf.read(nombre))
+            n += 1
+    inicializar()
+    return n

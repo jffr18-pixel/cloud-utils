@@ -4,3 +4,4 @@ pillow>=10.0.0
 python-docx>=1.1.0
 fpdf2>=2.7.6
 pillow-heif>=0.13.0
+openpyxl>=3.1.0
