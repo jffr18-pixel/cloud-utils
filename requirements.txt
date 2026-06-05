@@ -1,0 +1,21 @@
+# Análisis de certificados X.509
+cryptography>=41.0.0
+
+# Acceso al almacén de certificados de Windows (solo Windows)
+wincertstore>=0.2; sys_platform == "win32"
+
+# Cliente HTTP para conectar a DEHU con certificado TLS cliente
+requests>=2.31.0
+
+# Soporte PKCS12 nativo en requests (evita extraer a ficheros PEM temporales)
+requests-pkcs12>=1.3
+
+# Parseo de HTML del portal DEHU
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+
+# Notificaciones toast en Windows 11
+win10toast>=0.9; sys_platform == "win32"
+
+# Tests
+pytest>=7.4.0
