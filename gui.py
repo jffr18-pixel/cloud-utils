@@ -921,14 +921,14 @@ class ServiciosPage(ctk.CTkFrame):
         dest_base = Path(self.cfg['general']['download_folder']) / 'servicios'
         history   = servicios.load_history()
 
-        # Aviso informativo (cómo funciona el flujo)
+        # Aviso sobre el modo automático
         info = ctk.CTkFrame(self, fg_color=PRIMARY_LT, corner_radius=10,
                             border_width=1, border_color=BORDER)
         info.pack(fill='x', padx=20, pady=(0, 10))
         ctk.CTkLabel(info,
-                     text='ℹ️  Cómo funciona: haz clic en "Abrir portal" para acceder con tu '
-                          'certificado instalado en el navegador. Descarga el PDF del portal y, '
-                          'luego, pulsa "Guardar PDF" para que la app lo organice y registre.',
+                     text='🤖  Modo automático: abre Edge/Chrome, navega al portal y descarga el PDF. '
+                          'Windows mostrará el diálogo de selección de certificado — elige el tuyo. '
+                          'Si prefieres hacerlo tú mismo: "🌐 Abrir portal" + "📂 Guardar PDF".',
                      font=ctk.CTkFont(size=11), text_color=PRIMARY_DK,
                      wraplength=820, anchor='w').pack(padx=14, pady=10)
 
@@ -956,48 +956,82 @@ class ServiciosPage(ctk.CTkFrame):
                      font=ctk.CTkFont(size=11), text_color=TEXT_MUTED,
                      anchor='w').pack(anchor='w')
 
-        # Última descarga registrada (si hay)
         if history:
-            last = history[0]
             badge_f = ctk.CTkFrame(hdr, fg_color=SUCCESS_LT, corner_radius=8)
             badge_f.pack(side='right', padx=4)
-            ctk.CTkLabel(badge_f,
-                         text=f'✓  Última: {last["date"]}',
+            ctk.CTkLabel(badge_f, text=f'✓  Última: {history[0]["date"]}',
                          font=ctk.CTkFont(size=10), text_color=SUCCESS,
                          padx=8, pady=4).pack()
 
         divider(c)
 
-        # ── Descripción ────────────────────────────────────────────────────────
         ctk.CTkLabel(c, text=svc['description'],
                      font=ctk.CTkFont(size=12), text_color=TEXT_MUTED,
-                     anchor='w', wraplength=680).pack(anchor='w', padx=16, pady=(8, 4))
+                     anchor='w', wraplength=680).pack(anchor='w', padx=16, pady=(8, 6))
 
-        # ── Pasos ──────────────────────────────────────────────────────────────
-        steps = ctk.CTkFrame(c, fg_color='#f8f6fc', corner_radius=8)
-        steps.pack(fill='x', padx=16, pady=(0, 8))
-        paso_txt = (
-            '  Paso 1 → Abre el portal   |   '
-            'Paso 2 → Descarga el PDF en el portal   |   '
-            'Paso 3 → Pulsa "Guardar PDF" aquí'
-        )
-        ctk.CTkLabel(steps, text=paso_txt, font=ctk.CTkFont(size=10),
-                     text_color=TEXT_MUTED).pack(padx=10, pady=6, anchor='w')
+        # ── Barra de estado ────────────────────────────────────────────────────
+        status_lbl = ctk.CTkLabel(c, text='', font=ctk.CTkFont(size=11),
+                                   text_color=TEXT_MUTED, anchor='w')
+        status_lbl.pack(anchor='w', padx=16, pady=(0, 4))
 
         # ── Botones ────────────────────────────────────────────────────────────
         brow = ctk.CTkFrame(c, fg_color='transparent')
         brow.pack(fill='x', padx=16, pady=(0, 14))
 
-        status_lbl = ctk.CTkLabel(brow, text='', font=ctk.CTkFont(size=11), text_color=TEXT_MUTED)
+        auto_btn_ref = [None]
 
-        def do_browser(s=svc, sl=status_lbl):
+        def _set_status(msg, color=TEXT_MUTED):
+            self.after(0, lambda: status_lbl.configure(text=msg, text_color=color))
+            if self.app:
+                self.after(0, lambda: self.app.set_status(msg))
+
+        def do_auto(s=svc, sl=status_lbl):
+            if auto_btn_ref[0]:
+                auto_btn_ref[0].configure(state='disabled', text='⏳  Descargando...')
+            _set_status('⏳  Iniciando navegador automático...', TEXT_MUTED)
+
+            def run():
+                from cert_manager import servicios_auto, servicios as sv
+                tmp_dir = dest_base / '_tmp'
+                result  = servicios_auto.download_service(
+                    s['id'], tmp_dir, progress_cb=lambda m: _set_status(m, TEXT_MUTED)
+                )
+                if result['ok']:
+                    # Organise using servicios.organize_pdf (rename + history)
+                    svc_def = next((x for x in sv.SERVICES if x['id'] == s['id']), s)
+                    final   = sv.organize_pdf(svc_def, result['path'], dest_base)
+                    # Remove tmp file if copy succeeded
+                    try:
+                        result['path'].unlink(missing_ok=True)
+                        tmp_dir.rmdir()
+                    except Exception:
+                        pass
+                    if final['ok']:
+                        p = final['path']
+                        _set_status(f'✓  Guardado: {p.name}', SUCCESS)
+                        self.after(0, lambda: messagebox.showinfo(
+                            'Descarga completada',
+                            f'✓  {s["name"]}\n\nGuardado en:\n{p}'
+                        ))
+                        self.after(500, lambda: self.app._show('servicios') if self.app else None)
+                    else:
+                        _set_status(f'✗  {final["error"][:80]}', DANGER)
+                else:
+                    _set_status(f'⚠  {result["error"][:100]}', WARNING)
+
+                self.after(0, lambda: (
+                    auto_btn_ref[0].configure(state='normal', text='🤖  Descargar automático')
+                    if auto_btn_ref[0] else None
+                ))
+
+            threading.Thread(target=run, daemon=True).start()
+
+        def do_browser(s=svc):
             from cert_manager import servicios as sv
             sv.open_in_browser(s)
-            sl.configure(text='🌐  Portal abierto — identifícate y descarga el PDF', text_color=SUCCESS)
-            if self.app:
-                self.app.set_status(f'Portal abierto: {s["name"]}')
+            _set_status('🌐  Portal abierto en el navegador. Descarga el PDF y pulsa "Guardar PDF".', SUCCESS)
 
-        def do_save(s=svc, sl=status_lbl, card_widget=c, hist=history):
+        def do_save(s=svc):
             path = filedialog.askopenfilename(
                 title=f'Selecciona el PDF de {s["name"]}',
                 filetypes=[('PDF', '*.pdf'), ('Todos', '*.*')],
@@ -1005,30 +1039,29 @@ class ServiciosPage(ctk.CTkFrame):
             if not path:
                 return
             from cert_manager import servicios as sv
-            result = sv.organize_pdf(s, Path(path), dest_base)
+            svc_def = next((x for x in sv.SERVICES if x['id'] == s['id']), s)
+            result  = sv.organize_pdf(svc_def, Path(path), dest_base)
             if result['ok']:
                 p = result['path']
-                sl.configure(text=f'✓  Guardado: {p.name}', text_color=SUCCESS)
-                if self.app:
-                    self.app.set_status(f'{s["name"]} organizado en {dest_base}')
-                messagebox.showinfo(
-                    'PDF organizado',
-                    f'✓  {s["name"]}\n\nGuardado como:\n{p}\n\nCarpeta: {dest_base}',
-                )
-                # Refresh the page to show updated history
+                _set_status(f'✓  Guardado: {p.name}', SUCCESS)
+                messagebox.showinfo('PDF organizado',
+                                    f'✓  {s["name"]}\n\nGuardado como:\n{p}')
                 if self.app:
                     self.app._show('servicios')
             else:
-                sl.configure(text=f'✗  Error: {result["error"][:60]}', text_color=DANGER)
+                _set_status(f'✗  {result["error"][:80]}', DANGER)
 
-        action_btn(brow, '🌐  Abrir portal', PRIMARY, do_browser, width=160).pack(side='left', padx=(0, 8))
-        action_btn(brow, '📂  Guardar PDF', SUCCESS, do_save, width=148).pack(side='left', padx=(0, 12))
-        status_lbl.pack(side='left', padx=4)
+        auto_b = action_btn(brow, '🤖  Descargar automático', PRIMARY, do_auto, width=200)
+        auto_b.pack(side='left', padx=(0, 6))
+        auto_btn_ref[0] = auto_b
 
-        # ── Historial de descargas ─────────────────────────────────────────────
+        action_btn(brow, '🌐  Abrir portal', '#546e7a', do_browser, width=145).pack(side='left', padx=(0, 6))
+        action_btn(brow, '📂  Guardar PDF',  SUCCESS,   do_save,    width=140).pack(side='left')
+
+        # ── Historial ──────────────────────────────────────────────────────────
         if history:
             hist_f = ctk.CTkFrame(c, fg_color='transparent')
-            hist_f.pack(fill='x', padx=16, pady=(0, 12))
+            hist_f.pack(fill='x', padx=16, pady=(0, 10))
             ctk.CTkLabel(hist_f, text='Descargas registradas:',
                          font=ctk.CTkFont(size=10, weight='bold'),
                          text_color=TEXT_MUTED).pack(anchor='w')
