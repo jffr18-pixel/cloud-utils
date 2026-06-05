@@ -30,6 +30,7 @@ CARD        = '#ffffff'
 BORDER      = '#e0d9ee'
 TEXT        = '#1a1a2e'
 TEXT_MUTED  = '#7b6f8a'
+BLACK       = '#000000'
 SIDEBAR_W   = 220
 
 ctk.set_appearance_mode('light')
@@ -222,6 +223,7 @@ class App(ctk.CTk):
             ('🏠', 'Inicio',          'dashboard'),
             ('📋', 'Certificados',    'certificates'),
             ('📬', 'DEHU',            'dehu'),
+            ('🏛', 'Servicios',       'servicios'),
             ('🗑', 'Limpiar',          'clean'),
             ('📊', 'Informe',         'report'),
             ('⚙️', 'Configuración',   'settings'),
@@ -290,6 +292,7 @@ class App(ctk.CTk):
             'dashboard':    DashboardPage,
             'certificates': CertificatesPage,
             'dehu':         DehuPage,
+            'servicios':    ServiciosPage,
             'clean':        CleanPage,
             'report':       ReportPage,
             'settings':     SettingsPage,
@@ -812,6 +815,113 @@ class CleanPage(ctk.CTkFrame):
             self.app.set_status(f'Limpiar: {ok} certificados eliminados')
             self.app.invalidate_certs()
         self._scan()
+
+
+class ServiciosPage(ctk.CTkFrame):
+    def __init__(self, parent, cfg, app=None):
+        super().__init__(parent, fg_color=BG, corner_radius=0)
+        self.cfg = cfg
+        self.app = app
+        page_header(
+            self, '🏛', 'Servicios Gubernamentales',
+            'Descarga documentos oficiales con tu certificado digital',
+        )
+        self._build()
+
+    def _build(self):
+        from cert_manager import servicios
+
+        cert_path = self.cfg['dehu']['cert_pfx_path'].strip().strip('"\'')
+        password  = self.cfg['dehu'].get('cert_password', '').strip()
+        dest_base = Path(self.cfg['general']['download_folder']) / 'servicios'
+
+        if not cert_path:
+            warn = ctk.CTkFrame(self, fg_color='#fff8e1', corner_radius=10,
+                                border_width=1, border_color='#ffe082')
+            warn.pack(fill='x', padx=20, pady=(0, 10))
+            ctk.CTkLabel(warn, text='⚠  Sin certificado configurado. Ve a ⚙️ Configuración.',
+                         text_color='#7b3f00', font=ctk.CTkFont(size=12)).pack(padx=16, pady=10)
+
+        scroll = ctk.CTkScrollableFrame(self, fg_color='transparent')
+        scroll.pack(fill='both', expand=True, padx=20, pady=(0, 16))
+
+        for svc in servicios.SERVICES:
+            self._service_card(scroll, svc, cert_path, password, dest_base)
+
+    def _service_card(self, parent, svc: dict, cert_path: str, password: str, dest_base: Path):
+        c = card(parent)
+        c.pack(fill='x', pady=8)
+
+        hdr = ctk.CTkFrame(c, fg_color='transparent')
+        hdr.pack(fill='x', padx=16, pady=(14, 6))
+        ctk.CTkLabel(hdr, text=svc['icon'], font=ctk.CTkFont(size=30)).pack(side='left', padx=(0, 12))
+
+        title_box = ctk.CTkFrame(hdr, fg_color='transparent')
+        title_box.pack(side='left', fill='x', expand=True)
+        ctk.CTkLabel(title_box, text=svc['name'],
+                     font=ctk.CTkFont(size=14, weight='bold'), text_color=TEXT,
+                     anchor='w').pack(anchor='w')
+        ctk.CTkLabel(title_box, text=svc['organismo'],
+                     font=ctk.CTkFont(size=11), text_color=TEXT_MUTED,
+                     anchor='w').pack(anchor='w')
+
+        divider(c)
+
+        ctk.CTkLabel(c, text=svc['description'],
+                     font=ctk.CTkFont(size=12), text_color=TEXT_MUTED,
+                     anchor='w', wraplength=680).pack(anchor='w', padx=16, pady=(8, 6))
+
+        brow = ctk.CTkFrame(c, fg_color='transparent')
+        brow.pack(fill='x', padx=16, pady=(0, 14))
+
+        status_lbl = ctk.CTkLabel(brow, text='', font=ctk.CTkFont(size=11),
+                                   text_color=TEXT_MUTED)
+
+        def do_auto(s=svc, sl=status_lbl):
+            if not cert_path:
+                sl.configure(text='⚠  Configura primero tu certificado', text_color=WARNING)
+                return
+            sl.configure(text='⏳  Descargando...', text_color=TEXT_MUTED)
+            threading.Thread(
+                target=self._run_download, args=(s, cert_path, password, dest_base, sl),
+                daemon=True,
+            ).start()
+
+        def do_browser(s=svc):
+            from cert_manager import servicios as sv
+            sv.open_in_browser(s)
+            if self.app:
+                self.app.set_status(f'Abriendo {s["name"]} en el navegador...')
+
+        action_btn(brow, '🤖  Descarga automática', PRIMARY, do_auto, width=195).pack(side='left', padx=(0, 8))
+        action_btn(brow, '🌐  Abrir en navegador', '#546e7a', do_browser, width=178).pack(side='left', padx=(0, 12))
+        status_lbl.pack(side='left', padx=4)
+
+    def _run_download(self, svc: dict, cert_path: str, password: str,
+                      dest_base: Path, status_lbl):
+        from cert_manager import servicios
+        result = servicios.try_download(svc, cert_path, password, dest_base)
+        self.after(0, lambda: self._on_result(svc, result, status_lbl))
+
+    def _on_result(self, svc: dict, result: dict, status_lbl):
+        if result['ok']:
+            p = result['path']
+            status_lbl.configure(text=f'✓  {p.name}', text_color=SUCCESS)
+            if self.app:
+                self.app.set_status(f'{svc["name"]} guardado: {p}')
+            messagebox.showinfo('Descarga completada',
+                                f'✓  {svc["name"]}\n\nGuardado en:\n{p}')
+        else:
+            err = result['error']
+            status_lbl.configure(text='⚠  No disponible automáticamente', text_color=WARNING)
+            if self.app:
+                self.app.set_status(f'{svc["name"]}: requiere navegador', WARNING)
+            if messagebox.askyesno(
+                'Descarga automática no disponible',
+                f'{err}\n\n¿Abrir el portal en el navegador?',
+            ):
+                from cert_manager import servicios
+                servicios.open_in_browser(svc)
 
 
 class ReportPage(ctk.CTkFrame):
