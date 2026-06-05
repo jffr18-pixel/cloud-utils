@@ -245,6 +245,8 @@ class App(ctk.CTk):
         self.cfg          = cfg_module.load()
         self._page        = None
         self._page_name   = None
+        # Cache de instancias de página: navegar es instantáneo (no se reconstruye)
+        self._page_cache  = {}
         # Cache de certificados: se carga una vez en background y se reutiliza
         self._cert_cache  = None
         self._cert_loading = False
@@ -265,7 +267,12 @@ class App(ctk.CTk):
                 certs = cert_validator.validate(certs, alert_days)
             self._cert_cache   = certs
             self._cert_loading = False
-            self.after(0, lambda: self.set_status(f'{len(certs)} certificados cargados'))
+            def done():
+                self.set_status(f'{len(certs)} certificados cargados')
+                # Refresca la página visible si depende de los certificados
+                if self._page_name in ('dashboard', 'certificates'):
+                    self.refresh_page(self._page_name)
+            self.after(0, done)
         threading.Thread(target=load, daemon=True).start()
 
     def get_certs(self):
@@ -361,9 +368,19 @@ class App(ctk.CTk):
     def set_status(self, msg: str, color: str = '#c8b8e8'):
         self._status_lbl.configure(text=msg, text_color=color)
 
-    def _show(self, name: str):
-        if self._page:
-            self._page.pack_forget()
+    _PAGES = None  # se rellena tras definir las clases (al final del módulo)
+
+    def _show(self, name: str, rebuild: bool = False):
+        if name not in self._PAGES:
+            return
+        # Oculta la página actual sin destruirla
+        if self._page is not None:
+            try:
+                self._page.pack_forget()
+            except Exception:
+                pass
+
+        # Resalta el botón de navegación
         for pname, f in self._nav_btns.items():
             active = pname == name
             f.configure(fg_color=PRIMARY_LT if active else 'transparent')
@@ -372,22 +389,32 @@ class App(ctk.CTk):
                 text_color=PRIMARY if active else '#ffffff',
                 font=ctk.CTkFont(size=13, weight='bold' if active else 'normal'),
             )
-        pages = {
-            'dashboard':    DashboardPage,
-            'certificates': CertificatesPage,
-            'dehu':         DehuPage,
-            'servicios':    ServiciosPage,
-            'clean':        CleanPage,
-            'report':       ReportPage,
-            'settings':     SettingsPage,
-        }
-        if name in pages:
-            self._page      = pages[name](self.content, self.cfg, app=self)
-            self._page_name = name
-            self._page.pack(fill='both', expand=True)
+
+        # Reutiliza la instancia cacheada salvo que se pida reconstruir
+        if rebuild and name in self._page_cache:
+            self._page_cache[name].destroy()
+            del self._page_cache[name]
+
+        page = self._page_cache.get(name)
+        if page is None:
+            page = self._PAGES[name](self.content, self.cfg, app=self)
+            self._page_cache[name] = page
+
+        self._page      = page
+        self._page_name = name
+        page.pack(fill='both', expand=True)
+
+    def refresh_page(self, name: str = None):
+        """Fuerza la reconstrucción de una página (datos frescos)."""
+        self._show(name or self._page_name, rebuild=True)
 
     def reload_config(self):
         self.cfg = cfg_module.load()
+        # Invalida todas las páginas para que tomen la nueva configuración
+        for p in self._page_cache.values():
+            p.destroy()
+        self._page_cache.clear()
+        self._page = None
         if self._page_name:
             self._show(self._page_name)
 
@@ -407,7 +434,7 @@ class DashboardPage(ctk.CTkFrame):
     def _refresh(self):
         if self.app:
             self.app.invalidate_certs()
-            self.app._show('dashboard')
+            self.app.refresh_page('dashboard')
 
     def _build(self):
         certs = self.app.get_certs() if self.app else []
@@ -561,60 +588,56 @@ class DehuPage(ctk.CTkFrame):
         page_header(self, '📬', 'DEHU', 'Comprueba y descarga notificaciones de dehu.redsara.es')
         self._build()
 
-    def _build(self):
-        cert_path = self.cfg['dehu']['cert_pfx_path'].strip().strip('"\'')
+    def _active_cert(self):
+        """Devuelve (path, password) del certificado DEHU activo."""
+        from cert_manager import dehu_certs
+        c = dehu_certs.get_active()
+        if c:
+            return c['path'].strip().strip('"\''), c.get('password', '')
+        # Fallback a config.ini
+        return (self.cfg['dehu']['cert_pfx_path'].strip().strip('"\''),
+                self.cfg['dehu'].get('cert_password', ''))
 
-        # ── Tarjeta: certificado en uso ─────────────────────────────────────
+    def _build(self):
+        from cert_manager import dehu_certs
+        self._certs_data = dehu_certs.migrate_from_config(self.cfg)
+
+        # ── Tarjeta: certificados DEHU ──────────────────────────────────────
         cert_card = card(self)
         cert_card.pack(fill='x', padx=20, pady=(0, 10))
 
-        section_label(cert_card, '🔐  Certificado utilizado para conectar con DEHU')
+        section_label(cert_card, '🔐  Certificados para conectar con DEHU')
         divider(cert_card)
 
-        info_row = ctk.CTkFrame(cert_card, fg_color='transparent')
-        info_row.pack(fill='x', padx=16, pady=12)
+        # Fila selector + botones
+        sel = ctk.CTkFrame(cert_card, fg_color='transparent')
+        sel.pack(fill='x', padx=16, pady=(10, 2))
 
-        if not cert_path:
-            ctk.CTkLabel(info_row,
-                         text='⚠  Sin certificado configurado. Ve a ⚙️ Configuración.',
-                         text_color=DANGER, font=ctk.CTkFont(size=13)).pack(anchor='w')
-            return
-
-        info = _load_pfx_info(cert_path, self.cfg['dehu'].get('cert_password', ''))
-
-        if not info.get('ok'):
-            ctk.CTkLabel(info_row,
-                         text=f'⚠  No se pudo leer el certificado: {info.get("error","")}',
-                         text_color=DANGER, font=ctk.CTkFont(size=12)).pack(anchor='w')
+        certs = self._certs_data['certs']
+        if certs:
+            names   = [c['name'] for c in certs]
+            act_idx = self._certs_data.get('active', 0)
+            act_idx = act_idx if 0 <= act_idx < len(names) else 0
+            ctk.CTkLabel(sel, text='Certificado activo:',
+                         font=ctk.CTkFont(size=12), text_color=TEXT).pack(side='left', padx=(0, 8))
+            self._cert_menu = ctk.CTkOptionMenu(
+                sel, values=names, command=self._on_cert_changed,
+                fg_color=PRIMARY, button_color=PRIMARY_DK, button_hover_color=PRIMARY_DK,
+                font=ctk.CTkFont(size=12), dropdown_font=ctk.CTkFont(size=12), width=260,
+            )
+            self._cert_menu.set(names[act_idx])
+            self._cert_menu.pack(side='left', padx=4)
+            action_btn(sel, '🗑', DANGER, self._remove_cert, width=42).pack(side='right', padx=(4, 0))
+            action_btn(sel, '➕  Añadir', SUCCESS, self._add_cert, width=110).pack(side='right', padx=4)
         else:
-            # Icono
-            ctk.CTkLabel(info_row, text='🪪', font=ctk.CTkFont(size=36)
-                         ).pack(side='left', padx=(0, 14))
+            ctk.CTkLabel(sel, text='No hay certificados guardados para DEHU.',
+                         font=ctk.CTkFont(size=12), text_color=TEXT_MUTED).pack(side='left')
+            action_btn(sel, '➕  Añadir certificado', SUCCESS, self._add_cert, width=180).pack(side='right')
 
-            # Datos del certificado
-            det = ctk.CTkFrame(info_row, fg_color='transparent')
-            det.pack(side='left', fill='x', expand=True)
-
-            ctk.CTkLabel(det, text=info['name'],
-                         font=ctk.CTkFont(size=15, weight='bold'), text_color=TEXT,
-                         anchor='w').pack(anchor='w')
-            ctk.CTkLabel(det, text=f"Emisor: {info['issuer']}",
-                         font=ctk.CTkFont(size=12), text_color=TEXT_MUTED,
-                         anchor='w').pack(anchor='w', pady=(2, 0))
-
-            exp_color = DANGER if info['status'] == 'expired' else (WARNING if info['status'] == 'expiring_soon' else TEXT_MUTED)
-            days_txt  = f"Caduca: {info['expiry']}  ({info['days']} días restantes)"
-            if info['status'] == 'expired':
-                days_txt = f"⚠  CADUCADO el {info['expiry']}"
-            elif info['status'] == 'expiring_soon':
-                days_txt = f"⏰  Caduca el {info['expiry']}  ({info['days']} días restantes)"
-            ctk.CTkLabel(det, text=days_txt,
-                         font=ctk.CTkFont(size=12), text_color=exp_color,
-                         anchor='w').pack(anchor='w', pady=(2, 0))
-
-            # Badge de estado
-            badge(info_row, info.get('status','').replace('_',' ').title(), info.get('status','')
-                  ).pack(side='right', padx=12)
+        # Tarjeta con la info del certificado activo
+        self._info_holder = ctk.CTkFrame(cert_card, fg_color='transparent')
+        self._info_holder.pack(fill='x', padx=16, pady=(4, 12))
+        self._render_cert_info()
 
         # ── Botones de acción ───────────────────────────────────────────────
         bar = card(self)
@@ -651,6 +674,109 @@ class DehuPage(ctk.CTkFrame):
                      text='Haz clic en "Comprobar DEHU" para ver las notificaciones.',
                      text_color=TEXT_MUTED, font=ctk.CTkFont(size=13)).pack(pady=40)
 
+    def _render_cert_info(self):
+        """Muestra la tarjeta 🪪 del certificado activo dentro de _info_holder."""
+        for w in self._info_holder.winfo_children():
+            w.destroy()
+
+        cert_path, password = self._active_cert()
+        if not cert_path:
+            ctk.CTkLabel(self._info_holder,
+                         text='⚠  Añade un certificado para poder consultar DEHU.',
+                         text_color=WARNING, font=ctk.CTkFont(size=13)).pack(anchor='w')
+            return
+
+        info = _load_pfx_info(cert_path, password)
+        if not info.get('ok'):
+            ctk.CTkLabel(self._info_holder,
+                         text=f'⚠  No se pudo leer el certificado: {info.get("error","")}',
+                         text_color=DANGER, font=ctk.CTkFont(size=12)).pack(anchor='w')
+            return
+
+        ctk.CTkLabel(self._info_holder, text='🪪', font=ctk.CTkFont(size=36)
+                     ).pack(side='left', padx=(0, 14))
+        det = ctk.CTkFrame(self._info_holder, fg_color='transparent')
+        det.pack(side='left', fill='x', expand=True)
+        ctk.CTkLabel(det, text=info['name'],
+                     font=ctk.CTkFont(size=15, weight='bold'), text_color=TEXT,
+                     anchor='w').pack(anchor='w')
+        ctk.CTkLabel(det, text=f"Emisor: {info['issuer']}",
+                     font=ctk.CTkFont(size=12), text_color=TEXT_MUTED,
+                     anchor='w').pack(anchor='w', pady=(2, 0))
+        exp_color = DANGER if info['status'] == 'expired' else (WARNING if info['status'] == 'expiring_soon' else TEXT_MUTED)
+        days_txt  = f"Caduca: {info['expiry']}  ({info['days']} días restantes)"
+        if info['status'] == 'expired':
+            days_txt = f"⚠  CADUCADO el {info['expiry']}"
+        elif info['status'] == 'expiring_soon':
+            days_txt = f"⏰  Caduca el {info['expiry']}  ({info['days']} días restantes)"
+        ctk.CTkLabel(det, text=days_txt,
+                     font=ctk.CTkFont(size=12), text_color=exp_color,
+                     anchor='w').pack(anchor='w', pady=(2, 0))
+        badge(self._info_holder, info.get('status','').replace('_',' ').title(),
+              info.get('status','')).pack(side='right', padx=12)
+
+    def _on_cert_changed(self, name: str):
+        from cert_manager import dehu_certs
+        for i, c in enumerate(self._certs_data['certs']):
+            if c['name'] == name:
+                dehu_certs.set_active(i)
+                self._certs_data['active'] = i
+                break
+        self._render_cert_info()
+        if self.app:
+            self.app.set_status(f'Certificado DEHU activo: {name}')
+
+    def _add_cert(self):
+        path = filedialog.askopenfilename(
+            title='Selecciona tu certificado digital',
+            filetypes=[('Certificado digital', '*.pfx *.p12'), ('Todos', '*.*')],
+        )
+        if not path:
+            return
+        password = self._ask_password(Path(path).name)
+        if password is None:  # cancelado
+            return
+        name = self._ask_name(Path(path).stem)
+        if not name:
+            return
+        from cert_manager import dehu_certs
+        self._certs_data = dehu_certs.add(name, path, password)
+        if self.app:
+            self.app.refresh_page('dehu')
+
+    def _remove_cert(self):
+        idx = self._certs_data.get('active', 0)
+        certs = self._certs_data['certs']
+        if not (0 <= idx < len(certs)):
+            return
+        name = certs[idx]['name']
+        if not messagebox.askyesno('Quitar certificado',
+                                   f'¿Quitar "{name}" de la lista de DEHU?\n\n'
+                                   '(No se borra el archivo, solo se quita de la app.)'):
+            return
+        from cert_manager import dehu_certs
+        self._certs_data = dehu_certs.remove(idx)
+        if self.app:
+            self.app.refresh_page('dehu')
+
+    def _ask_password(self, filename: str) -> 'str | None':
+        dlg = ctk.CTkInputDialog(
+            title='Contraseña del certificado',
+            text=f'Contraseña de {filename}\n(déjala vacía si no tiene):',
+        )
+        # CTkInputDialog devuelve None si se cancela, '' si se acepta vacío
+        return dlg.get_input()
+
+    def _ask_name(self, default: str) -> 'str | None':
+        dlg = ctk.CTkInputDialog(
+            title='Nombre del certificado',
+            text=f'Nombre para mostrar (ej. "Mi DNI", "Empresa"):',
+        )
+        val = dlg.get_input()
+        if val is None:
+            return None
+        return val.strip() or default
+
     def _check(self):
         self._check_btn.configure(state='disabled', text='⏳  Comprobando...')
         self._prog.start()
@@ -661,10 +787,10 @@ class DehuPage(ctk.CTkFrame):
     def _do_check(self):
         from cert_manager.dehu_session import DEHUSession
         from cert_manager import dehu_checker
-        cert_path  = self.cfg['dehu']['cert_pfx_path'].strip().strip('"\'')
+        cert_path, password = self._active_cert()
         log_folder = Path(self.cfg['general']['log_folder'])
         try:
-            with DEHUSession(cert_path, self.cfg['dehu']['cert_password'],
+            with DEHUSession(cert_path, password,
                              self.cfg['dehu']['base_url'],
                              int(self.cfg['dehu']['timeout'])) as session:
                 self._result = dehu_checker.check(session, log_folder)
@@ -754,14 +880,14 @@ class DehuPage(ctk.CTkFrame):
             return
         from cert_manager.dehu_session import DEHUSession
         from cert_manager import dehu_downloader
-        cert_path = self.cfg['dehu']['cert_pfx_path'].strip().strip('"\'')
+        cert_path, password = self._active_cert()
         dest      = Path(self.cfg['general']['download_folder'])
         self._dl_btn.configure(state='disabled', text='⏳  Descargando...')
         self._prog.start()
 
         def do():
             try:
-                with DEHUSession(cert_path, self.cfg['dehu']['cert_password'],
+                with DEHUSession(cert_path, password,
                                  self.cfg['dehu']['base_url'],
                                  int(self.cfg['dehu']['timeout'])) as session:
                     r = dehu_downloader.download_notifications(
@@ -921,14 +1047,16 @@ class ServiciosPage(ctk.CTkFrame):
         dest_base = Path(self.cfg['general']['download_folder']) / 'servicios'
         history   = servicios.load_history()
 
-        # Aviso sobre el modo automático
+        # Aviso sobre el modo semi-automático
         info = ctk.CTkFrame(self, fg_color=PRIMARY_LT, corner_radius=10,
                             border_width=1, border_color=BORDER)
         info.pack(fill='x', padx=20, pady=(0, 10))
         ctk.CTkLabel(info,
-                     text='🤖  Modo automático: abre Edge/Chrome, navega al portal y descarga el PDF. '
-                          'Windows mostrará el diálogo de selección de certificado — elige el tuyo. '
-                          'Si prefieres hacerlo tú mismo: "🌐 Abrir portal" + "📂 Guardar PDF".',
+                     text='🤖  Asistente de descarga: la app abre Edge en el portal correcto y '
+                          'detecta el PDF automáticamente cuando se descarga. Por seguridad, los '
+                          'portales de la Seguridad Social y Hacienda exigen que selecciones tu '
+                          'certificado en el cuadro de Windows (no se puede automatizar ese paso). '
+                          'Cuando aparezca, elige tu certificado y pulsa "Obtener informe".',
                      font=ctk.CTkFont(size=11), text_color=PRIMARY_DK,
                      wraplength=820, anchor='w').pack(padx=14, pady=10)
 
@@ -1013,7 +1141,7 @@ class ServiciosPage(ctk.CTkFrame):
                             'Descarga completada',
                             f'✓  {s["name"]}\n\nGuardado en:\n{p}'
                         ))
-                        self.after(500, lambda: self.app._show('servicios') if self.app else None)
+                        self.after(500, lambda: self.app.refresh_page('servicios') if self.app else None)
                     else:
                         _set_status(f'✗  {final["error"][:80]}', DANGER)
                 else:
@@ -1047,7 +1175,7 @@ class ServiciosPage(ctk.CTkFrame):
                 messagebox.showinfo('PDF organizado',
                                     f'✓  {s["name"]}\n\nGuardado como:\n{p}')
                 if self.app:
-                    self.app._show('servicios')
+                    self.app.refresh_page('servicios')
             else:
                 _set_status(f'✗  {result["error"][:80]}', DANGER)
 
@@ -1221,6 +1349,18 @@ class SettingsPage(ctk.CTkFrame):
 
 
 # ── Punto de entrada ─────────────────────────────────────────────────────────
+
+# Registro de páginas (tras definir las clases) para el cacheo de App._show
+App._PAGES = {
+    'dashboard':    DashboardPage,
+    'certificates': CertificatesPage,
+    'dehu':         DehuPage,
+    'servicios':    ServiciosPage,
+    'clean':        CleanPage,
+    'report':       ReportPage,
+    'settings':     SettingsPage,
+}
+
 
 def main():
     app = App()
