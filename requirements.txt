@@ -17,5 +17,8 @@ lxml>=4.9.0
 # Notificaciones toast en Windows 11
 win10toast>=0.9; sys_platform == "win32"
 
+# Interfaz gráfica
+customtkinter>=5.2.0
+
 # Tests
 pytest>=7.4.0
