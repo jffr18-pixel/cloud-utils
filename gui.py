@@ -1060,11 +1060,92 @@ class ServiciosPage(ctk.CTkFrame):
                      font=ctk.CTkFont(size=11), text_color=PRIMARY_DK,
                      wraplength=820, anchor='w').pack(padx=14, pady=10)
 
+        # Tarjeta: selección automática de certificado (saltar diálogo de Windows)
+        self._autoselect_card()
+
         scroll = ctk.CTkScrollableFrame(self, fg_color='transparent')
         scroll.pack(fill='both', expand=True, padx=20, pady=(0, 16))
 
         for svc in servicios.SERVICES:
             self._service_card(scroll, svc, dest_base, history.get(svc['id'], []))
+
+    def _autoselect_card(self):
+        from cert_manager import edge_policy
+        c = card(self)
+        c.pack(fill='x', padx=20, pady=(0, 10))
+        section_label(c, '⚡  Selección automática de certificado (sin cuadro de Windows)')
+        divider(c)
+
+        row = ctk.CTkFrame(c, fg_color='transparent')
+        row.pack(fill='x', padx=16, pady=12)
+
+        if not edge_policy.is_supported():
+            ctk.CTkLabel(row, text='Solo disponible en Windows.',
+                         font=ctk.CTkFont(size=12), text_color=TEXT_MUTED).pack(anchor='w')
+            return
+
+        enabled = edge_policy.is_enabled()
+        estado  = ('✓  ACTIVADA — Edge/Chrome no pedirá el certificado en los portales del Estado'
+                   if enabled else
+                   '○  Desactivada — el navegador mostrará el cuadro de selección de Windows')
+        ctk.CTkLabel(row, text=estado,
+                     font=ctk.CTkFont(size=12),
+                     text_color=SUCCESS if enabled else TEXT_MUTED).pack(side='left')
+
+        if enabled:
+            action_btn(row, '✖  Desactivar', DANGER, self._disable_autoselect, width=130).pack(side='right')
+        else:
+            action_btn(row, '⚡  Activar', SUCCESS, self._enable_autoselect, width=120).pack(side='right')
+
+        ctk.CTkLabel(c,
+                     text='Al activarla, se filtra por el titular de tu certificado activo de DEHU '
+                          'para no afectar a otros certificados. Reversible en un clic. '
+                          'Cierra y reabre el navegador para que surta efecto.',
+                     font=ctk.CTkFont(size=10), text_color=TEXT_MUTED,
+                     wraplength=820, anchor='w').pack(anchor='w', padx=16, pady=(0, 10))
+
+    def _enable_autoselect(self):
+        from cert_manager import edge_policy, dehu_certs
+        # Intenta acotar la política al titular del certificado activo de DEHU
+        subject_cn = ''
+        active = dehu_certs.get_active()
+        if active and active.get('path'):
+            info = _load_pfx_info(active['path'].strip().strip('"\''), active.get('password', ''))
+            if info.get('ok'):
+                subject_cn = info.get('name', '')
+        result = edge_policy.enable(subject_cn=subject_cn)
+        if result.get('ok'):
+            navs = ', '.join(result.get('browsers', [])) or 'navegador'
+            scope = f'para el titular "{subject_cn}"' if subject_cn else '(sin filtro de titular)'
+            messagebox.showinfo(
+                'Selección automática activada',
+                f'✓  Configurado en: {navs} {scope}.\n\n'
+                'Cierra completamente Edge/Chrome y vuelve a abrirlo para que surta efecto.\n'
+                'A partir de ahora, en los portales del Estado no aparecerá el cuadro de '
+                'selección de certificado.',
+            )
+            if self.app:
+                self.app.set_status('Selección automática de certificado activada')
+        else:
+            messagebox.showerror('Error', result.get('error', 'No se pudo activar.'))
+        if self.app:
+            self.app.refresh_page('servicios')
+
+    def _disable_autoselect(self):
+        from cert_manager import edge_policy
+        result = edge_policy.disable()
+        if result.get('ok'):
+            messagebox.showinfo(
+                'Selección automática desactivada',
+                f'✓  Eliminadas {result.get("removed", 0)} entradas.\n\n'
+                'El navegador volverá a pedir el certificado normalmente.',
+            )
+            if self.app:
+                self.app.set_status('Selección automática de certificado desactivada')
+        else:
+            messagebox.showerror('Error', result.get('error', 'No se pudo desactivar.'))
+        if self.app:
+            self.app.refresh_page('servicios')
 
     def _service_card(self, parent, svc: dict, dest_base: Path, history: list):
         c = card(parent)
