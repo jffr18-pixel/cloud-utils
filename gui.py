@@ -165,17 +165,24 @@ def section_label(parent, text: str):
 def _load_logo_image(width: int = 180, height: int = 56) -> 'ctk.CTkImage | None':
     """Returns a CTkImage from assets/logo_bz.png, or None if not found / PIL unavailable."""
     if _PILImage is None:
+        print(f"[Logo] PIL no instalado — ejecuta: pip install Pillow")
         return None
+    print(f"[Logo] Buscando en: {_ASSETS}")
     for name in ('logo_bz.png', 'logo.png', 'logo_bz.jpg', 'logo.jpg'):
         p = _ASSETS / name
+        print(f"[Logo]   {name} → {'ENCONTRADO' if p.exists() else 'no existe'}")
         if p.exists():
             try:
                 img = _PILImage.open(p).convert('RGBA')
-                img.thumbnail((width, height), _PILImage.LANCZOS)
+                # Pillow >=10 usa Resampling.LANCZOS; versiones anteriores Image.LANCZOS
+                resample = getattr(_PILImage, 'Resampling', _PILImage).LANCZOS
+                img.thumbnail((width, height), resample)
+                print(f"[Logo] Cargado OK: {p} ({img.width}x{img.height}px)")
                 return ctk.CTkImage(light_image=img, dark_image=img,
                                     size=(img.width, img.height))
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[Logo] Error cargando {p}: {e}")
+    print("[Logo] Ningún archivo encontrado — usando logo de texto")
     return None
 
 
