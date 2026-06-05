@@ -7,10 +7,22 @@ Formatos disponibles:
 """
 
 import io
+import os
 from datetime import date
 
 from . import tramites
 from .analizador import expediente_listo
+
+_EXT_LOGO_PDF = (".png", ".jpg", ".jpeg")
+_EXT_LOGO_DOCX = (".png", ".jpg", ".jpeg", ".gif", ".bmp")
+
+
+def _contacto(gestoria):
+    """Linea de contacto a partir de los datos de la gestoria."""
+    if not gestoria:
+        return ""
+    partes = [gestoria.get("direccion"), gestoria.get("telefono"), gestoria.get("email")]
+    return " · ".join(p for p in partes if p)
 
 _ICONO = {
     "correcto": "OK",
@@ -199,12 +211,34 @@ def _contexto(checklist, tramite_id, solicitante, hoy):
 # --------------------------------------------------------------------------- #
 #  Word (.docx)
 # --------------------------------------------------------------------------- #
-def generar_docx(checklist, no_identificados, tramite_id, solicitante="", hoy=None):
+def generar_docx(
+    checklist, no_identificados, tramite_id, solicitante="", hoy=None, gestoria=None
+):
     """Genera el informe en formato Word y lo devuelve como bytes."""
     from docx import Document  # import diferido para no exigir la dependencia siempre
+    from docx.shared import Inches, Pt
 
     ctx = _contexto(checklist, tramite_id, solicitante, hoy)
     doc = Document()
+
+    # Membrete de la gestoria
+    if gestoria:
+        logo = gestoria.get("logo_path", "")
+        if logo and os.path.exists(logo) and logo.lower().endswith(_EXT_LOGO_DOCX):
+            try:
+                doc.add_picture(logo, width=Inches(1.6))
+            except Exception:  # noqa: BLE001
+                pass
+        if gestoria.get("nombre_gestoria"):
+            p = doc.add_paragraph()
+            run = p.add_run(gestoria["nombre_gestoria"])
+            run.bold = True
+            run.font.size = Pt(14)
+        contacto = _contacto(gestoria)
+        if contacto:
+            doc.add_paragraph(contacto)
+        if logo or gestoria.get("nombre_gestoria") or contacto:
+            doc.add_paragraph("")
 
     doc.add_heading("Informe de revision de expediente", level=0)
     doc.add_paragraph(f"Tramite: {ctx['tramite']}")
@@ -298,7 +332,40 @@ def _latin1(texto):
     return texto.encode("latin-1", "replace").decode("latin-1")
 
 
-def generar_pdf(checklist, no_identificados, tramite_id, solicitante="", hoy=None):
+def _cabecera_pdf(pdf, gestoria):
+    """Dibuja el membrete de la gestoria en la parte superior del PDF."""
+    if not gestoria:
+        return
+    logo = gestoria.get("logo_path", "")
+    tiene_logo = bool(logo and os.path.exists(logo) and logo.lower().endswith(_EXT_LOGO_PDF))
+    nombre = gestoria.get("nombre_gestoria", "")
+    contacto = _contacto(gestoria)
+    if not (tiene_logo or nombre or contacto):
+        return
+    if tiene_logo:
+        try:
+            pdf.image(logo, x=10, y=8, w=24)
+        except Exception:  # noqa: BLE001
+            tiene_logo = False
+    x_text = 38 if tiene_logo else 10
+    pdf.set_xy(x_text, 10)
+    if nombre:
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.set_x(x_text)
+        pdf.multi_cell(0, 6, _latin1(nombre), new_x="LMARGIN", new_y="NEXT")
+    if contacto:
+        pdf.set_x(x_text)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.multi_cell(0, 5, _latin1(contacto), new_x="LMARGIN", new_y="NEXT")
+    y = max(pdf.get_y(), 30)
+    pdf.set_draw_color(160, 160, 160)
+    pdf.line(10, y, 200, y)
+    pdf.set_y(y + 4)
+
+
+def generar_pdf(
+    checklist, no_identificados, tramite_id, solicitante="", hoy=None, gestoria=None
+):
     """Genera el informe en formato PDF y lo devuelve como bytes."""
     from fpdf import FPDF  # import diferido
 
@@ -306,6 +373,7 @@ def generar_pdf(checklist, no_identificados, tramite_id, solicitante="", hoy=Non
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
+    _cabecera_pdf(pdf, gestoria)
 
     def titulo(texto, tam=14):
         pdf.set_font("Helvetica", "B", tam)

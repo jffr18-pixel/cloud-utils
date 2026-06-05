@@ -20,6 +20,23 @@ Aplicacion con interfaz grafica que lee la documentacion de un expediente
 - Marca documentos **que faltan** (obligatorios y opcionales).
 - Genera un **informe de revision** descargable en **Markdown, Word (.docx) y
   PDF**, con acciones recomendadas.
+- **Membrete propio**: anade el logo y los datos de tu gestoria a los informes.
+- **Editor de tramites** desde la propia interfaz: anade, edita o elimina la
+  documentacion de cada tramite (o crea tramites nuevos) sin tocar codigo.
+- **Historial** de expedientes revisados: consulta revisiones anteriores y
+  vuelve a descargar su informe en cualquier formato.
+
+### Organizacion de la app
+
+La interfaz tiene cuatro secciones (menu lateral):
+
+- **Revisar expediente** — el flujo principal de analisis.
+- **Historial** — expedientes revisados anteriormente.
+- **Tramites** — editar la documentacion exigida por cada tramite.
+- **Gestoria** — logo y datos para el membrete de los informes.
+
+Los ajustes y el historial se guardan en la carpeta `datos/` (configurable con
+la variable de entorno `EXTRANJERIA_DATOS`).
 
 ### Tramites incluidos
 

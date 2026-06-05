@@ -9,8 +9,11 @@ Cada tramite tiene una lista de documentos. Por cada documento se indica:
 
 IMPORTANTE: estas listas son orientativas y EDITABLES. El gestor es el experto;
 puede ajustar, anadir o quitar documentos segun la subdelegacion, la comunidad
-autonoma o el criterio del expediente concreto.
+autonoma o el criterio del expediente concreto. La edicion se hace desde la
+propia interfaz (pestana "Tramites"), que persiste los cambios sin tocar codigo.
 """
+
+import copy
 
 # Documentos comunes a casi todos los tramites, para no repetirlos.
 _PASAPORTE = {
@@ -50,7 +53,7 @@ _SOLICITUD = {
 }
 
 
-TRAMITES = {
+TRAMITES_DEFECTO = {
     "regularizacion_extraordinaria": {
         "nombre": "Regularizacion extraordinaria",
         "descripcion": (
@@ -294,6 +297,23 @@ TRAMITES = {
         ],
     },
 }
+
+
+# Conjunto ACTIVO de tramites. Arranca con los valores por defecto y puede
+# sustituirse por una version personalizada cargada desde disco (config.py).
+TRAMITES = copy.deepcopy(TRAMITES_DEFECTO)
+
+
+def restablecer():
+    """Restaura los tramites a los valores por defecto del codigo."""
+    TRAMITES.clear()
+    TRAMITES.update(copy.deepcopy(TRAMITES_DEFECTO))
+
+
+def aplicar(personalizados):
+    """Sustituye el conjunto activo de tramites por uno personalizado."""
+    TRAMITES.clear()
+    TRAMITES.update(copy.deepcopy(personalizados))
 
 
 def lista_tramites():
