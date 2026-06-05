@@ -151,6 +151,59 @@ def cmd_report(cfg, args):
     print(f"\nInforme generado en: {html_path}")
 
 
+def cmd_clean(cfg, args):
+    print("\nBuscando certificados caducados en el almacén personal (MY) ...")
+    certs = cert_scanner.scan(['MY'])
+
+    if not certs:
+        print("No se encontraron certificados (¿estás en Windows?).")
+        return
+
+    certs = cert_validator.validate(certs)
+    expired = cert_validator.filter_expired(certs)
+
+    if not expired:
+        print("✓ No hay certificados caducados. El almacén está limpio.")
+        return
+
+    print(f"\nCertificados caducados encontrados: {len(expired)}\n")
+    for i, c in enumerate(expired, 1):
+        print(f"  {i}. {c.get('subject','')}")
+        print(f"     Emisor:  {c.get('issuer','')}")
+        print(f"     Caducó:  {c.get('not_after','')[:10]}")
+        print(f"     Huella:  {c.get('thumbprint','')}")
+        print()
+
+    if not args.yes:
+        print("⚠  ATENCIÓN: Esta acción eliminará permanentemente estos certificados de Windows.")
+        resp = input(f"¿Eliminar los {len(expired)} certificados caducados? [s/N]: ")
+        if resp.strip().lower() not in ('s', 'si', 'sí', 'yes', 'y'):
+            print("Cancelado. No se ha eliminado nada.")
+            return
+
+    print()
+    deleted = 0
+    errors = 0
+    for c in expired:
+        thumbprint = c.get('thumbprint', '')
+        subject = c.get('subject', '')
+        if not thumbprint:
+            print(f"  ✗ Sin huella digital, no se puede eliminar: {subject}")
+            errors += 1
+            continue
+        if cert_scanner.delete_by_thumbprint('MY', thumbprint):
+            print(f"  ✓ Eliminado: {subject}")
+            deleted += 1
+        else:
+            print(f"  ✗ Error eliminando: {subject}")
+            errors += 1
+
+    print(f"\nEliminados: {deleted}/{len(expired)}")
+    if errors:
+        print("⚠  Si hubo errores, abre PowerShell como Administrador y vuelve a ejecutar.")
+        print("   Clic derecho en PowerShell → 'Ejecutar como administrador'")
+
+
 def cmd_schedule(cfg, args):
     run_time = args.time or cfg['general']['check_time']
     scheduler_setup.install(Path(__file__), run_time=run_time)
@@ -208,6 +261,9 @@ def main():
 
     sub.add_parser('status', help='Ver estado general: certificados + tarea programada')
 
+    clean = sub.add_parser('clean', help='Eliminar certificados caducados del almacén de Windows')
+    clean.add_argument('--yes', '-y', action='store_true', help='Eliminar sin pedir confirmación')
+
     sub.add_parser('init-config', help='Crear config.ini con valores por defecto')
 
     args = parser.parse_args()
@@ -225,6 +281,7 @@ def main():
         'report': cmd_report,
         'schedule': cmd_schedule,
         'status': cmd_status,
+        'clean': cmd_clean,
     }
     dispatch[args.command](cfg, args)
 

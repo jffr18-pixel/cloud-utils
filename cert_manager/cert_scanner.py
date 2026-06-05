@@ -95,6 +95,31 @@ def _parse_certutil_output(output: str, store_name: str) -> List[Dict[str, Any]]
     return certs
 
 
+def delete_by_thumbprint(store_name: str, thumbprint: str) -> bool:
+    """Delete a certificate from the Windows store by thumbprint. Requires Administrator."""
+    if sys.platform != 'win32':
+        logger.error("La eliminación solo está disponible en Windows.")
+        return False
+
+    # certutil expects thumbprint uppercase without spaces
+    clean = thumbprint.replace(' ', '').upper()
+    try:
+        subprocess.run(
+            ['certutil', '-delstore', store_name, clean],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        logger.info(f"Certificado {clean} eliminado del almacén {store_name}.")
+        return True
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error eliminando certificado {clean}: {e.stderr.strip()}")
+        return False
+    except FileNotFoundError:
+        logger.error("certutil no encontrado.")
+        return False
+
+
 def _to_dict(cert: x509.Certificate, store_name: str) -> Dict[str, Any]:
     def get_attr(name_obj, oid):
         try:

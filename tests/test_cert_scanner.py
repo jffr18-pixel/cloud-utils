@@ -38,6 +38,21 @@ def test_parse_certutil_output_handles_empty():
     assert result == []
 
 
+def test_delete_by_thumbprint_returns_false_on_non_windows():
+    with patch.object(sys, 'platform', 'linux'):
+        result = cert_scanner.delete_by_thumbprint('MY', 'AABBCC')
+    assert result is False
+
+
+def test_delete_by_thumbprint_normalizes_thumbprint():
+    with patch('subprocess.run') as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        with patch.object(sys, 'platform', 'win32'):
+            cert_scanner.delete_by_thumbprint('MY', 'aa bb cc')
+        call_args = mock_run.call_args[0][0]
+        assert 'AABBCC' in call_args
+
+
 def test_scan_uses_certutil_fallback_when_wincertstore_unavailable():
     if sys.platform != 'win32':
         pytest.skip("Solo Windows")
