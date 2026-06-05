@@ -1,12 +1,14 @@
 import sys
 import subprocess
 import logging
+import warnings
 from datetime import timezone
 from typing import List, Dict, Any
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.x509.oid import NameOID
+from cryptography.utils import CryptographyDeprecationWarning
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +40,9 @@ def _from_wincertstore(stores: List[str]) -> List[Dict[str, Any]]:
                 for cert_ctx in store.itercerts(usage=None):
                     try:
                         der = cert_ctx.get_encoded()
-                        cert = load_der_x509_certificate(der, default_backend())
+                        with warnings.catch_warnings():
+                            warnings.filterwarnings('ignore', category=CryptographyDeprecationWarning)
+                            cert = load_der_x509_certificate(der, default_backend())
                         results.append(_to_dict(cert, store_name))
                     except Exception as e:
                         logger.debug(f"Error leyendo certificado en {store_name}: {e}")
@@ -111,6 +115,13 @@ def _to_dict(cert: x509.Certificate, store_name: str) -> Dict[str, Any]:
     algo = cert.signature_hash_algorithm
     thumbprint = cert.fingerprint(algo).hex() if algo else ''
 
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=CryptographyDeprecationWarning)
+        try:
+            serial = hex(cert.serial_number)
+        except Exception:
+            serial = 'N/A'
+
     return {
         'store': store_name,
         'source': 'wincertstore',
@@ -118,7 +129,7 @@ def _to_dict(cert: x509.Certificate, store_name: str) -> Dict[str, Any]:
         'subject_org': get_attr(cert.subject, NameOID.ORGANIZATION_NAME),
         'issuer': get_attr(cert.issuer, NameOID.ORGANIZATION_NAME) or cert.issuer.rfc4514_string(),
         'issuer_cn': get_attr(cert.issuer, NameOID.COMMON_NAME),
-        'serial': hex(cert.serial_number),
+        'serial': serial,
         'not_before': not_before.isoformat(),
         'not_after': not_after.isoformat(),
         'not_after_dt': not_after,

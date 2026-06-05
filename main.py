@@ -16,6 +16,22 @@ logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
 
+def _print_cert_table(certs):
+    symbols = {'valid': '✓', 'expiring_soon': '⚠', 'expired': '✗', 'unknown': '?'}
+    print(f"\n{'#':<4} {'Estado':<18} {'Titular':<35} {'Emisor':<25} {'Caduca':<12} {'Días'}")
+    print("-" * 100)
+    for i, c in enumerate(certs, 1):
+        symbol = symbols.get(c.get('status', 'unknown'), '?')
+        label = c.get('status_label', '?')
+        subject = c.get('subject', '')[:34]
+        issuer = c.get('issuer', '')[:24]
+        not_after = c.get('not_after', '')[:10]
+        days = c.get('days_remaining', '')
+        days_str = str(days) if isinstance(days, int) and days >= 0 else 'CADUCADO'
+        print(f"{i:<4} {symbol} {label:<16} {subject:<35} {issuer:<25} {not_after:<12} {days_str}")
+    print()
+
+
 def cmd_scan(cfg, args):
     stores = [s.strip() for s in cfg['certificates']['stores'].split(',')]
     alert_days = int(cfg['general']['alert_days'])
