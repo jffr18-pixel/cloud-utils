@@ -126,6 +126,25 @@ def badge(parent, text: str, status: str) -> ctk.CTkLabel:
     )
 
 
+def _status_row_bg(status: str, i: int) -> str:
+    """Return a row background tinted by certificate status."""
+    if status == 'expired':
+        return '#fef2f2'
+    if status == 'expiring_soon':
+        return '#fffbeb'
+    if status == 'valid':
+        return '#f0faf4' if i % 2 == 0 else '#f8fffe'
+    return PRIMARY_LT if i % 2 == 0 else CARD
+
+
+def _days_color(status: str) -> str:
+    return {
+        'expired': DANGER,
+        'expiring_soon': WARNING,
+        'valid': SUCCESS,
+    }.get(status, TEXT_MUTED)
+
+
 def divider(parent):
     ctk.CTkFrame(parent, height=1, fg_color=BORDER).pack(fill='x', padx=0, pady=0)
 
@@ -372,7 +391,8 @@ class DashboardPage(ctk.CTkFrame):
 
         tbl_header(scroll, [('Titular', 330), ('Emisor', 195), ('Caduca', 110), ('Estado', 150)])
         for i, c in enumerate(sorted(certs, key=lambda x: x.get('days_remaining', 9999))):
-            bg  = PRIMARY_LT if i % 2 == 0 else CARD
+            st  = c.get('status', 'unknown')
+            bg  = _status_row_bg(st, i)
             r   = ctk.CTkFrame(scroll, fg_color=bg, corner_radius=5)
             r.pack(fill='x', pady=1)
             ctk.CTkLabel(r, text=c.get('subject','')[:46], width=330, anchor='w',
@@ -380,8 +400,8 @@ class DashboardPage(ctk.CTkFrame):
             ctk.CTkLabel(r, text=c.get('issuer','')[:27], width=195, anchor='w',
                          font=ctk.CTkFont(size=12), text_color=TEXT_MUTED).pack(side='left', padx=4)
             ctk.CTkLabel(r, text=c.get('not_after','')[:10], width=110, anchor='w',
-                         font=ctk.CTkFont(size=12)).pack(side='left', padx=4)
-            badge(r, c.get('status_label',''), c.get('status','')).pack(side='left', padx=6)
+                         font=ctk.CTkFont(size=12), text_color=_days_color(st)).pack(side='left', padx=4)
+            badge(r, c.get('status_label',''), st).pack(side='left', padx=6)
 
 
 class CertificatesPage(ctk.CTkFrame):
@@ -448,21 +468,23 @@ class CertificatesPage(ctk.CTkFrame):
                          text_color=TEXT_MUTED, font=ctk.CTkFont(size=13)).pack(pady=24)
             return
         for i, c in enumerate(certs):
-            bg  = PRIMARY_LT if i % 2 == 0 else CARD
+            st  = c.get('status', 'unknown')
+            bg  = _status_row_bg(st, i)
             r   = ctk.CTkFrame(self._scroll, fg_color=bg, corner_radius=5)
             r.pack(fill='x', pady=1)
             days = c.get('days_remaining', '')
-            ds   = str(days) if isinstance(days, int) and days >= 0 else '—'
-            for val, w in [
-                (c.get('store',''), 72),
-                (c.get('subject','')[:38], 280),
-                (c.get('issuer','')[:23], 170),
-                (c.get('not_after','')[:10], 105),
-                (ds, 60),
+            ds   = str(days) if isinstance(days, int) and days >= 0 else 'CADUCADO'
+            for val, w, col in [
+                (c.get('store',''), 72, TEXT_MUTED),
+                (c.get('subject','')[:38], 280, TEXT),
+                (c.get('issuer','')[:23], 170, TEXT_MUTED),
+                (c.get('not_after','')[:10], 105, _days_color(st)),
+                (ds, 60, _days_color(st)),
             ]:
                 ctk.CTkLabel(r, text=val, width=w, anchor='w',
-                             font=ctk.CTkFont(size=11)).pack(side='left', padx=8, pady=6)
-            badge(r, c.get('status_label',''), c.get('status','')).pack(side='left', padx=6)
+                             font=ctk.CTkFont(size=11), text_color=col,
+                             ).pack(side='left', padx=8, pady=6)
+            badge(r, c.get('status_label',''), st).pack(side='left', padx=6)
 
 
 class DehuPage(ctk.CTkFrame):
@@ -871,57 +893,71 @@ class ServiciosPage(ctk.CTkFrame):
                      font=ctk.CTkFont(size=12), text_color=TEXT_MUTED,
                      anchor='w', wraplength=680).pack(anchor='w', padx=16, pady=(8, 6))
 
+        # Hint sobre cómo funciona
+        ctk.CTkLabel(c,
+                     text='💡  Intenta descarga directa; si el portal lo requiere, se abre el navegador automáticamente.',
+                     font=ctk.CTkFont(size=10), text_color=TEXT_MUTED,
+                     anchor='w').pack(anchor='w', padx=16, pady=(0, 8))
+
         brow = ctk.CTkFrame(c, fg_color='transparent')
         brow.pack(fill='x', padx=16, pady=(0, 14))
 
-        status_lbl = ctk.CTkLabel(brow, text='', font=ctk.CTkFont(size=11),
-                                   text_color=TEXT_MUTED)
+        status_lbl = ctk.CTkLabel(brow, text='', font=ctk.CTkFont(size=11), text_color=TEXT_MUTED)
+        auto_btn   = [None]   # mutable ref para deshabilitar mientras carga
 
         def do_auto(s=svc, sl=status_lbl):
             if not cert_path:
-                sl.configure(text='⚠  Configura primero tu certificado', text_color=WARNING)
+                sl.configure(text='⚠  Configura primero tu certificado en ⚙️ Configuración',
+                             text_color=WARNING)
                 return
-            sl.configure(text='⏳  Descargando...', text_color=TEXT_MUTED)
+            sl.configure(text='⏳  Intentando descarga directa...', text_color=TEXT_MUTED)
+            if auto_btn[0]:
+                auto_btn[0].configure(state='disabled')
             threading.Thread(
-                target=self._run_download, args=(s, cert_path, password, dest_base, sl),
+                target=self._run_download, args=(s, cert_path, password, dest_base, sl, auto_btn),
                 daemon=True,
             ).start()
 
-        def do_browser(s=svc):
+        def do_browser(s=svc, sl=status_lbl):
             from cert_manager import servicios as sv
             sv.open_in_browser(s)
+            sl.configure(text='🌐  Navegador abierto — usa tu certificado para identificarte', text_color=SUCCESS)
             if self.app:
-                self.app.set_status(f'Abriendo {s["name"]} en el navegador...')
+                self.app.set_status(f'Portal {s["name"]} abierto en el navegador')
 
-        action_btn(brow, '🤖  Descarga automática', PRIMARY, do_auto, width=195).pack(side='left', padx=(0, 8))
-        action_btn(brow, '🌐  Abrir en navegador', '#546e7a', do_browser, width=178).pack(side='left', padx=(0, 12))
+        btn = action_btn(brow, '🚀  Obtener documento', PRIMARY, do_auto, width=195)
+        btn.pack(side='left', padx=(0, 8))
+        auto_btn[0] = btn
+        action_btn(brow, '🌐  Abrir portal', '#546e7a', do_browser, width=145).pack(side='left', padx=(0, 12))
         status_lbl.pack(side='left', padx=4)
 
     def _run_download(self, svc: dict, cert_path: str, password: str,
-                      dest_base: Path, status_lbl):
+                      dest_base: Path, status_lbl, auto_btn):
         from cert_manager import servicios
         result = servicios.try_download(svc, cert_path, password, dest_base)
-        self.after(0, lambda: self._on_result(svc, result, status_lbl))
+        self.after(0, lambda: self._on_result(svc, result, status_lbl, auto_btn))
 
-    def _on_result(self, svc: dict, result: dict, status_lbl):
+    def _on_result(self, svc: dict, result: dict, status_lbl, auto_btn):
+        if auto_btn[0]:
+            auto_btn[0].configure(state='normal')
+
         if result['ok']:
             p = result['path']
-            status_lbl.configure(text=f'✓  {p.name}', text_color=SUCCESS)
+            status_lbl.configure(text=f'✓  Guardado: {p.name}', text_color=SUCCESS)
             if self.app:
-                self.app.set_status(f'{svc["name"]} guardado: {p}')
+                self.app.set_status(f'{svc["name"]} descargado: {p}')
             messagebox.showinfo('Descarga completada',
                                 f'✓  {svc["name"]}\n\nGuardado en:\n{p}')
         else:
-            err = result['error']
-            status_lbl.configure(text='⚠  No disponible automáticamente', text_color=WARNING)
+            # Fallo silencioso: abre el navegador directamente sin preguntar
+            status_lbl.configure(
+                text='🌐  Abriendo portal en el navegador...', text_color=TEXT_MUTED)
             if self.app:
-                self.app.set_status(f'{svc["name"]}: requiere navegador', WARNING)
-            if messagebox.askyesno(
-                'Descarga automática no disponible',
-                f'{err}\n\n¿Abrir el portal en el navegador?',
-            ):
-                from cert_manager import servicios
-                servicios.open_in_browser(svc)
+                self.app.set_status(f'{svc["name"]}: abriendo portal con navegador')
+            from cert_manager import servicios
+            servicios.open_in_browser(svc)
+            status_lbl.configure(
+                text='🌐  Navegador abierto — identifícate con tu certificado', text_color=SUCCESS)
 
 
 class ReportPage(ctk.CTkFrame):

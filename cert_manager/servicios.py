@@ -22,14 +22,9 @@ SERVICES = [
             'Historial completo de periodos cotizados, empresas, '
             'situaciones de alta/baja y días acumulados.'
         ),
-        'url_browser': (
-            'https://portal.seg-social.gob.es/wps/portal/importass/'
-            'importass/Categorias/VidaLaboral'
-        ),
-        'url_auto': (
-            'https://sede.seg-social.gob.es/wps/portal/infoimss/'
-            'infoimss/ObtenerInformeVidaLaboral'
-        ),
+        # Portal Importass — autenticación con certificado en el navegador
+        'url_browser': 'https://importass.seg-social.es/',
+        'url_auto': 'https://importass.seg-social.es/importass-sede/jsp/SS/PortalSS/inicio.html',
         'filename': 'vida_laboral',
     },
     {
@@ -41,14 +36,9 @@ SERVICES = [
             'Certificado que acredita el cumplimiento de tus obligaciones '
             'tributarias ante la Agencia Tributaria.'
         ),
-        'url_browser': (
-            'https://sede.agenciatributaria.gob.es/Sede/'
-            'procedimientoinicio/G322.shtml'
-        ),
-        'url_auto': (
-            'https://www.agenciatributaria.es/wlpl/PRET-R080/'
-            'R080CONTServlet'
-        ),
+        # Sede electrónica AEAT — procedimiento G322
+        'url_browser': 'https://sede.agenciatributaria.gob.es/Sede/procedimientoinicio/G322.shtml',
+        'url_auto': 'https://www.agenciatributaria.es/wlpl/PRET-R080/R080CONTServlet',
         'filename': 'certificado_aeat',
     },
     {
@@ -60,14 +50,9 @@ SERVICES = [
             'Informe detallado de las bases de cotización por periodos '
             'y contingencias (jubilación, desempleo, etc.).'
         ),
-        'url_browser': (
-            'https://portal.seg-social.gob.es/wps/portal/importass/'
-            'importass/Categorias/BasesDeCotizacion'
-        ),
-        'url_auto': (
-            'https://sede.seg-social.gob.es/wps/portal/infoimss/'
-            'infoimss/ObtenerBasesCotizacion'
-        ),
+        # Portal Importass — misma autenticación, servicio distinto
+        'url_browser': 'https://importass.seg-social.es/',
+        'url_auto': 'https://importass.seg-social.es/importass-sede/jsp/SS/PortalSS/inicio.html',
         'filename': 'bases_cotizacion',
     },
 ]
