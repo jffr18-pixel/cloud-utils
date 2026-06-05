@@ -1,23 +1,81 @@
 # cloud-utils
 
-A small collection of Python utility functions for everyday use.
+Utilidades en Python. Incluye una aplicacion para **automatizar la revision de
+expedientes de extranjeria**.
 
-## Funcions
+## Revision de expedientes de extranjeria
 
-- `calculator.py` — basic arithmetic operations (add, subtract, multiply, divide)
+Aplicacion con interfaz grafica que lee la documentacion de un expediente
+(PDF o fotos de WhatsApp), la clasifica con IA y comprueba que documentacion
+**falta, esta caducada o tiene incidencias** segun el tipo de tramite.
 
-## Usage
+### Que hace
+
+- Lee fotos (JPG/PNG/WebP) y PDF — corrige la orientacion de las fotos de movil.
+- Clasifica cada documento dentro de los exigidos por el tramite.
+- Extrae datos clave: titular, nº de pasaporte/NIE, pais, fechas.
+- Detecta documentos **caducados** o **proximos a caducar** (margen configurable).
+- Marca documentos **que faltan** (obligatorios y opcionales).
+- Genera un **informe de revision** descargable (Markdown) con acciones recomendadas.
+
+### Tramites incluidos
+
+Regularizacion extraordinaria · Cambio de razones humanitarias a residencia y
+trabajo · Arraigo social · Arraigo sociolaboral · Arraigo laboral · Arraigo
+familiar · Arraigo para la formacion · Arraigo de segunda oportunidad.
+
+Las listas de documentos son **editables** en `revision/tramites.py`.
+
+### Instalacion
+
+```bash
+pip install -r requirements.txt
+```
+
+### Configurar la clave de API
+
+La lectura de documentos usa la API de Claude (Anthropic). Define tu clave:
+
+```bash
+export ANTHROPIC_API_KEY="tu-clave"
+```
+
+Tambien puedes introducirla directamente en la barra lateral de la aplicacion.
+
+### Ejecutar
+
+```bash
+streamlit run app.py
+```
+
+Se abre en el navegador. Pasos: elegir tramite → subir documentos →
+*Analizar expediente* → revisar el checklist → descargar el informe.
+
+### Estructura
+
+- `app.py` — interfaz grafica (Streamlit).
+- `revision/tramites.py` — tramites y documentacion exigida (editable).
+- `revision/analizador.py` — lectura de documentos con IA (vision + PDF).
+- `revision/informe.py` — generacion del informe de revision.
+
+### Nota
+
+La herramienta es un **apoyo** a la revision; no sustituye el criterio
+profesional del gestor. Las fotos en formato HEIC (iPhone) conviene pasarlas a
+JPG antes de subirlas; WhatsApp normalmente ya las envia como JPG.
+
+## Calculadora
+
+`calculator.py` — operaciones aritmeticas basicas (add, subtract, multiply, divide).
 
 ```python
 from calculator import add, subtract, multiply, divide
 
 print(add(3, 5))       # 8
-print(subtract(10, 4)) # 6
-print(multiply(2, 7))  # 14
 print(divide(9, 3))    # 3.0
 ```
 
-## Runing tests
+## Tests
 
 ```bash
 python -m pytest tests/
