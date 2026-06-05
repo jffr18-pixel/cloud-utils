@@ -399,7 +399,7 @@ def barra_lateral():
         st.markdown(
             """
             <div style="padding:0 4px 12px 4px;">
-              <div style="font-size:1.25rem;font-weight:800;color:#FFEA63;
+              <div style="font-size:1.25rem;font-weight:800;color:#FFFFFF;
                           letter-spacing:-0.5px;line-height:1.1;">
                 BUROCRACIA ZERO
               </div>
