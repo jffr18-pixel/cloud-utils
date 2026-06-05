@@ -21,8 +21,8 @@ class DEHUSession:
                  base_url: str = 'https://dehu.redsara.es', timeout: int = 30):
         self.base_url = base_url.rstrip('/')
         self.timeout = timeout
-        self._cert_pfx_path = cert_pfx_path
-        self._cert_password = cert_password
+        self._cert_pfx_path = cert_pfx_path.strip().strip('"\'')
+        self._cert_password = cert_password.strip()
         self._session: Optional[requests.Session] = None
         self._tmp_cert: Optional[Path] = None
         self._tmp_key: Optional[Path] = None
