@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% block title %}EAPN CLM Formación — Aprende, crece, transforma{% endblock %}
+
+{% block content %}
+
+<!-- Hero -->
+<section class="hero">
+  <div class="container">
+    <div class="hero-content">
+      <div class="hero-badge fade-up">
+        🌱 Formación gratuita y de calidad
+      </div>
+      <h1 class="fade-up fade-up-1">
+        Formación para la<br>
+        <span>Inclusión Social</span><br>
+        en Castilla-La Mancha
+      </h1>
+      <p class="fade-up fade-up-2">
+        La plataforma formativa de EAPN CLM: cursos especializados
+        en inclusión social, empleo, igualdad y gestión del tercer sector.
+        Totalmente gratuitos para profesionales y voluntarios.
+      </p>
+
+      <form class="hero-search fade-up fade-up-3" action="{{ url_for('cursos') }}" method="GET">
+        <input type="text" name="q" placeholder="Busca un curso: inclusión, empleo, género..." autocomplete="off">
+        <button type="submit" class="btn btn-secondary">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          Buscar
+        </button>
+      </form>
+
+      <div class="hero-stats fade-up">
+        <div class="hero-stat">
+          <strong>{{ total_cursos }}+</strong>
+          <span>Cursos disponibles</span>
+        </div>
+        <div class="hero-stat">
+          <strong>{{ "{:,}".format(total_inscritos).replace(",", ".") }}</strong>
+          <span>Alumnos formados</span>
+        </div>
+        <div class="hero-stat">
+          <strong>100%</strong>
+          <span>Gratuito</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Categorías -->
+<section class="section categorias">
+  <div class="container">
+    <div class="section-header">
+      <span class="label">Explora por área</span>
+      <h2>Áreas de formación</h2>
+      <p>Cursos especializados para cada ámbito del trabajo social y la inclusión</p>
+    </div>
+    <div class="cat-grid">
+      {% for cat in categorias %}
+        <a href="{{ url_for('cursos') }}?categoria={{ cat.id }}" class="cat-card">
+          <div class="cat-icon">{{ cat.icono }}</div>
+          <h4>{{ cat.nombre }}</h4>
+          <span>{{ cat.total }} cursos</span>
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- Cursos destacados -->
+<section class="section">
+  <div class="container">
+    <div class="section-header" style="display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
+      <div>
+        <span class="label">Lo más valorado</span>
+        <h2>Cursos destacados</h2>
+        <p>Formaciones con mayor demanda y mejor valoración por nuestros alumnos</p>
+      </div>
+      <a href="{{ url_for('cursos') }}" class="btn btn-outline">Ver todos los cursos →</a>
+    </div>
+
+    <div class="cursos-grid">
+      {% for curso in cursos %}
+        {% set icons = {'inclusion': '🤝', 'gestion': '🏛️', 'genero': '⚖️', 'digital': '💻', 'empleo': '💼', 'voluntariado': '🌱'} %}
+        {% set bgs = ['img-bg-1','img-bg-2','img-bg-3','img-bg-4','img-bg-5','img-bg-6'] %}
+        <article class="curso-card">
+          <div class="curso-card-img">
+            <div class="curso-card-img-bg {{ bgs[loop.index0 % 6] }}">
+              {{ icons.get(curso.categoria, '📚') }}
+            </div>
+            <div class="curso-badges">
+              <span class="badge badge-gratuito">{{ curso.precio }}</span>
+              {% if curso.nuevo %}<span class="badge badge-nuevo">Nuevo</span>{% endif %}
+            </div>
+          </div>
+          <div class="curso-card-body">
+            <div class="curso-cat-label">
+              {% for cat in categorias if cat.id == curso.categoria %}{{ cat.nombre }}{% endfor %}
+            </div>
+            <h3>{{ curso.titulo }}</h3>
+            <p>{{ curso.descripcion }}</p>
+            <div class="curso-meta">
+              <span>⏱ {{ curso.duracion }}</span>
+              <span>🎓 {{ curso.nivel }}</span>
+              <span>💻 {{ curso.modalidad }}</span>
+            </div>
+            <div class="curso-footer">
+              <div class="curso-rating">
+                <span class="stars">★★★★★</span>
+                <strong>{{ curso.valoracion }}</strong>
+                <span class="text-muted">({{ curso.valoraciones }})</span>
+              </div>
+              <a href="{{ url_for('curso_detalle', slug=curso.slug) }}" class="btn btn-primary btn-sm">Ver curso</a>
+            </div>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- Stats -->
+<section class="stats-section">
+  <div class="container">
+    <div class="stats-grid">
+      <div class="stat-item">
+        <span class="num"><span>6</span></span>
+        <p>Áreas temáticas</p>
+      </div>
+      <div class="stat-item">
+        <span class="num"><span>{{ total_cursos }}</span>+</span>
+        <p>Cursos disponibles</p>
+      </div>
+      <div class="stat-item">
+        <span class="num"><span>{{ "{:,}".format(total_inscritos).replace(",", ".") }}</span></span>
+        <p>Alumnos formados</p>
+      </div>
+      <div class="stat-item">
+        <span class="num"><span>100</span>%</span>
+        <p>Formación gratuita</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Por qué EAPN CLM -->
+<section class="section">
+  <div class="container">
+    <div class="section-header text-center" style="max-width:600px; margin:0 auto 3rem;">
+      <span class="label">Nuestra propuesta</span>
+      <h2>¿Por qué formarte con EAPN CLM?</h2>
+      <p>Más de 20 años de experiencia en inclusión social respaldando cada formación</p>
+    </div>
+    <div class="grid-3">
+      <div style="text-align:center; padding:2rem 1.5rem; background:var(--bg-light); border-radius:var(--radius); border:1px solid var(--border);">
+        <div style="font-size:2.5rem; margin-bottom:1rem;">🎓</div>
+        <h3 style="font-size:1.15rem; margin-bottom:.75rem;">Formación especializada</h3>
+        <p style="font-size:.92rem;">Contenidos diseñados por profesionales del sector social con experiencia real en el territorio de Castilla-La Mancha.</p>
+      </div>
+      <div style="text-align:center; padding:2rem 1.5rem; background:var(--bg-light); border-radius:var(--radius); border:1px solid var(--border);">
+        <div style="font-size:2.5rem; margin-bottom:1rem;">🆓</div>
+        <h3 style="font-size:1.15rem; margin-bottom:.75rem;">100% gratuita</h3>
+        <p style="font-size:.92rem;">Toda nuestra formación es gratuita y accesible para profesionales, voluntarios y personas interesadas en la inclusión social.</p>
+      </div>
+      <div style="text-align:center; padding:2rem 1.5rem; background:var(--bg-light); border-radius:var(--radius); border:1px solid var(--border);">
+        <div style="font-size:2.5rem; margin-bottom:1rem;">📜</div>
+        <h3 style="font-size:1.15rem; margin-bottom:.75rem;">Certificado oficial</h3>
+        <p style="font-size:.92rem;">Al completar cada curso obtienes un certificado de participación avalado por EAPN España reconocido en el sector.</p>
+      </div>
+      <div style="text-align:center; padding:2rem 1.5rem; background:var(--bg-light); border-radius:var(--radius); border:1px solid var(--border);">
+        <div style="font-size:2.5rem; margin-bottom:1rem;">🕐</div>
+        <h3 style="font-size:1.15rem; margin-bottom:.75rem;">A tu ritmo</h3>
+        <p style="font-size:.92rem;">Formación online accesible desde cualquier dispositivo, sin horarios fijos. Aprende cuando y donde quieras.</p>
+      </div>
+      <div style="text-align:center; padding:2rem 1.5rem; background:var(--bg-light); border-radius:var(--radius); border:1px solid var(--border);">
+        <div style="font-size:2.5rem; margin-bottom:1rem;">🤝</div>
+        <h3 style="font-size:1.15rem; margin-bottom:.75rem;">Red de profesionales</h3>
+        <p style="font-size:.92rem;">Conecta con una red de profesionales del tercer sector en Castilla-La Mancha comprometidos con la transformación social.</p>
+      </div>
+      <div style="text-align:center; padding:2rem 1.5rem; background:var(--bg-light); border-radius:var(--radius); border:1px solid var(--border);">
+        <div style="font-size:2.5rem; margin-bottom:1rem;">📊</div>
+        <h3 style="font-size:1.15rem; margin-bottom:.75rem;">Seguimiento del progreso</h3>
+        <p style="font-size:.92rem;">Panel personal para seguir tu avance, retomar cursos y visualizar tus logros formativos en un solo lugar.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA Banner -->
+<section class="cta-banner">
+  <div class="container">
+    <h2>¿Listo para empezar?</h2>
+    <p>Únete a miles de profesionales del tercer sector que ya se están formando con nosotros. Gratis, flexible y con certificado.</p>
+    <div class="cta-actions">
+      <a href="{{ url_for('registro') }}" class="btn btn-white btn-lg">Crear cuenta gratuita</a>
+      <a href="{{ url_for('cursos') }}" class="btn btn-lg" style="background:rgba(255,255,255,.2); color:#fff; border:2px solid rgba(255,255,255,.5);">Ver todos los cursos</a>
+    </div>
+  </div>
+</section>
+
+{% endblock %}

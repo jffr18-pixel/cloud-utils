@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Iniciar Sesión — EAPN CLM Formación{% endblock %}
+
+{% block content %}
+<div class="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div style="width:56px; height:56px; background:var(--purple); border-radius:var(--radius); display:flex; align-items:center; justify-content:center; margin:0 auto .75rem; font-size:1.5rem; font-weight:900; color:#fff;">E</div>
+      <div style="font-size:.8rem; color:var(--text-muted);">EAPN CLM · Plataforma de Formación</div>
+    </div>
+
+    <h2>Iniciar sesión</h2>
+    <p>Accede a tus cursos y progreso formativo</p>
+
+    <form method="POST" action="{{ url_for('login') }}">
+      <div class="form-group">
+        <label for="email">Correo electrónico</label>
+        <input type="email" id="email" name="email" placeholder="tu@email.com" required autofocus>
+      </div>
+      <div class="form-group">
+        <label for="password" style="display:flex; justify-content:space-between;">
+          Contraseña
+          <a href="#" style="font-weight:400; color:var(--purple); font-size:.82rem;">¿La olvidaste?</a>
+        </label>
+        <input type="password" id="password" name="password" placeholder="Tu contraseña" required>
+      </div>
+      <button type="submit" class="btn btn-primary form-submit">Entrar</button>
+    </form>
+
+    <div class="auth-link">
+      ¿No tienes cuenta? <a href="{{ url_for('registro') }}">Regístrate gratis</a>
+    </div>
+
+    <!-- Demo hint -->
+    <div style="margin-top:1.5rem; padding:1rem; background:var(--bg-light); border-radius:var(--radius-sm); border:1px solid var(--border);">
+      <p style="font-size:.82rem; color:var(--text-muted); margin:0; text-align:center;">
+        <strong style="color:var(--purple);">Demo:</strong> demo@eapnclm.es / demo1234
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %}

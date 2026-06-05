@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Crear Cuenta — EAPN CLM Formación{% endblock %}
+
+{% block content %}
+<div class="auth-page">
+  <div class="auth-card" style="max-width:480px;">
+    <div class="auth-logo">
+      <div style="width:56px; height:56px; background:var(--purple); border-radius:var(--radius); display:flex; align-items:center; justify-content:center; margin:0 auto .75rem; font-size:1.5rem; font-weight:900; color:#fff;">E</div>
+      <div style="font-size:.8rem; color:var(--text-muted);">EAPN CLM · Plataforma de Formación</div>
+    </div>
+
+    <h2>Crear cuenta gratuita</h2>
+    <p>Accede a todos los cursos de forma gratuita</p>
+
+    <form method="POST" action="{{ url_for('registro') }}">
+      <div class="form-group">
+        <label for="nombre">Nombre completo</label>
+        <input type="text" id="nombre" name="nombre" placeholder="Tu nombre y apellidos" required autofocus>
+      </div>
+      <div class="form-group">
+        <label for="email">Correo electrónico</label>
+        <input type="email" id="email" name="email" placeholder="tu@email.com" required>
+      </div>
+      <div class="form-group">
+        <label for="password">Contraseña</label>
+        <input type="password" id="password" name="password" placeholder="Mínimo 6 caracteres" required minlength="6">
+      </div>
+
+      <div style="margin-bottom:1.25rem;">
+        <label style="display:flex; align-items:flex-start; gap:.6rem; cursor:pointer;">
+          <input type="checkbox" required style="margin-top:3px; width:auto; accent-color:var(--purple);">
+          <span style="font-size:.85rem; color:var(--text-muted);">
+            Acepto la <a href="#" style="color:var(--purple);">política de privacidad</a>
+            y los <a href="#" style="color:var(--purple);">términos de uso</a>.
+          </span>
+        </label>
+      </div>
+
+      <button type="submit" class="btn btn-primary form-submit">Crear cuenta gratuita</button>
+    </form>
+
+    <div style="display:flex; align-items:center; gap:1rem; margin:1.25rem 0;">
+      <div style="flex:1; height:1px; background:var(--border);"></div>
+      <span style="font-size:.82rem; color:var(--text-muted);">¿Ya tienes cuenta?</span>
+      <div style="flex:1; height:1px; background:var(--border);"></div>
+    </div>
+
+    <a href="{{ url_for('login') }}" class="btn btn-outline w-full" style="justify-content:center;">Iniciar sesión</a>
+
+    <!-- Beneficios -->
+    <div style="margin-top:1.5rem; padding:1.1rem; background:var(--bg-light); border-radius:var(--radius-sm);">
+      <p style="font-size:.82rem; font-weight:700; color:var(--text-dark); margin-bottom:.6rem; text-align:center;">✨ Con tu cuenta gratuita</p>
+      <ul style="display:flex; flex-direction:column; gap:.4rem;">
+        <li style="font-size:.82rem; color:var(--text-muted); display:flex; gap:.5rem;">✅ Acceso a todos los cursos</li>
+        <li style="font-size:.82rem; color:var(--text-muted); display:flex; gap:.5rem;">✅ Seguimiento de progreso</li>
+        <li style="font-size:.82rem; color:var(--text-muted); display:flex; gap:.5rem;">✅ Certificados de participación</li>
+        <li style="font-size:.82rem; color:var(--text-muted); display:flex; gap:.5rem;">✅ Sin coste alguno</li>
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

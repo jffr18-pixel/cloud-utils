@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block title %}{{ curso.titulo }} — EAPN CLM Formación{% endblock %}
+{% block meta_desc %}{{ curso.descripcion }}{% endblock %}
+
+{% block content %}
+
+<!-- Header del curso -->
+<div class="detalle-header">
+  <div class="container">
+    <div class="breadcrumb">
+      <a href="{{ url_for('index') }}">Inicio</a>
+      <span>›</span>
+      <a href="{{ url_for('cursos') }}">Cursos</a>
+      <span>›</span>
+      <span>{{ curso.titulo }}</span>
+    </div>
+    <div class="detalle-layout">
+      <div>
+        <div class="cat-label">{{ curso.categoria | upper }}</div>
+        <h1>{{ curso.titulo }}</h1>
+        <p>{{ curso.descripcion }}</p>
+        <div class="detalle-meta-row">
+          <div class="meta-item">⏱ <strong>{{ curso.duracion }}</strong></div>
+          <div class="meta-item">🎓 <strong>{{ curso.nivel }}</strong></div>
+          <div class="meta-item">💻 <strong>{{ curso.modalidad }}</strong></div>
+          <div class="meta-item">👥 <strong>{{ curso.inscritos }}</strong> inscritos</div>
+          <div class="meta-item">
+            <span style="color:#F59E0B">★</span>
+            <strong>{{ curso.valoracion }}</strong>
+            <span style="opacity:.75">({{ curso.valoraciones }} valoraciones)</span>
+          </div>
+        </div>
+        <div style="margin-top:1.5rem; color:rgba(255,255,255,.8); font-size:.9rem;">
+          Impartido por <strong style="color:#fff;">{{ curso.instructor }}</strong>
+          · {{ curso.instructor_cargo }}
+        </div>
+      </div>
+      <!-- El panel sticky en desktop se muestra en el aside de abajo -->
+      <div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Contenido detalle -->
+<section class="section-sm">
+  <div class="container">
+    <div class="detalle-layout">
+
+      <!-- Columna principal -->
+      <div>
+        <!-- Tabs -->
+        <div class="tab-nav">
+          <button class="tab-btn active" data-tab="tab-contenido">Contenido</button>
+          <button class="tab-btn" data-tab="tab-objetivos">Objetivos</button>
+          <button class="tab-btn" data-tab="tab-instructor">Instructor/a</button>
+        </div>
+
+        <!-- Tab Contenido -->
+        <div class="tab-panel active" id="tab-contenido">
+          <h3 style="margin-bottom:1.25rem;">Módulos del curso</h3>
+          <div class="modulos-list">
+            {% for modulo in curso.modulos %}
+              <div class="modulo-item">
+                <div class="modulo-num">{{ modulo.num }}</div>
+                <div class="modulo-info">
+                  <h4>{{ modulo.titulo }}</h4>
+                  <span>Módulo {{ modulo.num }}</span>
+                </div>
+                <span class="modulo-dur">⏱ {{ modulo.duracion }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <!-- Tab Objetivos -->
+        <div class="tab-panel" id="tab-objetivos">
+          <h3 style="margin-bottom:1.25rem;">Objetivos de aprendizaje</h3>
+          <p style="margin-bottom:1.5rem;">Al finalizar este curso serás capaz de:</p>
+          <div class="objetivo-list">
+            {% for obj in curso.objetivos %}
+              <div class="objetivo-item">
+                <div class="objetivo-icon">✓</div>
+                <p>{{ obj }}</p>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <!-- Tab Instructor -->
+        <div class="tab-panel" id="tab-instructor">
+          <h3 style="margin-bottom:1.25rem;">Sobre el/la instructor/a</h3>
+          <div class="instructor-card">
+            <div class="instructor-avatar">{{ curso.instructor[0] }}</div>
+            <div class="instructor-info">
+              <h4>{{ curso.instructor }}</h4>
+              <span>{{ curso.instructor_cargo }}</span>
+              <p style="margin-top:.5rem; font-size:.88rem; color:var(--text-muted);">
+                Profesional con amplia experiencia en el ámbito de la inclusión social y el tercer sector en Castilla-La Mancha.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cursos relacionados -->
+        {% if relacionados %}
+          <div class="divider"></div>
+          <h3 style="margin-bottom:1.5rem;">Cursos relacionados</h3>
+          <div style="display:flex; flex-direction:column; gap:.75rem;">
+            {% for rel in relacionados %}
+              {% set icons = {'inclusion': '🤝', 'gestion': '🏛️', 'genero': '⚖️', 'digital': '💻', 'empleo': '💼', 'voluntariado': '🌱'} %}
+              <a href="{{ url_for('curso_detalle', slug=rel.slug) }}"
+                 style="display:flex; gap:1rem; align-items:center; padding:1rem;
+                        border:1px solid var(--border); border-radius:var(--radius-sm);
+                        transition:all var(--transition); background:#fff;"
+                 onmouseover="this.style.borderColor='var(--purple)';this.style.boxShadow='var(--shadow-sm)'"
+                 onmouseout="this.style.borderColor='var(--border)';this.style.boxShadow='none'">
+                <div style="font-size:2rem; width:48px; text-align:center;">
+                  {{ icons.get(rel.categoria, '📚') }}
+                </div>
+                <div style="flex:1;">
+                  <div style="font-weight:600; font-size:.95rem; color:var(--text-dark); margin-bottom:.2rem;">{{ rel.titulo }}</div>
+                  <div style="font-size:.82rem; color:var(--text-muted);">{{ rel.duracion }} · {{ rel.nivel }}</div>
+                </div>
+                <span style="color:var(--purple); font-size:.85rem; font-weight:600;">Ver →</span>
+              </a>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+
+      <!-- Panel sticky derecho -->
+      <div>
+        <div class="detalle-sticky">
+          <div class="precio">{{ curso.precio }}</div>
+
+          {% if inscrito %}
+            <div style="background:var(--bg-light); border-radius:var(--radius-sm); padding:1rem; margin-bottom:1rem; text-align:center;">
+              <div style="font-weight:700; color:var(--text-dark); margin-bottom:.5rem;">Tu progreso</div>
+              <div style="font-size:2rem; font-weight:800; color:{% if progreso == 100 %}var(--success){% else %}var(--purple){% endif %};">
+                {{ progreso }}%
+              </div>
+              <div class="progreso-bar" style="margin:.5rem 0;">
+                <div class="progreso-fill {% if progreso == 100 %}complete{% endif %}" style="width:{{ progreso }}%;"></div>
+              </div>
+              {% if progreso == 100 %}
+                <span style="color:var(--success); font-size:.85rem; font-weight:600;">✅ Curso completado</span>
+              {% else %}
+                <span style="font-size:.82rem; color:var(--text-muted);">Continúa donde lo dejaste</span>
+              {% endif %}
+            </div>
+            <a href="{{ url_for('dashboard') }}" class="btn btn-primary btn-lg">
+              {% if progreso == 100 %}Ver certificado{% else %}Continuar curso{% endif %}
+            </a>
+          {% else %}
+            <form action="{{ url_for('inscribirse', curso_id=curso.id) }}" method="POST">
+              <button type="submit" class="btn btn-primary btn-lg">Inscribirme gratis</button>
+            </form>
+            <a href="{{ url_for('login') }}" class="btn btn-ghost btn-lg" style="justify-content:center;">Ya tengo cuenta</a>
+          {% endif %}
+
+          <ul class="sticky-meta">
+            <li><strong>Duración</strong><span>{{ curso.duracion }}</span></li>
+            <li><strong>Nivel</strong><span>{{ curso.nivel }}</span></li>
+            <li><strong>Modalidad</strong><span>{{ curso.modalidad }}</span></li>
+            <li><strong>Módulos</strong><span>{{ curso.modulos|length }} módulos</span></li>
+            <li><strong>Certificado</strong><span>✅ Sí, incluido</span></li>
+            <li><strong>Precio</strong><span style="color:var(--success); font-weight:700;">Gratuito</span></li>
+          </ul>
+
+          <div style="margin-top:1.25rem; padding-top:1.25rem; border-top:1px solid var(--border);">
+            <p style="font-size:.82rem; text-align:center; color:var(--text-muted);">
+              👥 {{ curso.inscritos }} personas ya inscritas<br>
+              <span style="color:#F59E0B;">★</span> {{ curso.valoracion }}/5 ({{ curso.valoraciones }} opiniones)
+            </p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+{% endblock %}

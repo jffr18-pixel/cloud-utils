@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Mi Área — EAPN CLM Formación{% endblock %}
+
+{% block content %}
+<div style="background:var(--bg-light); min-height:calc(100vh - 70px);">
+  <div class="container">
+    <div class="dashboard-layout">
+
+      <!-- Sidebar -->
+      <aside class="dash-sidebar">
+        <div class="dash-user-info">
+          <div class="dash-avatar">{{ usuario.nombre[0].upper() }}</div>
+          <h3>{{ usuario.nombre }}</h3>
+          <span>Alumno/a activo/a</span>
+        </div>
+        <nav class="dash-nav">
+          <a href="{{ url_for('dashboard') }}" class="active">
+            🏠 Mi panel
+          </a>
+          <a href="{{ url_for('cursos') }}">
+            📚 Explorar cursos
+          </a>
+          <a href="#">
+            📜 Mis certificados
+          </a>
+          <a href="#">
+            ⚙️ Mi perfil
+          </a>
+          <a href="{{ url_for('logout') }}" style="color:#B91C1C; margin-top:1rem;">
+            🚪 Cerrar sesión
+          </a>
+        </nav>
+      </aside>
+
+      <!-- Contenido -->
+      <main class="dash-content">
+        <!-- Bienvenida -->
+        <div class="dash-welcome">
+          <h2>¡Hola, {{ usuario.nombre.split()[0] }}! 👋</h2>
+          <p>Bienvenido/a a tu área de formación. Continúa donde lo dejaste o explora nuevos cursos.</p>
+        </div>
+
+        <!-- Stats rápidas -->
+        <div class="dash-stats-row">
+          <div class="dash-stat-card">
+            <div class="dash-stat-icon purple">📚</div>
+            <div>
+              <strong>{{ mis_cursos|length }}</strong>
+              <span>Cursos inscritos</span>
+            </div>
+          </div>
+          <div class="dash-stat-card">
+            <div class="dash-stat-icon green">✅</div>
+            <div>
+              <strong>{{ mis_cursos | selectattr('id', 'in', usuario.cursos_inscritos) | list | length }}</strong>
+              <span>
+                {% set completados = [] %}
+                {% for c in mis_cursos %}
+                  {% if usuario.progreso.get(c.id, 0) == 100 %}
+                    {% set _ = completados.append(c) %}
+                  {% endif %}
+                {% endfor %}
+                {{ completados|length }} completado{% if completados|length != 1 %}s{% endif %}
+              </span>
+            </div>
+          </div>
+          <div class="dash-stat-card">
+            <div class="dash-stat-icon orange">🎯</div>
+            <div>
+              <strong>
+                {% if mis_cursos %}
+                  {{ (usuario.progreso.values() | sum / mis_cursos|length) | round | int }}%
+                {% else %}0%{% endif %}
+              </strong>
+              <span>Progreso medio</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mis cursos -->
+        <div style="background:#fff; border-radius:var(--radius); border:1px solid var(--border); overflow:hidden;">
+          <div style="padding:1.25rem 1.5rem; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between;">
+            <h3 style="font-size:1.1rem;">Mis cursos</h3>
+            <a href="{{ url_for('cursos') }}" class="btn btn-outline btn-sm">Explorar más</a>
+          </div>
+
+          {% if mis_cursos %}
+            <div style="padding:1rem; display:flex; flex-direction:column; gap:.75rem;">
+              {% for curso in mis_cursos %}
+                {% set icons = {'inclusion': '🤝', 'gestion': '🏛️', 'genero': '⚖️', 'digital': '💻', 'empleo': '💼', 'voluntariado': '🌱'} %}
+                {% set bgs = ['img-bg-1','img-bg-2','img-bg-3','img-bg-4','img-bg-5','img-bg-6'] %}
+                {% set prog = usuario.progreso.get(curso.id, 0) %}
+                <div class="mi-curso-card">
+                  <div class="mi-curso-thumb {{ bgs[loop.index0 % 6] }}">
+                    {{ icons.get(curso.categoria, '📚') }}
+                  </div>
+                  <div class="mi-curso-info" style="flex:1;">
+                    <h4>{{ curso.titulo }}</h4>
+                    <span>{{ curso.duracion }} · {{ curso.nivel }}</span>
+                    <div class="progreso-bar">
+                      <div class="progreso-fill {% if prog == 100 %}complete{% endif %}" style="width:{{ prog }}%;"></div>
+                    </div>
+                    <div class="progreso-label">{{ prog }}% completado</div>
+                  </div>
+                  <div style="display:flex; flex-direction:column; gap:.5rem; align-items:flex-end;">
+                    <a href="{{ url_for('curso_detalle', slug=curso.slug) }}" class="btn btn-primary btn-sm">
+                      {% if prog == 100 %}Ver{% else %}Continuar{% endif %}
+                    </a>
+                    {% if prog == 100 %}
+                      <span style="font-size:.78rem; color:var(--success); font-weight:600;">✅ Completado</span>
+                    {% else %}
+                      <span style="font-size:.78rem; color:var(--text-muted);">{{ prog }}% hecho</span>
+                    {% endif %}
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="empty-state" style="margin:1rem;">
+              <div class="icon">📚</div>
+              <h3>Aún no tienes cursos</h3>
+              <p>Explora nuestro catálogo y apúntate a tu primer curso gratuito.</p>
+              <a href="{{ url_for('cursos') }}" class="btn btn-primary mt-3">Ver cursos disponibles</a>
+            </div>
+          {% endif %}
+        </div>
+
+        <!-- Recomendados -->
+        <div style="margin-top:2rem; background:#fff; border-radius:var(--radius); border:1px solid var(--border); overflow:hidden;">
+          <div style="padding:1.25rem 1.5rem; border-bottom:1px solid var(--border);">
+            <h3 style="font-size:1.1rem;">Cursos recomendados para ti</h3>
+          </div>
+          <div style="padding:1rem; display:grid; grid-template-columns:repeat(auto-fill, minmax(220px,1fr)); gap:1rem;">
+            {% set recomendados_ids = usuario.cursos_inscritos %}
+            {% for curso in [] %}  {# placeholder — shown in template only #}
+            {% endfor %}
+            <div style="padding:1.25rem; background:var(--bg-light); border-radius:var(--radius-sm); border:1px solid var(--border); text-align:center;">
+              <div style="font-size:2rem; margin-bottom:.75rem;">🌱</div>
+              <div style="font-weight:600; font-size:.9rem; color:var(--text-dark); margin-bottom:.3rem;">Voluntariado y Transformación Social</div>
+              <div style="font-size:.82rem; color:var(--text-muted); margin-bottom:.75rem;">20 horas · Básico</div>
+              <a href="{{ url_for('curso_detalle', slug='voluntariado-transformacion-social') }}" class="btn btn-outline btn-sm w-full" style="justify-content:center;">Ver curso</a>
+            </div>
+            <div style="padding:1.25rem; background:var(--bg-light); border-radius:var(--radius-sm); border:1px solid var(--border); text-align:center;">
+              <div style="font-size:2rem; margin-bottom:.75rem;">💻</div>
+              <div style="font-weight:600; font-size:.9rem; color:var(--text-dark); margin-bottom:.3rem;">Habilidades Digitales para la Empleabilidad</div>
+              <div style="font-size:.82rem; color:var(--text-muted); margin-bottom:.75rem;">25 horas · Básico</div>
+              <a href="{{ url_for('curso_detalle', slug='habilidades-digitales-empleo') }}" class="btn btn-outline btn-sm w-full" style="justify-content:center;">Ver curso</a>
+            </div>
+          </div>
+        </div>
+
+      </main>
+    </div>
+  </div>
+</div>
+{% endblock %}

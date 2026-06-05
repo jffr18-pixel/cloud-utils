@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}Catálogo de Cursos — EAPN CLM Formación{% endblock %}
+
+{% block content %}
+
+<!-- Page Header -->
+<div style="background: var(--bg-light); border-bottom: 1px solid var(--border); padding: 2.5rem 0;">
+  <div class="container">
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
+      <div>
+        <h1 style="font-size:1.75rem; margin-bottom:.25rem;">Catálogo de Formación</h1>
+        <p style="margin:0;">Explora todos nuestros cursos gratuitos especializados en inclusión social</p>
+      </div>
+      <form style="display:flex; gap:.75rem;" action="{{ url_for('cursos') }}" method="GET">
+        <input type="text" name="q" value="{{ filtros.q }}"
+               placeholder="Buscar cursos..."
+               style="padding:.65rem 1rem; border:1.5px solid var(--border); border-radius:var(--radius-sm);
+                      font-size:.95rem; min-width:260px; background:#fff; color:var(--text-dark);">
+        <button type="submit" class="btn btn-primary">Buscar</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Layout cursos -->
+<section class="section-sm">
+  <div class="container">
+    <div class="cursos-page-layout">
+
+      <!-- Panel de filtros -->
+      <aside class="filtros-panel">
+        <h3>🔍 Filtrar cursos</h3>
+        <form action="{{ url_for('cursos') }}" method="GET">
+          {% if filtros.q %}<input type="hidden" name="q" value="{{ filtros.q }}">{% endif %}
+
+          <div class="filtro-group">
+            <label>Área temática</label>
+            <select name="categoria" onchange="this.form.submit()">
+              <option value="">Todas las áreas</option>
+              {% for cat in categorias %}
+                <option value="{{ cat.id }}" {% if filtros.categoria == cat.id %}selected{% endif %}>
+                  {{ cat.icono }} {{ cat.nombre }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="filtro-group">
+            <label>Nivel</label>
+            <select name="nivel" onchange="this.form.submit()">
+              <option value="">Todos los niveles</option>
+              <option value="Básico"     {% if filtros.nivel == 'Básico' %}selected{% endif %}>Básico</option>
+              <option value="Intermedio" {% if filtros.nivel == 'Intermedio' %}selected{% endif %}>Intermedio</option>
+              <option value="Avanzado"   {% if filtros.nivel == 'Avanzado' %}selected{% endif %}>Avanzado</option>
+            </select>
+          </div>
+
+          <div class="filtro-group">
+            <label>Modalidad</label>
+            <select name="modalidad" onchange="this.form.submit()">
+              <option value="">Todas las modalidades</option>
+              <option value="Online"         {% if filtros.modalidad == 'Online' %}selected{% endif %}>🌐 Online</option>
+              <option value="Presencial"     {% if filtros.modalidad == 'Presencial' %}selected{% endif %}>🏫 Presencial</option>
+              <option value="Semipresencial" {% if filtros.modalidad == 'Semipresencial' %}selected{% endif %}>🔀 Semipresencial</option>
+            </select>
+          </div>
+
+          {% if filtros.categoria or filtros.nivel or filtros.modalidad or filtros.q %}
+            <a href="{{ url_for('cursos') }}" class="btn btn-ghost w-full" style="justify-content:center; margin-top:.5rem;">
+              ✕ Limpiar filtros
+            </a>
+          {% endif %}
+        </form>
+
+        <!-- Categorías rápidas -->
+        <div class="divider"></div>
+        <p style="font-size:.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:1rem;">Categorías populares</p>
+        {% for cat in categorias %}
+          <a href="{{ url_for('cursos') }}?categoria={{ cat.id }}"
+             style="display:flex; align-items:center; justify-content:space-between; padding:.45rem .5rem;
+                    border-radius:var(--radius-sm); font-size:.88rem; color:var(--text-muted);
+                    transition:all var(--transition);"
+             onmouseover="this.style.background='var(--bg-light)';this.style.color='var(--purple)'"
+             onmouseout="this.style.background='';this.style.color='var(--text-muted)'">
+            <span>{{ cat.icono }} {{ cat.nombre }}</span>
+            <span style="background:var(--bg-light); border-radius:999px; padding:.15rem .5rem; font-size:.75rem; font-weight:600;">{{ cat.total }}</span>
+          </a>
+        {% endfor %}
+      </aside>
+
+      <!-- Resultados -->
+      <div>
+        <div class="resultados-header">
+          <div>
+            <h2>
+              {% if filtros.q %}Resultados para "{{ filtros.q }}"
+              {% elif filtros.categoria %}
+                {% for cat in categorias if cat.id == filtros.categoria %}{{ cat.nombre }}{% endfor %}
+              {% else %}Todos los cursos{% endif %}
+            </h2>
+            <span>{{ cursos|length }} curso{% if cursos|length != 1 %}s{% endif %} encontrado{% if cursos|length != 1 %}s{% endif %}</span>
+          </div>
+          <div style="display:flex; gap:.5rem; flex-wrap:wrap;">
+            {% if filtros.nivel %}
+              <span class="chip">{{ filtros.nivel }}</span>
+            {% endif %}
+            {% if filtros.modalidad %}
+              <span class="chip">{{ filtros.modalidad }}</span>
+            {% endif %}
+          </div>
+        </div>
+
+        {% if cursos %}
+          <div class="cursos-grid">
+            {% for curso in cursos %}
+              {% set icons = {'inclusion': '🤝', 'gestion': '🏛️', 'genero': '⚖️', 'digital': '💻', 'empleo': '💼', 'voluntariado': '🌱'} %}
+              {% set bgs = ['img-bg-1','img-bg-2','img-bg-3','img-bg-4','img-bg-5','img-bg-6'] %}
+              <article class="curso-card">
+                <div class="curso-card-img">
+                  <div class="curso-card-img-bg {{ bgs[loop.index0 % 6] }}">
+                    {{ icons.get(curso.categoria, '📚') }}
+                  </div>
+                  <div class="curso-badges">
+                    <span class="badge badge-gratuito">{{ curso.precio }}</span>
+                    {% if curso.nuevo %}<span class="badge badge-nuevo">Nuevo</span>{% endif %}
+                    <span class="badge badge-nivel">{{ curso.nivel }}</span>
+                  </div>
+                </div>
+                <div class="curso-card-body">
+                  <div class="curso-cat-label">
+                    {% for cat in categorias if cat.id == curso.categoria %}{{ cat.nombre }}{% endfor %}
+                  </div>
+                  <h3>{{ curso.titulo }}</h3>
+                  <p>{{ curso.descripcion }}</p>
+                  <div class="curso-meta">
+                    <span>⏱ {{ curso.duracion }}</span>
+                    <span>💻 {{ curso.modalidad }}</span>
+                    <span>👥 {{ curso.inscritos }} inscritos</span>
+                  </div>
+                  <div class="curso-footer">
+                    <div class="curso-rating">
+                      <span class="stars">★</span>
+                      <strong>{{ curso.valoracion }}</strong>
+                      <span class="text-muted">({{ curso.valoraciones }})</span>
+                    </div>
+                    <a href="{{ url_for('curso_detalle', slug=curso.slug) }}" class="btn btn-primary btn-sm">Ver curso</a>
+                  </div>
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty-state">
+            <div class="icon">🔍</div>
+            <h3>No se encontraron cursos</h3>
+            <p>Prueba con otros filtros o busca por otro término.</p>
+            <a href="{{ url_for('cursos') }}" class="btn btn-primary mt-3">Ver todos los cursos</a>
+          </div>
+        {% endif %}
+      </div>
+
+    </div>
+  </div>
+</section>
+
+{% endblock %}

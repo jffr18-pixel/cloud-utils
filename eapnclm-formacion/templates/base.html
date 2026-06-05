@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}EAPN CLM Formación{% endblock %}</title>
+  <meta name="description" content="{% block meta_desc %}Plataforma de formación de la Red Europea de Lucha contra la Pobreza y la Exclusión Social en Castilla-La Mancha{% endblock %}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  {% block extra_css %}{% endblock %}
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar">
+  <div class="container">
+    <div class="nav-inner">
+      <a href="{{ url_for('index') }}" class="nav-logo">
+        <div class="logo-icon">E</div>
+        <div>
+          EAPN CLM
+          <span class="logo-sub">Plataforma de Formación</span>
+        </div>
+      </a>
+
+      <ul class="nav-links">
+        <li><a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">Inicio</a></li>
+        <li><a href="{{ url_for('cursos') }}" class="{% if request.endpoint == 'cursos' %}active{% endif %}">Cursos</a></li>
+        <li><a href="{{ url_for('cursos') }}?categoria=inclusion">Inclusión Social</a></li>
+        <li><a href="{{ url_for('cursos') }}?categoria=empleo">Empleo</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <button class="nav-search-trigger" title="Buscar cursos" aria-label="Buscar">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+        </button>
+
+        {% if usuario %}
+          <a href="{{ url_for('dashboard') }}" class="nav-avatar" title="{{ usuario.nombre }}">
+            {{ usuario.nombre[0].upper() }}
+          </a>
+          <a href="{{ url_for('logout') }}" class="btn btn-ghost btn-sm">Salir</a>
+        {% else %}
+          <a href="{{ url_for('login') }}" class="btn btn-outline btn-sm">Entrar</a>
+          <a href="{{ url_for('registro') }}" class="btn btn-primary btn-sm">Registrarse</a>
+        {% endif %}
+
+        <button class="nav-menu-btn" aria-label="Menú">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- Alertas Flash -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="container alerts-wrap">
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">
+          {% if category == 'success' %}✅{% elif category == 'danger' %}❌{% elif category == 'warning' %}⚠️{% else %}ℹ️{% endif %}
+          {{ message }}
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+<!-- Contenido principal -->
+{% block content %}{% endblock %}
+
+<!-- Search Overlay -->
+<div class="search-overlay" id="searchOverlay" role="dialog" aria-label="Buscar cursos">
+  <div class="search-modal">
+    <div class="search-input-wrap">
+      <svg width="20" height="20" fill="none" stroke="var(--purple)" stroke-width="2" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+      </svg>
+      <input type="text" id="searchInput" placeholder="Buscar cursos, categorías..." autocomplete="off">
+      <button id="searchClose" style="color:var(--text-muted);font-size:1.2rem;" aria-label="Cerrar búsqueda">✕</button>
+    </div>
+    <div class="search-results" id="searchResultsList"></div>
+  </div>
+</div>
+
+<!-- Footer -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <div class="logo">EAPN CLM Formación</div>
+        <p>Red Europea de Lucha contra la Pobreza y la Exclusión Social en Castilla-La Mancha. Formación gratuita y de calidad para profesionales del tercer sector.</p>
+      </div>
+      <div class="footer-col">
+        <h5>Formación</h5>
+        <ul>
+          <li><a href="{{ url_for('cursos') }}">Todos los cursos</a></li>
+          <li><a href="{{ url_for('cursos') }}?categoria=inclusion">Inclusión Social</a></li>
+          <li><a href="{{ url_for('cursos') }}?categoria=empleo">Empleo</a></li>
+          <li><a href="{{ url_for('cursos') }}?categoria=genero">Igualdad y Género</a></li>
+          <li><a href="{{ url_for('cursos') }}?modalidad=Online">Cursos Online</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h5>EAPN CLM</h5>
+        <ul>
+          <li><a href="#">Quiénes somos</a></li>
+          <li><a href="#">Entidades miembro</a></li>
+          <li><a href="#">Proyectos</a></li>
+          <li><a href="#">Publicaciones</a></li>
+          <li><a href="#">Contacto</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h5>Mi cuenta</h5>
+        <ul>
+          {% if usuario %}
+            <li><a href="{{ url_for('dashboard') }}">Mi área</a></li>
+            <li><a href="{{ url_for('logout') }}">Cerrar sesión</a></li>
+          {% else %}
+            <li><a href="{{ url_for('login') }}">Iniciar sesión</a></li>
+            <li><a href="{{ url_for('registro') }}">Registrarse</a></li>
+          {% endif %}
+          <li><a href="#">Ayuda</a></li>
+          <li><a href="#">Política de privacidad</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>© 2024 EAPN Castilla-La Mancha · Todos los derechos reservados</p>
+      <div class="footer-social">
+        <a href="#" class="social-btn" aria-label="Twitter/X">𝕏</a>
+        <a href="#" class="social-btn" aria-label="Facebook">f</a>
+        <a href="#" class="social-btn" aria-label="LinkedIn">in</a>
+        <a href="#" class="social-btn" aria-label="YouTube">▶</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>
