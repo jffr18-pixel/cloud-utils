@@ -95,29 +95,68 @@ def _parse_certutil_output(output: str, store_name: str) -> List[Dict[str, Any]]
     return certs
 
 
-def delete_by_thumbprint(store_name: str, thumbprint: str) -> bool:
-    """Delete a certificate from the Windows store by thumbprint. Requires Administrator."""
+def is_admin() -> bool:
+    """True si el proceso tiene privilegios de administrador (Windows)."""
     if sys.platform != 'win32':
-        logger.error("La eliminación solo está disponible en Windows.")
+        return False
+    try:
+        import ctypes
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
         return False
 
-    # certutil expects thumbprint uppercase without spaces
-    clean = thumbprint.replace(' ', '').upper()
-    try:
-        subprocess.run(
-            ['certutil', '-delstore', store_name, clean],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        logger.info(f"Certificado {clean} eliminado del almacén {store_name}.")
-        return True
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Error eliminando certificado {clean}: {e.stderr.strip()}")
-        return False
-    except FileNotFoundError:
-        logger.error("certutil no encontrado.")
-        return False
+
+def delete_by_thumbprint(store_name: str, thumbprint: str) -> bool:
+    """Borra un certificado del almacén por huella. Requiere administrador para MY.
+
+    Usa el almacén de usuario (-user) que no requiere elevación; si falla,
+    reintenta en el almacén de máquina (que sí requiere administrador).
+    """
+    ok, _ = delete_by_thumbprint_ex(store_name, thumbprint)
+    return ok
+
+
+def delete_by_thumbprint_ex(store_name: str, thumbprint: str) -> tuple:
+    """Como delete_by_thumbprint pero devuelve (ok: bool, mensaje_error: str)."""
+    if sys.platform != 'win32':
+        return False, "La eliminación solo está disponible en Windows."
+
+    # certutil espera la huella en mayúsculas y sin espacios
+    clean = thumbprint.replace(' ', '').replace(':', '').upper()
+    if not clean:
+        return False, "El certificado no tiene huella digital."
+
+    # Primero el almacén del usuario (-user): no necesita administrador.
+    # Si no está ahí, el almacén de máquina (necesita administrador).
+    attempts = [
+        ['certutil', '-user', '-delstore', store_name, clean],
+        ['certutil', '-delstore', store_name, clean],
+    ]
+    last_err = ''
+    for cmd in attempts:
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True,
+                                    encoding='cp1252', errors='replace')
+            if result.returncode == 0:
+                logger.info("Certificado %s eliminado de %s.", clean, store_name)
+                return True, ''
+            last_err = (result.stderr or result.stdout or '').strip()
+        except FileNotFoundError:
+            return False, "certutil no encontrado en el sistema."
+        except Exception as e:
+            last_err = str(e)
+
+    # Mensaje claro según la causa más probable
+    low = last_err.lower()
+    if 'denied' in low or 'denegado' in low or 'access' in low or '0x80070005' in low:
+        if not is_admin():
+            return False, ("Permiso denegado. Abre la app como administrador "
+                           "(acepta el aviso de Windows al iniciarla).")
+        return False, "Permiso denegado por Windows: " + last_err
+    if 'not found' in low or 'no se encontr' in low or '0x80092004' in low:
+        return False, ("No se encontró el certificado en el almacén. "
+                       "Quizá ya se eliminó o está en otro almacén.")
+    return False, (last_err or "certutil no pudo eliminar el certificado.")
 
 
 def _to_dict(cert: x509.Certificate, store_name: str) -> Dict[str, Any]:
@@ -137,8 +176,14 @@ def _to_dict(cert: x509.Certificate, store_name: str) -> Dict[str, Any]:
     except AttributeError:
         not_before = cert.not_valid_before.replace(tzinfo=timezone.utc)
 
-    algo = cert.signature_hash_algorithm
-    thumbprint = cert.fingerprint(algo).hex() if algo else ''
+    # La "huella digital" de Windows es SIEMPRE SHA-1: es la que usa
+    # certutil -delstore para identificar el certificado. Usar el algoritmo
+    # de firma (SHA-256) daría una huella que certutil no reconoce.
+    from cryptography.hazmat.primitives import hashes
+    try:
+        thumbprint = cert.fingerprint(hashes.SHA1()).hex()
+    except Exception:
+        thumbprint = ''
 
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore', category=CryptographyDeprecationWarning)

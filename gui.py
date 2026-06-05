@@ -959,7 +959,7 @@ class CleanPage(ctk.CTkFrame):
         self.cfg      = cfg
         self.app      = app
         self._expired = []
-        self._checks  = {}
+        self._checks  = []
         page_header(self, '🗑', 'Limpiar', 'Elimina certificados caducados del almacén de Windows')
         self._build()
 
@@ -1006,7 +1006,7 @@ class CleanPage(ctk.CTkFrame):
 
     def _show_expired(self, expired: list):
         self._expired = expired
-        self._checks  = {}
+        self._checks  = []
         for w in self._scroll.winfo_children():
             w.destroy()
 
@@ -1028,7 +1028,7 @@ class CleanPage(ctk.CTkFrame):
                               border_width=1, border_color='#f5c6cb')
             r.pack(fill='x', pady=5, padx=4)
             var = ctk.BooleanVar(value=True)
-            self._checks[c.get('thumbprint', '')] = (var, c)
+            self._checks.append((var, c))
 
             ctk.CTkCheckBox(r, text='', variable=var, width=24,
                              checkmark_color=PRIMARY, fg_color=PRIMARY,
@@ -1046,26 +1046,49 @@ class CleanPage(ctk.CTkFrame):
                          font=F(size=11, weight='bold')).pack(side='right', padx=16)
 
     def _delete(self):
-        sel = [(v, c) for v, c in self._checks.values() if v.get()]
+        sel = [(v, c) for v, c in self._checks if v.get()]
         if not sel:
             messagebox.showwarning('Nada seleccionado', 'Marca al menos un certificado.')
             return
+
+        # Aviso temprano si no hay permisos de administrador
+        if not cert_scanner.is_admin():
+            if not messagebox.askyesno(
+                'Sin permisos de administrador',
+                'La app no se está ejecutando como administrador, así que es '
+                'posible que Windows no permita borrar los certificados.\n\n'
+                'Recomendado: cierra la app y vuelve a abrirla aceptando el aviso '
+                'de Windows (UAC).\n\n¿Intentarlo de todos modos?',
+                icon='warning',
+            ):
+                return
+
         if not messagebox.askyesno(
             'Confirmar eliminación',
             f'¿Eliminar {len(sel)} certificado(s) caducado(s)?\n\nEsta acción no se puede deshacer.',
             icon='warning',
         ):
             return
-        ok = err = 0
+
+        ok = 0
+        errors = []
         for v, c in sel:
-            if cert_scanner.delete_by_thumbprint('MY', c.get('thumbprint', '')):
+            store = c.get('store', 'MY') or 'MY'
+            success, err = cert_scanner.delete_by_thumbprint_ex(store, c.get('thumbprint', ''))
+            if success:
                 ok += 1
             else:
-                err += 1
-        msg = f'✓  Eliminados: {ok}'
-        if err:
-            msg += f'\n✗  Errores: {err}\n\nSi hay errores, abre PowerShell como Administrador.'
-        messagebox.showinfo('Resultado', msg)
+                errors.append(f"• {c.get('subject','(sin nombre)')[:40]}: {err}")
+
+        msg = f'✓  Eliminados: {ok} de {len(sel)}'
+        if errors:
+            msg += '\n\n✗  No se pudieron eliminar:\n' + '\n'.join(errors[:6])
+            if len(errors) > 6:
+                msg += f'\n… y {len(errors) - 6} más.'
+            messagebox.showwarning('Resultado', msg)
+        else:
+            messagebox.showinfo('Resultado', msg)
+
         if self.app:
             self.app.set_status(f'Limpiar: {ok} certificados eliminados')
             self.app.invalidate_certs()
