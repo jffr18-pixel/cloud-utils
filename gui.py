@@ -1042,10 +1042,12 @@ class ServiciosPage(ctk.CTkFrame):
         self._build()
 
     def _build(self):
-        from cert_manager import servicios
+        from cert_manager import servicios, edge_policy
 
         dest_base = Path(self.cfg['general']['download_folder']) / 'servicios'
         history   = servicios.load_history()
+        # Estado de la selección automática (se calcula una sola vez)
+        self._autoselect_on = edge_policy.is_enabled()
 
         # Aviso sobre el modo semi-automático
         info = ctk.CTkFrame(self, fg_color=PRIMARY_LT, corner_radius=10,
@@ -1176,7 +1178,23 @@ class ServiciosPage(ctk.CTkFrame):
 
         ctk.CTkLabel(c, text=svc['description'],
                      font=ctk.CTkFont(size=12), text_color=TEXT_MUTED,
-                     anchor='w', wraplength=680).pack(anchor='w', padx=16, pady=(8, 6))
+                     anchor='w', wraplength=680).pack(anchor='w', padx=16, pady=(8, 4))
+
+        # ── Indicador de selección automática ───────────────────────────────────
+        if getattr(self, '_autoselect_on', False):
+            pill = ctk.CTkFrame(c, fg_color=SUCCESS_LT, corner_radius=8)
+            pill.pack(anchor='w', padx=16, pady=(0, 4))
+            ctk.CTkLabel(pill,
+                         text='⚡  Descarga sin cuadro de certificado — totalmente automática',
+                         font=ctk.CTkFont(size=10, weight='bold'), text_color=SUCCESS,
+                         padx=10, pady=4).pack()
+        else:
+            pill = ctk.CTkFrame(c, fg_color='#fff8e1', corner_radius=8)
+            pill.pack(anchor='w', padx=16, pady=(0, 4))
+            ctk.CTkLabel(pill,
+                         text='🔐  Windows pedirá elegir el certificado · actívala arriba en "⚡"',
+                         font=ctk.CTkFont(size=10), text_color='#7b3f00',
+                         padx=10, pady=4).pack()
 
         # ── Barra de estado ────────────────────────────────────────────────────
         status_lbl = ctk.CTkLabel(c, text='', font=ctk.CTkFont(size=11),
