@@ -145,10 +145,10 @@ def tbl_header(parent, cols: list):
 
 
 def action_btn(parent, text: str, color: str, cmd, width=160, **kw) -> ctk.CTkButton:
+    kw.setdefault('hover_color', _darken(color))
     return ctk.CTkButton(parent, text=text, width=width, height=36,
-                         fg_color=color, hover_color=_darken(color),
-                         font=ctk.CTkFont(size=12), corner_radius=8,
-                         command=cmd, **kw)
+                         fg_color=color, font=ctk.CTkFont(size=12),
+                         corner_radius=8, command=cmd, **kw)
 
 
 def _darken(hex_color: str, factor: float = 0.85) -> str:
@@ -169,8 +169,37 @@ class App(ctk.CTk):
         self.cfg          = cfg_module.load()
         self._page        = None
         self._page_name   = None
+        # Cache de certificados: se carga una vez en background y se reutiliza
+        self._cert_cache  = None
+        self._cert_loading = False
         self._build()
         self._show('dashboard')
+        self._preload_certs()
+
+    def _preload_certs(self):
+        """Carga certificados en segundo plano para que las páginas sean instantáneas."""
+        if self._cert_loading:
+            return
+        self._cert_loading = True
+        def load():
+            stores     = [s.strip() for s in self.cfg['certificates']['stores'].split(',')]
+            alert_days = int(self.cfg['general']['alert_days'])
+            certs      = cert_scanner.scan(stores)
+            if certs:
+                certs = cert_validator.validate(certs, alert_days)
+            self._cert_cache   = certs
+            self._cert_loading = False
+            self.after(0, lambda: self.set_status(f'{len(certs)} certificados cargados'))
+        threading.Thread(target=load, daemon=True).start()
+
+    def get_certs(self):
+        """Devuelve la caché o lista vacía si todavía está cargando."""
+        return self._cert_cache or []
+
+    def invalidate_certs(self):
+        """Fuerza recarga de la caché de certificados."""
+        self._cert_cache = None
+        self._preload_certs()
 
     def _build(self):
         # ── Barra lateral ──────────────────────────────────────────────────
@@ -283,15 +312,18 @@ class DashboardPage(ctk.CTkFrame):
         super().__init__(parent, fg_color=BG, corner_radius=0)
         self.cfg = cfg
         self.app = app
-        page_header(self, '🏠', 'Inicio', 'Resumen del estado de tus certificados y DEHU')
+        hdr = page_header(self, '🏠', 'Inicio', 'Resumen del estado de tus certificados y DEHU')
+        action_btn(hdr, '🔄  Actualizar', PRIMARY_DK, self._refresh, width=130).pack(
+            side='right', padx=16, pady=14)
         self._build()
 
+    def _refresh(self):
+        if self.app:
+            self.app.invalidate_certs()
+            self.app._show('dashboard')
+
     def _build(self):
-        stores     = [s.strip() for s in self.cfg['certificates']['stores'].split(',')]
-        alert_days = int(self.cfg['general']['alert_days'])
-        certs      = cert_scanner.scan(stores)
-        if certs:
-            certs = cert_validator.validate(certs, alert_days)
+        certs = self.app.get_certs() if self.app else []
 
         total    = len(certs)
         valid    = sum(1 for c in certs if c.get('status') == 'valid')
@@ -353,12 +385,9 @@ class CertificatesPage(ctk.CTkFrame):
     def __init__(self, parent, cfg, app=None):
         super().__init__(parent, fg_color=BG, corner_radius=0)
         self.cfg = cfg
+        self.app = app
         page_header(self, '📋', 'Certificados', 'Todos los certificados instalados en Windows')
-        stores     = [s.strip() for s in cfg['certificates']['stores'].split(',')]
-        alert_days = int(cfg['general']['alert_days'])
-        self._all  = cert_scanner.scan(stores)
-        if self._all:
-            self._all = cert_validator.validate(self._all, alert_days)
+        self._all = app.get_certs() if app else []
         self._build()
 
     def _build(self):
@@ -700,10 +729,25 @@ class CleanPage(ctk.CTkFrame):
                      text_color=TEXT_MUTED, font=ctk.CTkFont(size=13)).pack(pady=40)
 
     def _scan(self):
-        certs = cert_scanner.scan(['MY'])
-        if certs:
-            certs = cert_validator.validate(certs)
-        self._expired = cert_validator.filter_expired(certs)
+        # Escanea en background para no bloquear la UI
+        self._info.configure(text='Buscando...', text_color=TEXT_MUTED)
+        self._del_btn.configure(state='disabled')
+        for w in self._scroll.winfo_children():
+            w.destroy()
+        ctk.CTkLabel(self._scroll, text='⏳  Escaneando almacén de certificados...',
+                     text_color=TEXT_MUTED, font=ctk.CTkFont(size=13)).pack(pady=40)
+
+        def do_scan():
+            certs = cert_scanner.scan(['MY'])
+            if certs:
+                certs = cert_validator.validate(certs)
+            expired = cert_validator.filter_expired(certs)
+            self.after(0, lambda: self._show_expired(expired))
+
+        threading.Thread(target=do_scan, daemon=True).start()
+
+    def _show_expired(self, expired: list):
+        self._expired = expired
         self._checks  = {}
         for w in self._scroll.winfo_children():
             w.destroy()
@@ -766,14 +810,15 @@ class CleanPage(ctk.CTkFrame):
         messagebox.showinfo('Resultado', msg)
         if self.app:
             self.app.set_status(f'Limpiar: {ok} certificados eliminados')
+            self.app.invalidate_certs()
         self._scan()
 
 
 class ReportPage(ctk.CTkFrame):
     def __init__(self, parent, cfg, app=None):
         super().__init__(parent, fg_color=BG, corner_radius=0)
-        self.cfg = cfg
-        self.app = app
+        self.cfg  = cfg
+        self.app  = app
         page_header(self, '📊', 'Informe', 'Genera informes de tus certificados en distintos formatos')
         self._build()
 
@@ -810,12 +855,8 @@ class ReportPage(ctk.CTkFrame):
         self._log.configure(state='disabled')
 
     def _gen(self, fmt: str):
-        stores     = [s.strip() for s in self.cfg['certificates']['stores'].split(',')]
-        alert_days = int(self.cfg['general']['alert_days'])
-        folder     = Path(self.cfg['general']['report_folder'])
-        certs      = cert_scanner.scan(stores)
-        if certs:
-            certs = cert_validator.validate(certs, alert_days)
+        folder = Path(self.cfg['general']['report_folder'])
+        certs  = self.app.get_certs() if self.app else []
         try:
             if fmt == 'html':
                 path = reporter.generate_html(certs, folder / 'informe_certificados.html')
