@@ -22,6 +22,10 @@ _DEFAULTS = {
     },
     'certificates': {
         'stores': 'MY,CA,ROOT',
+        # Almacenes que muestra la interfaz gráfica. Por defecto solo MY
+        # (certificados personales) para que el arranque sea instantáneo;
+        # CA/ROOT tienen cientos de CAs del sistema y ralentizan el escaneo.
+        'gui_stores': 'MY',
         'known_issuers': 'FNMT-RCM,AC DNIE,ACCV,CAMERFIRMA,IZENPE,ANF AC,CATCERT',
     },
 }

@@ -69,6 +69,23 @@ ctk.set_appearance_mode('light')
 ctk.set_default_color_theme('blue')
 
 
+# ── Caché de fuentes ─────────────────────────────────────────────────────────
+# CustomTkinter crea un objeto CTkFont nuevo por cada widget y los rastrea todos
+# para reescalado DPI. Reutilizar instancias reduce drásticamente ese coste y
+# acelera el renderizado y el redimensionado de ventana.
+_CTkFont    = ctk.CTkFont
+_FONT_CACHE = {}
+
+
+def F(size: int = 13, weight: str = 'normal', **kw):
+    key = (size, weight, tuple(sorted(kw.items())))
+    f = _FONT_CACHE.get(key)
+    if f is None:
+        f = _CTkFont(size=size, weight=weight, **kw)
+        _FONT_CACHE[key] = f
+    return f
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _load_pfx_info(pfx_path: str, password: str) -> dict:
@@ -125,15 +142,15 @@ def page_header(parent, icon: str, title: str, subtitle: str = '') -> ctk.CTkFra
     f.pack(fill='x', padx=20, pady=(20, 10))
     inner = ctk.CTkFrame(f, fg_color='transparent')
     inner.pack(fill='x', padx=20, pady=14)
-    ctk.CTkLabel(inner, text=icon, font=ctk.CTkFont(size=28)).pack(side='left', padx=(0, 10))
+    ctk.CTkLabel(inner, text=icon, font=F(size=28)).pack(side='left', padx=(0, 10))
     txt = ctk.CTkFrame(inner, fg_color='transparent')
     txt.pack(side='left', fill='x')
     ctk.CTkLabel(txt, text=title,
-                 font=ctk.CTkFont(size=19, weight='bold'), text_color=PRIMARY,
+                 font=F(size=19, weight='bold'), text_color=PRIMARY,
                  anchor='w').pack(anchor='w')
     if subtitle:
         ctk.CTkLabel(txt, text=subtitle,
-                     font=ctk.CTkFont(size=12), text_color=TEXT_MUTED,
+                     font=F(size=12), text_color=TEXT_MUTED,
                      anchor='w').pack(anchor='w')
     return f
 
@@ -141,9 +158,9 @@ def page_header(parent, icon: str, title: str, subtitle: str = '') -> ctk.CTkFra
 def stat_card(parent, icon: str, title: str, value: str, color: str, text_color: str = '#ffffff'):
     f = ctk.CTkFrame(parent, fg_color=color, corner_radius=12)
     f.pack(side='left', expand=True, fill='both', padx=5, pady=5)
-    ctk.CTkLabel(f, text=icon,  font=ctk.CTkFont(size=22), text_color=text_color).pack(pady=(14, 0))
-    ctk.CTkLabel(f, text=value, font=ctk.CTkFont(size=30, weight='bold'), text_color=text_color).pack(pady=2)
-    ctk.CTkLabel(f, text=title, font=ctk.CTkFont(size=11), text_color=text_color).pack(pady=(0, 14))
+    ctk.CTkLabel(f, text=icon,  font=F(size=22), text_color=text_color).pack(pady=(14, 0))
+    ctk.CTkLabel(f, text=value, font=F(size=30, weight='bold'), text_color=text_color).pack(pady=2)
+    ctk.CTkLabel(f, text=title, font=F(size=11), text_color=text_color).pack(pady=(0, 14))
 
 
 def badge(parent, text: str, status: str) -> ctk.CTkLabel:
@@ -154,7 +171,7 @@ def badge(parent, text: str, status: str) -> ctk.CTkLabel:
     return ctk.CTkLabel(
         parent, text=f'{icon}  {text}',
         fg_color=color, text_color='#ffffff',
-        corner_radius=8, font=ctk.CTkFont(size=11), padx=8, pady=3,
+        corner_radius=8, font=F(size=11), padx=8, pady=3,
     )
 
 
@@ -183,7 +200,7 @@ def divider(parent):
 
 def section_label(parent, text: str):
     ctk.CTkLabel(parent, text=text.upper(),
-                 font=ctk.CTkFont(size=10, weight='bold'), text_color=TEXT_MUTED,
+                 font=F(size=10, weight='bold'), text_color=TEXT_MUTED,
                  ).pack(anchor='w', padx=16, pady=(14, 4))
 
 
@@ -216,14 +233,14 @@ def tbl_header(parent, cols: list):
     hdr.pack(fill='x', pady=(0, 4))
     for col, w in cols:
         ctk.CTkLabel(hdr, text=col, width=w, anchor='w',
-                     font=ctk.CTkFont(size=11, weight='bold'), text_color='#ffffff',
+                     font=F(size=11, weight='bold'), text_color='#ffffff',
                      ).pack(side='left', padx=10, pady=9)
 
 
 def action_btn(parent, text: str, color: str, cmd, width=160, **kw) -> ctk.CTkButton:
     kw.setdefault('hover_color', _darken(color))
     return ctk.CTkButton(parent, text=text, width=width, height=36,
-                         fg_color=color, font=ctk.CTkFont(size=12),
+                         fg_color=color, font=F(size=12),
                          corner_radius=8, command=cmd, **kw)
 
 
@@ -260,7 +277,11 @@ class App(ctk.CTk):
             return
         self._cert_loading = True
         def load():
-            stores     = [s.strip() for s in self.cfg['certificates']['stores'].split(',')]
+            # gui_stores: solo MY por defecto (rápido). El usuario puede ampliar
+            # a CA/ROOT en Configuración si quiere ver los certificados del sistema.
+            stores_str = self.cfg['certificates'].get('gui_stores') \
+                or self.cfg['certificates'].get('stores', 'MY')
+            stores     = [s.strip() for s in stores_str.split(',')]
             alert_days = int(self.cfg['general']['alert_days'])
             certs      = cert_scanner.scan(stores)
             if certs:
@@ -303,10 +324,10 @@ class App(ctk.CTk):
             top = ctk.CTkFrame(logo, fg_color='transparent')
             top.pack(expand=True)
             ctk.CTkLabel(top, text='Burocracia',
-                         font=ctk.CTkFont(size=15, weight='bold'),
+                         font=F(size=15, weight='bold'),
                          text_color=ACCENT).pack()
             ctk.CTkLabel(top, text='Zero  🔐',
-                         font=ctk.CTkFont(size=13),
+                         font=F(size=13),
                          text_color='#ffffff').pack()
 
         # Nav
@@ -329,7 +350,7 @@ class App(ctk.CTk):
             self._nav_btns[page] = f
             btn = ctk.CTkButton(
                 f, text=f'{icon}  {label}', anchor='w',
-                font=ctk.CTkFont(size=13), height=46,
+                font=F(size=13), height=46,
                 fg_color='transparent', hover_color=PRIMARY_DK,
                 text_color='#ffffff', corner_radius=0,
                 command=lambda p=page: self._show(p),
@@ -339,7 +360,7 @@ class App(ctk.CTk):
 
         # Pie
         ctk.CTkLabel(sb, text='v1.0 · Windows 11',
-                     font=ctk.CTkFont(size=10), text_color='#c8b8e8',
+                     font=F(size=10), text_color='#c8b8e8',
                      ).pack(side='bottom', pady=12)
 
         # ── Contenido ──────────────────────────────────────────────────────
@@ -351,12 +372,12 @@ class App(ctk.CTk):
         self._statusbar.pack(side='bottom', fill='x')
         self._status_lbl = ctk.CTkLabel(
             self._statusbar, text='Listo',
-            font=ctk.CTkFont(size=11), text_color='#c8b8e8',
+            font=F(size=11), text_color='#c8b8e8',
         )
         self._status_lbl.pack(side='left', padx=12)
         self._clock_lbl = ctk.CTkLabel(
             self._statusbar, text='',
-            font=ctk.CTkFont(size=11), text_color='#c8b8e8',
+            font=F(size=11), text_color='#c8b8e8',
         )
         self._clock_lbl.pack(side='right', padx=12)
         self._tick()
@@ -387,7 +408,7 @@ class App(ctk.CTk):
             f._btn.configure(
                 fg_color=PRIMARY_LT if active else 'transparent',
                 text_color=PRIMARY if active else '#ffffff',
-                font=ctk.CTkFont(size=13, weight='bold' if active else 'normal'),
+                font=F(size=13, weight='bold' if active else 'normal'),
             )
 
         # Reutiliza la instancia cacheada salvo que se pida reconstruir
@@ -415,6 +436,8 @@ class App(ctk.CTk):
             p.destroy()
         self._page_cache.clear()
         self._page = None
+        # Reescanea certificados por si cambió la lista de almacenes
+        self.invalidate_certs()
         if self._page_name:
             self._show(self._page_name)
 
@@ -460,25 +483,25 @@ class DashboardPage(ctk.CTkFrame):
             if expired > 0:
                 ctk.CTkLabel(a,
                              text=f'❌  {expired} certificado(s) CADUCADO(S) — ve a "🗑 Limpiar" para eliminarlos',
-                             font=ctk.CTkFont(size=12), text_color='#7b3f00',
+                             font=F(size=12), text_color='#7b3f00',
                              ).pack(anchor='w', padx=16, pady=(10, 2))
             if expiring > 0:
                 ctk.CTkLabel(a,
                              text=f'⏰  {expiring} certificado(s) caducan en menos de {alert_days} días',
-                             font=ctk.CTkFont(size=12), text_color='#7b3f00',
+                             font=F(size=12), text_color='#7b3f00',
                              ).pack(anchor='w', padx=16, pady=(2, 10))
 
         # Lista
         scroll = ctk.CTkScrollableFrame(self, fg_color=CARD, corner_radius=12,
                                          border_width=1, border_color=BORDER,
                                          label_text='Certificados instalados',
-                                         label_font=ctk.CTkFont(size=12, weight='bold'),
+                                         label_font=F(size=12, weight='bold'),
                                          label_text_color=TEXT_MUTED)
         scroll.pack(fill='both', expand=True, padx=20, pady=(0, 16))
 
         if not certs:
             ctk.CTkLabel(scroll, text='No se encontraron certificados.\n(Disponible solo en Windows)',
-                         text_color=TEXT_MUTED, font=ctk.CTkFont(size=13)).pack(pady=40)
+                         text_color=TEXT_MUTED, font=F(size=13)).pack(pady=40)
             return
 
         tbl_header(scroll, [('Titular', 330), ('Emisor', 195), ('Caduca', 110), ('Estado', 150)])
@@ -488,11 +511,11 @@ class DashboardPage(ctk.CTkFrame):
             r   = ctk.CTkFrame(scroll, fg_color=bg, corner_radius=5)
             r.pack(fill='x', pady=1)
             ctk.CTkLabel(r, text=c.get('subject','')[:46], width=330, anchor='w',
-                         font=ctk.CTkFont(size=12), text_color=TEXT).pack(side='left', padx=10, pady=7)
+                         font=F(size=12), text_color=TEXT).pack(side='left', padx=10, pady=7)
             ctk.CTkLabel(r, text=c.get('issuer','')[:27], width=195, anchor='w',
-                         font=ctk.CTkFont(size=12), text_color=TEXT_MUTED).pack(side='left', padx=4)
+                         font=F(size=12), text_color=TEXT_MUTED).pack(side='left', padx=4)
             ctk.CTkLabel(r, text=c.get('not_after','')[:10], width=110, anchor='w',
-                         font=ctk.CTkFont(size=12), text_color=_days_color(st)).pack(side='left', padx=4)
+                         font=F(size=12), text_color=_days_color(st)).pack(side='left', padx=4)
             badge(r, c.get('status_label',''), st).pack(side='left', padx=6)
 
 
@@ -511,7 +534,7 @@ class CertificatesPage(ctk.CTkFrame):
         bar.pack(fill='x', padx=20, pady=(0, 8))
         inner = ctk.CTkFrame(bar, fg_color='transparent')
         inner.pack(fill='x', padx=12, pady=10)
-        ctk.CTkLabel(inner, text='Filtrar:', font=ctk.CTkFont(size=12),
+        ctk.CTkLabel(inner, text='Filtrar:', font=F(size=12),
                      text_color=TEXT_MUTED).pack(side='left', padx=(0, 8))
         self._fbts = {}
         for lbl in ('Todos', 'Válidos', 'Caducan pronto', 'Caducados'):
@@ -529,7 +552,7 @@ class CertificatesPage(ctk.CTkFrame):
 
         # Contador
         self._count_lbl = ctk.CTkLabel(inner, text=f'{len(self._all)} certificado(s)',
-                                        font=ctk.CTkFont(size=12), text_color=TEXT_MUTED)
+                                        font=F(size=12), text_color=TEXT_MUTED)
         self._count_lbl.pack(side='right', padx=8)
 
         # Tabla
@@ -557,7 +580,7 @@ class CertificatesPage(ctk.CTkFrame):
         tbl_header(self._scroll, cols)
         if not certs:
             ctk.CTkLabel(self._scroll, text='Sin resultados.',
-                         text_color=TEXT_MUTED, font=ctk.CTkFont(size=13)).pack(pady=24)
+                         text_color=TEXT_MUTED, font=F(size=13)).pack(pady=24)
             return
         for i, c in enumerate(certs):
             st  = c.get('status', 'unknown')
@@ -574,7 +597,7 @@ class CertificatesPage(ctk.CTkFrame):
                 (ds, 60, _days_color(st)),
             ]:
                 ctk.CTkLabel(r, text=val, width=w, anchor='w',
-                             font=ctk.CTkFont(size=11), text_color=col,
+                             font=F(size=11), text_color=col,
                              ).pack(side='left', padx=8, pady=6)
             badge(r, c.get('status_label',''), st).pack(side='left', padx=6)
 
@@ -619,11 +642,11 @@ class DehuPage(ctk.CTkFrame):
             act_idx = self._certs_data.get('active', 0)
             act_idx = act_idx if 0 <= act_idx < len(names) else 0
             ctk.CTkLabel(sel, text='Certificado activo:',
-                         font=ctk.CTkFont(size=12), text_color=TEXT).pack(side='left', padx=(0, 8))
+                         font=F(size=12), text_color=TEXT).pack(side='left', padx=(0, 8))
             self._cert_menu = ctk.CTkOptionMenu(
                 sel, values=names, command=self._on_cert_changed,
                 fg_color=PRIMARY, button_color=PRIMARY_DK, button_hover_color=PRIMARY_DK,
-                font=ctk.CTkFont(size=12), dropdown_font=ctk.CTkFont(size=12), width=260,
+                font=F(size=12), dropdown_font=F(size=12), width=260,
             )
             self._cert_menu.set(names[act_idx])
             self._cert_menu.pack(side='left', padx=4)
@@ -631,7 +654,7 @@ class DehuPage(ctk.CTkFrame):
             action_btn(sel, '➕  Añadir', SUCCESS, self._add_cert, width=110).pack(side='right', padx=4)
         else:
             ctk.CTkLabel(sel, text='No hay certificados guardados para DEHU.',
-                         font=ctk.CTkFont(size=12), text_color=TEXT_MUTED).pack(side='left')
+                         font=F(size=12), text_color=TEXT_MUTED).pack(side='left')
             action_btn(sel, '➕  Añadir certificado', SUCCESS, self._add_cert, width=180).pack(side='right')
 
         # Tarjeta con la info del certificado activo
@@ -658,7 +681,7 @@ class DehuPage(ctk.CTkFrame):
         self._prog.pack(side='left', padx=8)
         self._prog.set(0)
 
-        self._status = ctk.CTkLabel(brow, text='', font=ctk.CTkFont(size=12), text_color=TEXT_MUTED)
+        self._status = ctk.CTkLabel(brow, text='', font=F(size=12), text_color=TEXT_MUTED)
         self._status.pack(side='left', padx=8)
 
         # ── Resultados ──────────────────────────────────────────────────────
@@ -666,16 +689,16 @@ class DehuPage(ctk.CTkFrame):
             self, fg_color=CARD, corner_radius=12,
             border_width=1, border_color=BORDER,
             label_text='Notificaciones en el buzón',
-            label_font=ctk.CTkFont(size=12, weight='bold'),
+            label_font=F(size=12, weight='bold'),
             label_text_color=TEXT_MUTED,
         )
         self._res.pack(fill='both', expand=True, padx=20, pady=(0, 16))
         ctk.CTkLabel(self._res,
                      text='Haz clic en "Comprobar DEHU" para ver las notificaciones.',
-                     text_color=TEXT_MUTED, font=ctk.CTkFont(size=13)).pack(pady=40)
+                     text_color=TEXT_MUTED, font=F(size=13)).pack(pady=40)
 
     def _render_cert_info(self):
-        """Muestra la tarjeta 🪪 del certificado activo dentro de _info_holder."""
+        """Muestra la tarjeta 🪪 del certificado activo (parseo del PFX en background)."""
         for w in self._info_holder.winfo_children():
             w.destroy()
 
@@ -683,25 +706,44 @@ class DehuPage(ctk.CTkFrame):
         if not cert_path:
             ctk.CTkLabel(self._info_holder,
                          text='⚠  Añade un certificado para poder consultar DEHU.',
-                         text_color=WARNING, font=ctk.CTkFont(size=13)).pack(anchor='w')
+                         text_color=WARNING, font=F(size=13)).pack(anchor='w')
             return
 
-        info = _load_pfx_info(cert_path, password)
+        # Placeholder instantáneo mientras se parsea el certificado
+        ctk.CTkLabel(self._info_holder, text='🪪  Leyendo certificado…',
+                     text_color=TEXT_MUTED, font=F(size=13)).pack(anchor='w')
+
+        def work():
+            info = _load_pfx_info(cert_path, password)
+            self.after(0, lambda: self._paint_cert_info(info))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _paint_cert_info(self, info: dict):
+        # El holder pudo destruirse si se cambió de página; comprobamos
+        try:
+            if not self._info_holder.winfo_exists():
+                return
+        except Exception:
+            return
+        for w in self._info_holder.winfo_children():
+            w.destroy()
+
         if not info.get('ok'):
             ctk.CTkLabel(self._info_holder,
                          text=f'⚠  No se pudo leer el certificado: {info.get("error","")}',
-                         text_color=DANGER, font=ctk.CTkFont(size=12)).pack(anchor='w')
+                         text_color=DANGER, font=F(size=12)).pack(anchor='w')
             return
 
-        ctk.CTkLabel(self._info_holder, text='🪪', font=ctk.CTkFont(size=36)
+        ctk.CTkLabel(self._info_holder, text='🪪', font=F(size=36)
                      ).pack(side='left', padx=(0, 14))
         det = ctk.CTkFrame(self._info_holder, fg_color='transparent')
         det.pack(side='left', fill='x', expand=True)
         ctk.CTkLabel(det, text=info['name'],
-                     font=ctk.CTkFont(size=15, weight='bold'), text_color=TEXT,
+                     font=F(size=15, weight='bold'), text_color=TEXT,
                      anchor='w').pack(anchor='w')
         ctk.CTkLabel(det, text=f"Emisor: {info['issuer']}",
-                     font=ctk.CTkFont(size=12), text_color=TEXT_MUTED,
+                     font=F(size=12), text_color=TEXT_MUTED,
                      anchor='w').pack(anchor='w', pady=(2, 0))
         exp_color = DANGER if info['status'] == 'expired' else (WARNING if info['status'] == 'expiring_soon' else TEXT_MUTED)
         days_txt  = f"Caduca: {info['expiry']}  ({info['days']} días restantes)"
@@ -710,7 +752,7 @@ class DehuPage(ctk.CTkFrame):
         elif info['status'] == 'expiring_soon':
             days_txt = f"⏰  Caduca el {info['expiry']}  ({info['days']} días restantes)"
         ctk.CTkLabel(det, text=days_txt,
-                     font=ctk.CTkFont(size=12), text_color=exp_color,
+                     font=F(size=12), text_color=exp_color,
                      anchor='w').pack(anchor='w', pady=(2, 0))
         badge(self._info_holder, info.get('status','').replace('_',' ').title(),
               info.get('status','')).pack(side='right', padx=12)
@@ -831,12 +873,12 @@ class DehuPage(ctk.CTkFrame):
             banner.pack(fill='x', pady=(0, 8))
             ctk.CTkLabel(banner,
                          text=f'🔔  {n_new} notificación(es) nueva(s) desde la última comprobación',
-                         text_color=SUCCESS, font=ctk.CTkFont(size=13, weight='bold'),
+                         text_color=SUCCESS, font=F(size=13, weight='bold'),
                          ).pack(padx=14, pady=10)
 
         if not self._result['all']:
             ctk.CTkLabel(self._res, text='El buzón DEHU está vacío.',
-                         text_color=TEXT_MUTED, font=ctk.CTkFont(size=13)).pack(pady=30)
+                         text_color=TEXT_MUTED, font=F(size=13)).pack(pady=30)
             return
 
         tbl_header(self._res, [('Fecha', 108), ('Organismo', 215), ('Asunto', 305), ('Estado', 110)])
@@ -851,11 +893,11 @@ class DehuPage(ctk.CTkFrame):
                 (n.get('asunto','')[:43], 305),
             ]:
                 ctk.CTkLabel(r, text=val, width=w, anchor='w',
-                             font=ctk.CTkFont(size=11)).pack(side='left', padx=8, pady=6)
+                             font=F(size=11)).pack(side='left', padx=8, pady=6)
             estado = '🆕 Nueva' if es_nueva else ('✓ Leída' if n.get('leida') else '● Pendiente')
             color  = WARNING if es_nueva else (TEXT_MUTED if n.get('leida') else DANGER)
             ctk.CTkLabel(r, text=estado, width=110, anchor='w',
-                         font=ctk.CTkFont(size=11, weight='bold' if es_nueva else 'normal'),
+                         font=F(size=11, weight='bold' if es_nueva else 'normal'),
                          text_color=color).pack(side='left', padx=8)
 
     def _show_error(self, msg: str):
@@ -871,9 +913,9 @@ class DehuPage(ctk.CTkFrame):
                                  border_width=1, border_color='#f5c6cb')
         err_card.pack(fill='x', pady=20, padx=10)
         ctk.CTkLabel(err_card, text='❌  Error al conectar con DEHU',
-                     font=ctk.CTkFont(size=13, weight='bold'), text_color=DANGER).pack(padx=16, pady=(12, 4))
+                     font=F(size=13, weight='bold'), text_color=DANGER).pack(padx=16, pady=(12, 4))
         ctk.CTkLabel(err_card, text=msg, text_color='#7b1f1f',
-                     font=ctk.CTkFont(size=11), wraplength=540).pack(padx=16, pady=(0, 12))
+                     font=F(size=11), wraplength=540).pack(padx=16, pady=(0, 12))
 
     def _download(self):
         if not self._result:
@@ -931,18 +973,18 @@ class CleanPage(ctk.CTkFrame):
         self._del_btn = action_btn(brow, '🗑  Eliminar seleccionados', DANGER, self._delete,
                                     width=210, state='disabled')
         self._del_btn.pack(side='left', padx=(0, 8))
-        self._info = ctk.CTkLabel(brow, text='', font=ctk.CTkFont(size=12), text_color=TEXT_MUTED)
+        self._info = ctk.CTkLabel(brow, text='', font=F(size=12), text_color=TEXT_MUTED)
         self._info.pack(side='left', padx=8)
 
         self._scroll = ctk.CTkScrollableFrame(
             self, fg_color=CARD, corner_radius=12, border_width=1, border_color=BORDER,
             label_text='Certificados caducados encontrados',
-            label_font=ctk.CTkFont(size=12, weight='bold'),
+            label_font=F(size=12, weight='bold'),
             label_text_color=TEXT_MUTED,
         )
         self._scroll.pack(fill='both', expand=True, padx=20, pady=(0, 16))
         ctk.CTkLabel(self._scroll, text='Haz clic en "Buscar caducados" para empezar.',
-                     text_color=TEXT_MUTED, font=ctk.CTkFont(size=13)).pack(pady=40)
+                     text_color=TEXT_MUTED, font=F(size=13)).pack(pady=40)
 
     def _scan(self):
         # Escanea en background para no bloquear la UI
@@ -951,7 +993,7 @@ class CleanPage(ctk.CTkFrame):
         for w in self._scroll.winfo_children():
             w.destroy()
         ctk.CTkLabel(self._scroll, text='⏳  Escaneando almacén de certificados...',
-                     text_color=TEXT_MUTED, font=ctk.CTkFont(size=13)).pack(pady=40)
+                     text_color=TEXT_MUTED, font=F(size=13)).pack(pady=40)
 
         def do_scan():
             certs = cert_scanner.scan(['MY'])
@@ -973,7 +1015,7 @@ class CleanPage(ctk.CTkFrame):
                                border_width=1, border_color='#a5d6a7')
             ok.pack(fill='x', pady=20, padx=10)
             ctk.CTkLabel(ok, text='✅  ¡El almacén está limpio! No hay certificados caducados.',
-                         text_color=SUCCESS, font=ctk.CTkFont(size=13, weight='bold')).pack(pady=16)
+                         text_color=SUCCESS, font=F(size=13, weight='bold')).pack(pady=16)
             self._del_btn.configure(state='disabled')
             self._info.configure(text='')
             return
@@ -994,14 +1036,14 @@ class CleanPage(ctk.CTkFrame):
             info = ctk.CTkFrame(r, fg_color='transparent')
             info.pack(side='left', fill='x', expand=True, pady=10)
             ctk.CTkLabel(info, text=c.get('subject',''),
-                         font=ctk.CTkFont(size=13, weight='bold'), text_color=TEXT,
+                         font=F(size=13, weight='bold'), text_color=TEXT,
                          anchor='w').pack(anchor='w')
             ctk.CTkLabel(info,
                          text=f"Emisor: {c.get('issuer','')}   ·   Caducó: {c.get('not_after','')[:10]}   ·   Almacén: {c.get('store','')}",
-                         font=ctk.CTkFont(size=11), text_color=TEXT_MUTED, anchor='w',
+                         font=F(size=11), text_color=TEXT_MUTED, anchor='w',
                          ).pack(anchor='w', pady=(3, 0))
             ctk.CTkLabel(r, text='✗ CADUCADO', text_color=DANGER,
-                         font=ctk.CTkFont(size=11, weight='bold')).pack(side='right', padx=16)
+                         font=F(size=11, weight='bold')).pack(side='right', padx=16)
 
     def _delete(self):
         sel = [(v, c) for v, c in self._checks.values() if v.get()]
@@ -1059,7 +1101,7 @@ class ServiciosPage(ctk.CTkFrame):
                           'portales de la Seguridad Social y Hacienda exigen que selecciones tu '
                           'certificado en el cuadro de Windows (no se puede automatizar ese paso). '
                           'Cuando aparezca, elige tu certificado y pulsa "Obtener informe".',
-                     font=ctk.CTkFont(size=11), text_color=PRIMARY_DK,
+                     font=F(size=11), text_color=PRIMARY_DK,
                      wraplength=820, anchor='w').pack(padx=14, pady=10)
 
         # Tarjeta: selección automática de certificado (saltar diálogo de Windows)
@@ -1083,7 +1125,7 @@ class ServiciosPage(ctk.CTkFrame):
 
         if not edge_policy.is_supported():
             ctk.CTkLabel(row, text='Solo disponible en Windows.',
-                         font=ctk.CTkFont(size=12), text_color=TEXT_MUTED).pack(anchor='w')
+                         font=F(size=12), text_color=TEXT_MUTED).pack(anchor='w')
             return
 
         enabled = edge_policy.is_enabled()
@@ -1091,7 +1133,7 @@ class ServiciosPage(ctk.CTkFrame):
                    if enabled else
                    '○  Desactivada — el navegador mostrará el cuadro de selección de Windows')
         ctk.CTkLabel(row, text=estado,
-                     font=ctk.CTkFont(size=12),
+                     font=F(size=12),
                      text_color=SUCCESS if enabled else TEXT_MUTED).pack(side='left')
 
         if enabled:
@@ -1103,7 +1145,7 @@ class ServiciosPage(ctk.CTkFrame):
                      text='Al activarla, se filtra por el titular de tu certificado activo de DEHU '
                           'para no afectar a otros certificados. Reversible en un clic. '
                           'Cierra y reabre el navegador para que surta efecto.',
-                     font=ctk.CTkFont(size=10), text_color=TEXT_MUTED,
+                     font=F(size=10), text_color=TEXT_MUTED,
                      wraplength=820, anchor='w').pack(anchor='w', padx=16, pady=(0, 10))
 
     def _enable_autoselect(self):
@@ -1156,28 +1198,28 @@ class ServiciosPage(ctk.CTkFrame):
         # ── Cabecera ───────────────────────────────────────────────────────────
         hdr = ctk.CTkFrame(c, fg_color='transparent')
         hdr.pack(fill='x', padx=16, pady=(14, 0))
-        ctk.CTkLabel(hdr, text=svc['icon'], font=ctk.CTkFont(size=30)).pack(side='left', padx=(0, 12))
+        ctk.CTkLabel(hdr, text=svc['icon'], font=F(size=30)).pack(side='left', padx=(0, 12))
 
         title_box = ctk.CTkFrame(hdr, fg_color='transparent')
         title_box.pack(side='left', fill='x', expand=True)
         ctk.CTkLabel(title_box, text=svc['name'],
-                     font=ctk.CTkFont(size=14, weight='bold'), text_color=TEXT,
+                     font=F(size=14, weight='bold'), text_color=TEXT,
                      anchor='w').pack(anchor='w')
         ctk.CTkLabel(title_box, text=svc['organismo'],
-                     font=ctk.CTkFont(size=11), text_color=TEXT_MUTED,
+                     font=F(size=11), text_color=TEXT_MUTED,
                      anchor='w').pack(anchor='w')
 
         if history:
             badge_f = ctk.CTkFrame(hdr, fg_color=SUCCESS_LT, corner_radius=8)
             badge_f.pack(side='right', padx=4)
             ctk.CTkLabel(badge_f, text=f'✓  Última: {history[0]["date"]}',
-                         font=ctk.CTkFont(size=10), text_color=SUCCESS,
+                         font=F(size=10), text_color=SUCCESS,
                          padx=8, pady=4).pack()
 
         divider(c)
 
         ctk.CTkLabel(c, text=svc['description'],
-                     font=ctk.CTkFont(size=12), text_color=TEXT_MUTED,
+                     font=F(size=12), text_color=TEXT_MUTED,
                      anchor='w', wraplength=680).pack(anchor='w', padx=16, pady=(8, 4))
 
         # ── Indicador de selección automática ───────────────────────────────────
@@ -1186,18 +1228,18 @@ class ServiciosPage(ctk.CTkFrame):
             pill.pack(anchor='w', padx=16, pady=(0, 4))
             ctk.CTkLabel(pill,
                          text='⚡  Descarga sin cuadro de certificado — totalmente automática',
-                         font=ctk.CTkFont(size=10, weight='bold'), text_color=SUCCESS,
+                         font=F(size=10, weight='bold'), text_color=SUCCESS,
                          padx=10, pady=4).pack()
         else:
             pill = ctk.CTkFrame(c, fg_color='#fff8e1', corner_radius=8)
             pill.pack(anchor='w', padx=16, pady=(0, 4))
             ctk.CTkLabel(pill,
                          text='🔐  Windows pedirá elegir el certificado · actívala arriba en "⚡"',
-                         font=ctk.CTkFont(size=10), text_color='#7b3f00',
+                         font=F(size=10), text_color='#7b3f00',
                          padx=10, pady=4).pack()
 
         # ── Barra de estado ────────────────────────────────────────────────────
-        status_lbl = ctk.CTkLabel(c, text='', font=ctk.CTkFont(size=11),
+        status_lbl = ctk.CTkLabel(c, text='', font=F(size=11),
                                    text_color=TEXT_MUTED, anchor='w')
         status_lbl.pack(anchor='w', padx=16, pady=(0, 4))
 
@@ -1290,12 +1332,12 @@ class ServiciosPage(ctk.CTkFrame):
             hist_f = ctk.CTkFrame(c, fg_color='transparent')
             hist_f.pack(fill='x', padx=16, pady=(0, 10))
             ctk.CTkLabel(hist_f, text='Descargas registradas:',
-                         font=ctk.CTkFont(size=10, weight='bold'),
+                         font=F(size=10, weight='bold'),
                          text_color=TEXT_MUTED).pack(anchor='w')
             for entry in history[:3]:
                 ctk.CTkLabel(hist_f,
                              text=f'  {entry["date"]}  →  {Path(entry["path"]).name}',
-                             font=ctk.CTkFont(size=10), text_color=TEXT_MUTED,
+                             font=F(size=10), text_color=TEXT_MUTED,
                              anchor='w').pack(anchor='w')
 
 
@@ -1315,7 +1357,7 @@ class ReportPage(ctk.CTkFrame):
         divider(top)
         frow = ctk.CTkFrame(top, fg_color='transparent')
         frow.pack(fill='x', padx=16, pady=12)
-        ctk.CTkLabel(frow, text=str(folder), font=ctk.CTkFont(size=12),
+        ctk.CTkLabel(frow, text=str(folder), font=F(size=12),
                      text_color=TEXT_MUTED).pack(side='left')
         action_btn(frow, '📂  Abrir', PRIMARY_DK, lambda: self._open(folder),
                     width=110).pack(side='right')
@@ -1333,7 +1375,7 @@ class ReportPage(ctk.CTkFrame):
         log_card.pack(fill='both', expand=True, padx=20, pady=(0, 16))
         section_label(log_card, '📋  Registro de acciones')
         divider(log_card)
-        self._log = ctk.CTkTextbox(log_card, font=ctk.CTkFont(size=11, family='Courier'),
+        self._log = ctk.CTkTextbox(log_card, font=F(size=11, family='Courier'),
                                     fg_color='#1e1e2e', text_color='#cdd6f4', corner_radius=0)
         self._log.pack(fill='both', expand=True, padx=0, pady=0)
         self._log_line('Listo. Pulsa un botón para generar el informe.')
@@ -1404,7 +1446,7 @@ class SettingsPage(ctk.CTkFrame):
                 r = ctk.CTkFrame(sec, fg_color='transparent')
                 r.pack(fill='x', padx=16, pady=7)
                 ctk.CTkLabel(r, text=label, width=260, anchor='w',
-                             font=ctk.CTkFont(size=12), text_color=TEXT).pack(side='left')
+                             font=F(size=12), text_color=TEXT).pack(side='left')
                 show  = '*' if 'password' in key else None
                 entry = ctk.CTkEntry(r, width=360, show=show, border_color=BORDER,
                                       fg_color='#faf9fe')
@@ -1415,6 +1457,31 @@ class SettingsPage(ctk.CTkFrame):
                                 width=38).pack(side='left', padx=2)
                 self._fields[(cfg_sec, key)] = entry
             ctk.CTkFrame(sec, height=10, fg_color='transparent').pack()
+
+        # ── Rendimiento ─────────────────────────────────────────────────────
+        perf = card(scroll)
+        perf.pack(fill='x', pady=8)
+        section_label(perf, '⚡  Rendimiento')
+        divider(perf)
+        prow = ctk.CTkFrame(perf, fg_color='transparent')
+        prow.pack(fill='x', padx=16, pady=10)
+        txt = ctk.CTkFrame(prow, fg_color='transparent')
+        txt.pack(side='left', fill='x', expand=True)
+        ctk.CTkLabel(txt, text='Mostrar también certificados del sistema (CA y RAÍZ)',
+                     font=F(size=12), text_color=TEXT, anchor='w').pack(anchor='w')
+        ctk.CTkLabel(txt, text='Desactivado = más rápido (solo tus certificados personales). '
+                              'Activado = escanea cientos de CAs del sistema, más lento.',
+                     font=F(size=10), text_color=TEXT_MUTED, anchor='w',
+                     wraplength=560).pack(anchor='w')
+        cur = (self.cfg['certificates'].get('gui_stores') or 'MY')
+        self._sys_stores = ctk.CTkSwitch(prow, text='', progress_color=PRIMARY,
+                                         onvalue='on', offvalue='off', width=48)
+        if cur.upper() != 'MY':
+            self._sys_stores.select()
+        else:
+            self._sys_stores.deselect()
+        self._sys_stores.pack(side='right', padx=8)
+        ctk.CTkFrame(perf, height=6, fg_color='transparent').pack()
 
         action_btn(scroll, '💾  Guardar configuración', SUCCESS, self._save, width=240).pack(pady=14)
 
@@ -1438,6 +1505,11 @@ class SettingsPage(ctk.CTkFrame):
             cfg[sec] = dict(self.cfg[sec])
         for (sec, key), entry in self._fields.items():
             cfg[sec][key] = entry.get()
+        # Interruptor de rendimiento → almacenes que escanea la interfaz
+        if hasattr(self, '_sys_stores'):
+            cfg['certificates']['gui_stores'] = (
+                'MY,CA,ROOT' if self._sys_stores.get() == 'on' else 'MY'
+            )
         with open(_CONFIG_FILE, 'w', encoding='utf-8') as f:
             cfg.write(f)
         if self.app:
