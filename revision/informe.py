@@ -11,7 +11,7 @@ import os
 from datetime import date
 
 from . import tramites
-from .analizador import expediente_listo
+from .analizador import calcular_permanencia, comprobar_coherencia, expediente_listo
 
 _EXT_LOGO_PDF = (".png", ".jpg", ".jpeg")
 _EXT_LOGO_DOCX = (".png", ".jpg", ".jpeg", ".gif", ".bmp")
@@ -75,6 +75,13 @@ def generar_informe(checklist, no_identificados, tramite_id, solicitante="", hoy
     lineas.append(f"- Documentos obligatorios que faltan: **{len(faltan)}**")
     lineas.append(f"- Documentos caducados: **{len(caducados)}**")
     lineas.append(f"- Documentos a revisar / proximos a caducar: **{len(avisos)}**")
+    lineas.append("")
+
+    # Comprobaciones automaticas
+    lineas.append("## Comprobaciones automaticas")
+    lineas.append("")
+    for linea in _lineas_comprobaciones(checklist, no_identificados, tramite_id, hoy):
+        lineas.append(f"- {linea}")
     lineas.append("")
 
     # Checklist
@@ -208,6 +215,39 @@ def _contexto(checklist, tramite_id, solicitante, hoy):
     }
 
 
+def _todos_documentos(checklist, no_identificados):
+    return [d for fila in checklist for d in fila["documentos"]] + no_identificados
+
+
+def _lineas_comprobaciones(checklist, no_identificados, tramite_id, hoy):
+    """Lineas de texto con coherencia y permanencia (comunes a los formatos)."""
+    docs = _todos_documentos(checklist, no_identificados)
+    lineas = []
+
+    coherencia = comprobar_coherencia(docs)
+    if coherencia:
+        for aviso in coherencia:
+            lineas.append(f"Coherencia: {aviso}")
+    else:
+        lineas.append("Coherencia: nombres y numeros coinciden entre los documentos.")
+
+    permanencia = calcular_permanencia(docs, tramite_id, hoy=hoy)
+    if permanencia:
+        req = permanencia["requeridos"]
+        if permanencia["anios"] is None:
+            lineas.append(
+                f"Permanencia: este tramite exige {req} anos; no se ha podido determinar "
+                "la fecha de inicio a partir de los documentos."
+            )
+        else:
+            estado = "CUMPLE" if permanencia["cumple"] else "NO CUMPLE"
+            lineas.append(
+                f"Permanencia: {permanencia['anios']} anos acreditados desde "
+                f"{permanencia['fecha_inicio']} (exigidos {req}) -> {estado}."
+            )
+    return lineas
+
+
 # --------------------------------------------------------------------------- #
 #  Word (.docx)
 # --------------------------------------------------------------------------- #
@@ -258,6 +298,10 @@ def generar_docx(
     doc.add_paragraph(f"Documentos obligatorios que faltan: {len(ctx['faltan'])}")
     doc.add_paragraph(f"Documentos caducados: {len(ctx['caducados'])}")
     doc.add_paragraph(f"Documentos a revisar / proximos a caducar: {len(ctx['avisos'])}")
+
+    doc.add_heading("Comprobaciones automaticas", level=1)
+    for linea in _lineas_comprobaciones(checklist, no_identificados, tramite_id, ctx["hoy"]):
+        doc.add_paragraph(linea, style="List Bullet")
 
     doc.add_heading("Checklist de documentacion", level=1)
     tabla = doc.add_table(rows=1, cols=4)
@@ -403,6 +447,11 @@ def generar_pdf(
     parrafo(f"- A revisar / proximos a caducar: {len(ctx['avisos'])}")
     pdf.ln(2)
 
+    titulo("Comprobaciones automaticas")
+    for linea in _lineas_comprobaciones(checklist, no_identificados, tramite_id, ctx["hoy"]):
+        parrafo(f"- {linea}")
+    pdf.ln(2)
+
     titulo("Checklist de documentacion")
     pdf.set_font("Helvetica", "", 9)
     with pdf.table(col_widths=(16, 44, 14, 46), text_align="LEFT") as tabla:
@@ -455,6 +504,102 @@ def generar_pdf(
 
     salida = pdf.output()
     return bytes(salida)
+
+
+def _pendientes(checklist):
+    """Devuelve (faltan, caducados, proximos) como listas de nombres/textos."""
+    faltan = [c["nombre"] for c in checklist if c["estado"] == "falta"]
+    caducados = []
+    proximos = []
+    for c in checklist:
+        if c["estado"] == "caducado":
+            caducados.append(c["nombre"])
+        elif c["estado"] == "proximo_a_caducar":
+            for d in c["documentos"]:
+                cad = d.get("fecha_caducidad")
+                proximos.append(f"{c['nombre']} (caduca el {cad})" if cad else c["nombre"])
+    return faltan, caducados, proximos
+
+
+def _texto_requerimiento(checklist, tramite_id, solicitante, gestoria, hoy):
+    """Cuerpo de la carta de requerimiento como lista de parrafos (texto plano)."""
+    if hoy is None:
+        hoy = date.today()
+    tramite = tramites.TRAMITES[tramite_id]["nombre"]
+    faltan, caducados, proximos = _pendientes(checklist)
+    saludo = f"Estimado/a {solicitante}:" if solicitante else "Estimado/a cliente:"
+
+    parrafos = [
+        f"Fecha: {hoy.isoformat()}",
+        "",
+        saludo,
+        "",
+        f"En relacion con su tramite de {tramite}, tras revisar la documentacion "
+        "aportada le informamos de lo siguiente:",
+    ]
+    if not (faltan or caducados or proximos):
+        parrafos += [
+            "",
+            "La documentacion esta completa. No es necesario que aporte nada mas por el momento.",
+        ]
+    if faltan:
+        parrafos += ["", "Documentacion pendiente de aportar:"]
+        parrafos += [f"  - {n}" for n in faltan]
+    if caducados:
+        parrafos += ["", "Documentacion caducada que debe renovar y volver a aportar:"]
+        parrafos += [f"  - {n}" for n in caducados]
+    if proximos:
+        parrafos += ["", "Documentacion proxima a caducar (conviene renovarla cuanto antes):"]
+        parrafos += [f"  - {n}" for n in proximos]
+
+    parrafos += [
+        "",
+        "Le rogamos nos haga llegar la documentacion indicada a la mayor brevedad "
+        "para poder continuar con la tramitacion de su expediente.",
+        "",
+        "Quedamos a su disposicion para cualquier aclaracion.",
+        "",
+        "Atentamente,",
+    ]
+    if gestoria and gestoria.get("nombre_gestoria"):
+        parrafos.append(gestoria["nombre_gestoria"])
+    contacto = _contacto(gestoria)
+    if contacto:
+        parrafos.append(contacto)
+    return parrafos
+
+
+def generar_requerimiento(checklist, tramite_id, solicitante="", gestoria=None, hoy=None):
+    """Carta de requerimiento al cliente en texto plano (lista de lo pendiente)."""
+    return "\n".join(_texto_requerimiento(checklist, tramite_id, solicitante, gestoria, hoy))
+
+
+def generar_requerimiento_docx(checklist, tramite_id, solicitante="", gestoria=None, hoy=None):
+    """Carta de requerimiento en formato Word (con membrete si esta configurado)."""
+    from docx import Document
+    from docx.shared import Inches, Pt
+
+    doc = Document()
+    if gestoria:
+        logo = gestoria.get("logo_path", "")
+        if logo and os.path.exists(logo) and logo.lower().endswith(_EXT_LOGO_DOCX):
+            try:
+                doc.add_picture(logo, width=Inches(1.6))
+            except Exception:  # noqa: BLE001
+                pass
+        if gestoria.get("nombre_gestoria"):
+            p = doc.add_paragraph()
+            run = p.add_run(gestoria["nombre_gestoria"])
+            run.bold = True
+            run.font.size = Pt(14)
+        doc.add_paragraph("")
+
+    for parrafo in _texto_requerimiento(checklist, tramite_id, solicitante, gestoria, hoy):
+        doc.add_paragraph(parrafo)
+
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    return buffer.getvalue()
 
 
 def _lineas_documento_plano(doc):

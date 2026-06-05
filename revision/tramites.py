@@ -131,6 +131,7 @@ TRAMITES_DEFECTO = {
     },
     "arraigo_social": {
         "nombre": "Arraigo social",
+        "anios_permanencia": 3,
         "descripcion": (
             "Permanencia continuada de 3 anos, medios economicos (contrato o exencion) "
             "e integracion o vinculos familiares."
@@ -165,6 +166,7 @@ TRAMITES_DEFECTO = {
     },
     "arraigo_sociolaboral": {
         "nombre": "Arraigo sociolaboral",
+        "anios_permanencia": 2,
         "descripcion": (
             "Permanencia de 2 anos y contrato(s) de trabajo que garanticen medios "
             "economicos suficientes."
@@ -199,6 +201,7 @@ TRAMITES_DEFECTO = {
     },
     "arraigo_laboral": {
         "nombre": "Arraigo laboral",
+        "anios_permanencia": 2,
         "descripcion": (
             "Permanencia de 2 anos y acreditacion de una relacion laboral previa."
         ),
@@ -251,6 +254,7 @@ TRAMITES_DEFECTO = {
     },
     "arraigo_formacion": {
         "nombre": "Arraigo para la formacion",
+        "anios_permanencia": 2,
         "descripcion": (
             "Permanencia de 2 anos y compromiso de matricula en formacion reglada "
             "o conducente a certificado de profesionalidad."

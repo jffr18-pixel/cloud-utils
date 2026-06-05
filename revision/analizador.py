@@ -15,12 +15,22 @@ import base64
 import io
 import json
 import re
+import unicodedata
 from datetime import date, datetime
 
 import anthropic
 from PIL import Image, ImageOps
 
 from . import tramites
+
+# Soporte para fotos HEIC/HEIF de iPhone (si la libreria esta instalada).
+try:
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+    _HEIC_OK = True
+except Exception:  # noqa: BLE001
+    _HEIC_OK = False
 
 MODELO_POR_DEFECTO = "claude-opus-4-8"
 
@@ -39,18 +49,30 @@ _SISTEMA = (
 )
 
 # Extensiones de imagen admitidas y su media type para la API.
+# Las HEIC/HEIF se convierten a JPEG antes de enviarse.
 _MEDIA_IMAGEN = {
     "jpg": "image/jpeg",
     "jpeg": "image/jpeg",
     "png": "image/png",
     "webp": "image/webp",
     "gif": "image/gif",
+    "heic": "image/jpeg",
+    "heif": "image/jpeg",
 }
 
 
 def extensiones_admitidas():
     """Lista de extensiones que acepta el cargador de archivos."""
-    return ["pdf", "jpg", "jpeg", "png", "webp", "gif"]
+    base = ["pdf", "jpg", "jpeg", "png", "webp", "gif"]
+    if _HEIC_OK:
+        base += ["heic", "heif"]
+    return base
+
+
+def miniatura(datos, max_lado=900):
+    """Devuelve una version JPEG reducida de una imagen, para vista previa."""
+    b64, _ = _preparar_imagen(datos, max_lado=max_lado)
+    return base64.b64decode(b64)
 
 
 def _preparar_imagen(datos, max_lado=2000, calidad=85):
@@ -123,6 +145,7 @@ def _instruccion(tramite_id, hoy):
         '  "pais_emision": string|null,  // pais o autoridad emisora\n'
         '  "fecha_emision": string|null, // formato AAAA-MM-DD si es legible\n'
         '  "fecha_caducidad": string|null, // formato AAAA-MM-DD si tiene y es legible\n'
+        '  "fecha_acredita_desde": string|null, // si el documento prueba presencia/permanencia en Espana desde una fecha (p.ej. fecha de alta en el padron historico), en AAAA-MM-DD; si no, null\n'
         '  "estado": string,             // vigente | caducado | proximo_a_caducar | sin_caducidad | ilegible | desconocido\n'
         '  "legibilidad": string,        // buena | regular | mala\n'
         '  "incidencias": [string],      // lista de problemas detectados (vacia si no hay)\n'
@@ -190,6 +213,7 @@ def _normalizar(datos):
         "pais_emision": None,
         "fecha_emision": None,
         "fecha_caducidad": None,
+        "fecha_acredita_desde": None,
         "estado": "desconocido",
         "legibilidad": "regular",
         "incidencias": [],
@@ -291,3 +315,136 @@ def expediente_listo(checklist):
         if fila["estado"] in ("falta", "caducado"):
             return False
     return True
+
+
+# --------------------------------------------------------------------------- #
+#  Comprobaciones de coherencia entre documentos
+# --------------------------------------------------------------------------- #
+def _normalizar_nombre(nombre):
+    """Normaliza un nombre para comparar (mayusculas, sin acentos, ordenado)."""
+    if not nombre:
+        return ""
+    texto = unicodedata.normalize("NFD", nombre.upper())
+    texto = "".join(c for c in texto if unicodedata.category(c) != "Mn")
+    tokens = re.findall(r"[A-Z]+", texto)
+    return " ".join(sorted(tokens))
+
+
+def comprobar_coherencia(resultados):
+    """Detecta posibles incoherencias entre los documentos del expediente.
+
+    Avisa si hay documentos a nombre de personas distintas o numeros de
+    pasaporte que no coinciden (posible mezcla de expedientes).
+    """
+    avisos = []
+
+    titulares = {}
+    for doc in resultados:
+        titular = (doc.get("titular") or "").strip()
+        if titular:
+            titulares.setdefault(_normalizar_nombre(titular), set()).add(titular)
+    if len(titulares) > 1:
+        nombres = sorted({n for grupo in titulares.values() for n in grupo})
+        avisos.append(
+            "Hay documentos a nombre de personas distintas: "
+            + ", ".join(nombres)
+            + ". Verifica que todos pertenecen al mismo expediente."
+        )
+
+    numeros = set()
+    for doc in resultados:
+        if doc.get("tipo_id") == "pasaporte" and doc.get("numero"):
+            numeros.add(doc["numero"].strip().upper())
+    if len(numeros) > 1:
+        avisos.append(
+            "Se han detectado numeros de pasaporte distintos: " + ", ".join(sorted(numeros)) + "."
+        )
+
+    return avisos
+
+
+# --------------------------------------------------------------------------- #
+#  Calculo de permanencia / plazos
+# --------------------------------------------------------------------------- #
+def calcular_permanencia(resultados, tramite_id, hoy=None):
+    """Estima los anios de permanencia acreditados frente a los exigidos.
+
+    Devuelve None si el tramite no tiene requisito de permanencia o si no se
+    puede determinar ninguna fecha de inicio.
+    """
+    if hoy is None:
+        hoy = date.today()
+    tramite = tramites.TRAMITES.get(tramite_id, {})
+    requeridos = tramite.get("anios_permanencia")
+    if not requeridos:
+        return None
+
+    fechas = []
+    for doc in resultados:
+        fecha = _parse_fecha(doc.get("fecha_acredita_desde"))
+        if fecha:
+            fechas.append(fecha)
+    if not fechas:
+        return {
+            "requeridos": requeridos,
+            "fecha_inicio": None,
+            "anios": None,
+            "cumple": None,
+        }
+
+    inicio = min(fechas)
+    anios = round((hoy - inicio).days / 365.25, 2)
+    return {
+        "requeridos": requeridos,
+        "fecha_inicio": inicio.isoformat(),
+        "anios": anios,
+        "cumple": anios >= requeridos,
+    }
+
+
+# --------------------------------------------------------------------------- #
+#  Sugerencia automatica de tramite
+# --------------------------------------------------------------------------- #
+def sugerir_tramite(cliente, items, modelo=MODELO_POR_DEFECTO, max_paginas=10):
+    """Pide a la IA que sugiera que tramite encaja mejor con los documentos.
+
+    items: lista de "documentos", cada uno lista de (nombre, datos). Se toma la
+    primera pagina de cada documento (hasta max_paginas) para limitar el coste.
+    Devuelve dict {tramite_id, justificacion} o None si no puede determinarlo.
+    """
+    paginas = []
+    for documento in items:
+        if documento:
+            paginas.append(documento[0])  # primera pagina de cada documento
+        if len(paginas) >= max_paginas:
+            break
+    if not paginas:
+        return None
+
+    bloques = _bloques_documento(paginas)
+    catalogo = "\n".join(
+        f'- "{tid}": {t["nombre"]} — {t.get("descripcion", "")}'
+        for tid, t in tramites.TRAMITES.items()
+    )
+    instruccion = (
+        "Te muestro documentos de un expediente de extranjeria espanol. Indica "
+        "cual de los siguientes tramites encaja mejor con esta documentacion.\n\n"
+        f"Tramites disponibles:\n{catalogo}\n\n"
+        'Responde solo con un JSON: {"tramite_id": "<id de la lista>", '
+        '"justificacion": "<motivo breve>"}.'
+    )
+    respuesta = cliente.messages.create(
+        model=modelo,
+        max_tokens=500,
+        system=_SISTEMA,
+        messages=[{"role": "user", "content": bloques + [{"type": "text", "text": instruccion}]}],
+    )
+    texto = next((b.text for b in respuesta.content if b.type == "text"), "")
+    try:
+        datos = _extraer_json(texto)
+    except ValueError:
+        return None
+    tid = datos.get("tramite_id")
+    if tid not in tramites.TRAMITES:
+        return None
+    return {"tramite_id": tid, "justificacion": datos.get("justificacion", "")}

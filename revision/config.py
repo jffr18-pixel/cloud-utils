@@ -1,19 +1,23 @@
-"""Persistencia de configuracion: datos de la gestoria, logo y tramites.
+"""Persistencia de configuracion: datos de la gestoria, logo, tramites y perfiles.
 
 Todo se guarda en un directorio local (por defecto ./datos, configurable con la
-variable de entorno EXTRANJERIA_DATOS). Asi los ajustes y el historial perduran
-entre sesiones en la maquina del gestor.
+variable de entorno EXTRANJERIA_DATOS). Cada PERFIL de usuario tiene su propia
+subcarpeta con su configuracion, sus tramites y su historial, lo que permite que
+varias personas o despachos trabajen por separado en la misma instalacion.
 """
 
 import json
 import os
+import re
 from pathlib import Path
 
 from . import tramites
 
-BASE_DIR = Path(os.environ.get("EXTRANJERIA_DATOS", "datos"))
-CONFIG_FILE = BASE_DIR / "config.json"
-TRAMITES_FILE = BASE_DIR / "tramites.json"
+ROOT_DIR = Path(os.environ.get("EXTRANJERIA_DATOS", "datos"))
+
+# Directorio activo. Por defecto la raiz; al elegir un perfil pasa a una subcarpeta.
+BASE_DIR = ROOT_DIR
+PERFIL_ACTUAL = None
 
 _CONFIG_DEFECTO = {
     "nombre_gestoria": "",
@@ -26,16 +30,52 @@ _CONFIG_DEFECTO = {
 _EXT_LOGO = (".png", ".jpg", ".jpeg")
 
 
+def _slug(texto):
+    texto = (texto or "").strip().lower()
+    sustituciones = {"á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u", "ñ": "n", "ü": "u"}
+    for a, b in sustituciones.items():
+        texto = texto.replace(a, b)
+    texto = re.sub(r"[^a-z0-9]+", "_", texto).strip("_")
+    return texto or "perfil"
+
+
+def _config_file():
+    return BASE_DIR / "config.json"
+
+
+def _tramites_file():
+    return BASE_DIR / "tramites.json"
+
+
 def _asegurar_dir():
     BASE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# ------------------------------- Perfiles ---------------------------------- #
+def listar_perfiles():
+    """Nombres de los perfiles existentes (subcarpetas de perfiles/)."""
+    d = ROOT_DIR / "perfiles"
+    if not d.exists():
+        return []
+    return sorted(p.name for p in d.iterdir() if p.is_dir())
+
+
+def establecer_perfil(nombre):
+    """Activa un perfil (crea su carpeta si no existe) y carga su configuracion."""
+    global BASE_DIR, PERFIL_ACTUAL
+    BASE_DIR = ROOT_DIR / "perfiles" / _slug(nombre)
+    PERFIL_ACTUAL = nombre
+    _asegurar_dir()
+    inicializar()
 
 
 # --------------------------- Datos de la gestoria --------------------------- #
 def cargar_config():
     """Devuelve el diccionario de configuracion de la gestoria."""
-    if CONFIG_FILE.exists():
+    ruta = _config_file()
+    if ruta.exists():
         try:
-            datos = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+            datos = json.loads(ruta.read_text(encoding="utf-8"))
             return {**_CONFIG_DEFECTO, **datos}
         except (json.JSONDecodeError, OSError):
             pass
@@ -45,7 +85,7 @@ def cargar_config():
 def guardar_config(cfg):
     _asegurar_dir()
     completo = {**_CONFIG_DEFECTO, **cfg}
-    CONFIG_FILE.write_text(
+    _config_file().write_text(
         json.dumps(completo, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     return completo
@@ -85,9 +125,10 @@ def hay_membrete(cfg=None):
 # --------------------------- Tramites personalizados ------------------------ #
 def cargar_tramites_personalizados():
     """Devuelve los tramites personalizados guardados, o None si no hay."""
-    if TRAMITES_FILE.exists():
+    ruta = _tramites_file()
+    if ruta.exists():
         try:
-            return json.loads(TRAMITES_FILE.read_text(encoding="utf-8"))
+            return json.loads(ruta.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             pass
     return None
@@ -96,7 +137,7 @@ def cargar_tramites_personalizados():
 def guardar_tramites(data):
     """Persiste el conjunto de tramites y lo aplica al conjunto activo."""
     _asegurar_dir()
-    TRAMITES_FILE.write_text(
+    _tramites_file().write_text(
         json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     tramites.aplicar(data)
@@ -104,13 +145,14 @@ def guardar_tramites(data):
 
 def restablecer_tramites():
     """Borra la personalizacion y vuelve a los valores por defecto."""
-    if TRAMITES_FILE.exists():
-        TRAMITES_FILE.unlink()
+    ruta = _tramites_file()
+    if ruta.exists():
+        ruta.unlink()
     tramites.restablecer()
 
 
 def inicializar():
-    """Carga al arranque los tramites personalizados si existen."""
+    """Carga al arranque los tramites personalizados del perfil activo si existen."""
     custom = cargar_tramites_personalizados()
     if custom:
         tramites.aplicar(custom)

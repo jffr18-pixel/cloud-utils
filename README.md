@@ -21,21 +21,33 @@ Aplicacion con interfaz grafica que lee la documentacion de un expediente
 - Genera un **informe de revision** descargable en **Markdown, Word (.docx) y
   PDF**, con acciones recomendadas.
 - **Membrete propio**: anade el logo y los datos de tu gestoria a los informes.
+- **Carta de requerimiento** automatica al cliente (TXT y Word) con la lista de
+  lo que falta o hay que renovar.
+- **Sugerencia de tramite** por IA a partir de los documentos aportados.
+- **Vista previa** de cada documento (foto o PDF) junto a su analisis.
+- **Comprobaciones automaticas**: coherencia de nombre y nº de pasaporte entre
+  documentos, y calculo de los anios de permanencia acreditados.
 - **Editor de tramites** desde la propia interfaz: anade, edita o elimina la
   documentacion de cada tramite (o crea tramites nuevos) sin tocar codigo.
-- **Historial** de expedientes revisados: consulta revisiones anteriores y
-  vuelve a descargar su informe en cualquier formato.
+- **Historial** con busqueda y filtros, y agrupacion por cliente.
+- **Avisos de caducidad**: seguimiento proactivo de documentos que caducan en
+  expedientes ya revisados.
+- **Perfiles de usuario**: varias personas o despachos pueden trabajar por
+  separado, cada uno con sus tramites, su membrete y su historial.
+- Soporte de **fotos HEIC** de iPhone (requiere `pillow-heif`).
 
 ### Organizacion de la app
 
-La interfaz tiene cuatro secciones (menu lateral):
+La interfaz tiene cinco secciones (menu lateral):
 
 - **Revisar expediente** — el flujo principal de analisis.
-- **Historial** — expedientes revisados anteriormente.
+- **Historial** — expedientes revisados, con busqueda, filtros y agrupacion.
+- **Caducidades** — documentos que caducan pronto en expedientes ya revisados.
 - **Tramites** — editar la documentacion exigida por cada tramite.
-- **Gestoria** — logo y datos para el membrete de los informes.
+- **Gestoria** — logo y datos para el membrete de informes y cartas.
 
-Los ajustes y el historial se guardan en la carpeta `datos/` (configurable con
+En la barra lateral se elige el **perfil de trabajo**. Los ajustes y el
+historial se guardan en `datos/perfiles/<perfil>/` (la raiz es configurable con
 la variable de entorno `EXTRANJERIA_DATOS`).
 
 ### Tramites incluidos
