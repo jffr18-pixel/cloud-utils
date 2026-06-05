@@ -5,5 +5,7 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+*.spec.bak
 logs/
 informes/
+assets/logo_bz.ico
