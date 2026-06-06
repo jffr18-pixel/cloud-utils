@@ -25,5 +25,17 @@ Pillow>=10.0.0
 selenium>=4.20.0
 webdriver-manager>=4.0.0
 
+# Generación de documentos PDF (RGPD/mandato)
+fpdf2>=2.7.0
+
+# Firma digital de PDFs con certificado electrónico
+pyhanko>=0.20.0
+
+# IA: lectura fácil de notificaciones
+anthropic>=0.25.0
+
+# Seguridad: hash de contraseña maestra
+bcrypt>=4.0.0
+
 # Tests
 pytest>=7.4.0

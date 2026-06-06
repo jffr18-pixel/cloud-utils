@@ -28,6 +28,34 @@ _DEFAULTS = {
         'gui_stores': 'MY',
         'known_issuers': 'FNMT-RCM,AC DNIE,ACCV,CAMERFIRMA,IZENPE,ANF AC,CATCERT',
     },
+    'gestor': {
+        'name': '',
+        'phone': '',
+        'email': '',
+        'address': '',
+        'cif': '',
+    },
+    'email': {
+        'host': 'smtp.gmail.com',
+        'port': '587',
+        'use_tls': 'true',
+        'username': '',
+        'password': '',
+        'from_name': '',
+        'from_email': '',
+    },
+    'whatsapp': {
+        'provider': '',      # 'twilio' o 'callmebot'
+        'account_sid': '',   # Twilio
+        'auth_token': '',    # Twilio
+        'from_number': '',   # Twilio: whatsapp:+14155238886
+        'api_key': '',       # CallMeBot
+        'phone': '',         # CallMeBot
+    },
+    'ai': {
+        'anthropic_api_key': '',
+        'model': 'claude-haiku-4-5-20251001',
+    },
 }
 
 
