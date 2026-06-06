@@ -19,6 +19,9 @@ _DEFAULTS = {
         'timeout': '30',
         'url_buzon': '/es/ciudadano/buzon',
         'url_notificacion': '/es/ciudadano/notificacion/{id}',
+        # Modo automático: Edge oculto + autoselección de certificado.
+        # Por defecto desactivado para no suprimir el cuadro de selección.
+        'auto_mode': 'false',
     },
     'certificates': {
         'stores': 'MY,CA,ROOT',

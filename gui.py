@@ -685,6 +685,28 @@ class DehuPage(ctk.CTkFrame):
         self._status = ctk.CTkLabel(brow, text='', font=F(size=12), text_color=TEXT_MUTED)
         self._status.pack(side='left', padx=8)
 
+        # ── Fila de modo de comprobación ────────────────────────────────────
+        mrow = ctk.CTkFrame(bar, fg_color='transparent')
+        mrow.pack(fill='x', padx=14, pady=(0, 12))
+
+        auto_on = self.cfg['dehu'].get('auto_mode', 'false').strip().lower() == 'true'
+        self._auto_var = ctk.BooleanVar(value=auto_on)
+        ctk.CTkSwitch(
+            mrow, text='Modo automático (oculto, sin elegir certificado cada vez)',
+            variable=self._auto_var, command=self._toggle_auto_mode,
+            font=F(size=12), progress_color=PRIMARY,
+        ).pack(side='left')
+
+        # Botón para restaurar el cuadro de selección de certificados
+        try:
+            from cert_manager import edge_policy
+            if edge_policy.is_supported() and edge_policy.is_enabled():
+                action_btn(mrow, '🔓  Restaurar selector de certificados',
+                           WARNING, self._restore_selector, width=270,
+                           text_color=TEXT).pack(side='right')
+        except Exception:
+            pass
+
         # ── Resultados ──────────────────────────────────────────────────────
         self._res = ctk.CTkScrollableFrame(
             self, fg_color=CARD, corner_radius=12,
@@ -820,6 +842,55 @@ class DehuPage(ctk.CTkFrame):
             return None
         return val.strip() or default
 
+    def _toggle_auto_mode(self):
+        """Guarda la preferencia de modo automático en config.ini."""
+        on = bool(self._auto_var.get())
+        self.cfg['dehu']['auto_mode'] = 'true' if on else 'false'
+        try:
+            from cert_manager.config import _CONFIG_FILE
+            with open(_CONFIG_FILE, 'w', encoding='utf-8') as f:
+                self.cfg.write(f)
+        except Exception as e:
+            logger.warning('No se pudo guardar auto_mode: %s', e)
+
+        if on:
+            messagebox.showinfo(
+                'Modo automático activado',
+                'A partir de ahora DEHú se comprobará en segundo plano, sin '
+                'abrir el navegador ni pedirte el certificado.\n\n'
+                'Para conseguirlo, Windows seleccionará tu certificado '
+                'automáticamente en las webs del Estado (dejará de aparecer el '
+                'cuadro de selección en esos sitios).\n\n'
+                'Puedes revertirlo cuando quieras con el botón '
+                '"Restaurar selector de certificados".'
+            )
+        else:
+            # Al desactivar el modo automático, restauramos el selector
+            self._restore_selector(silent=True)
+        if self.app:
+            self.app.refresh_page('dehu')
+
+    def _restore_selector(self, silent: bool = False):
+        """Quita la política de autoselección para que vuelva el cuadro de certificados."""
+        try:
+            from cert_manager import edge_policy
+            res = edge_policy.disable()
+            removed = res.get('removed', 0)
+        except Exception as e:
+            if not silent:
+                messagebox.showerror('Error', f'No se pudo restaurar: {e}')
+            return
+        if not silent:
+            messagebox.showinfo(
+                'Selector restaurado',
+                f'Hecho. Se quitaron {removed} entrada(s) de autoselección.\n\n'
+                'El cuadro para elegir el certificado volverá a aparecer en las '
+                'webs del Estado (cierra y vuelve a abrir el navegador si estaba '
+                'abierto).'
+            )
+        if self.app:
+            self.app.refresh_page('dehu')
+
     def _check(self):
         self._check_btn.configure(state='disabled', text='⏳  Comprobando...')
         self._prog.start()
@@ -848,16 +919,16 @@ class DehuPage(ctk.CTkFrame):
             cert_path, password = self._active_cert()
             subject_cn = self._ensure_cert_ready(cert_path, password, _progress)
 
-            # 1er intento: Edge OCULTO (headless). Requiere cert en almacén
-            # de Windows + autoselección activa.
-            _progress('Comprobando DEHú en segundo plano...')
+            # Modo automático (opt-in): Edge oculto + autoselección.
+            # Modo normal (por defecto): Edge visible, eliges el certificado.
+            auto_mode = self.cfg['dehu'].get('auto_mode', 'false').strip().lower() == 'true'
+
             self._result = dehu_selenium.check_with_selenium(
-                log_folder, headless=True, progress_cb=_progress,
+                log_folder, headless=auto_mode, progress_cb=_progress,
                 subject_cn=subject_cn)
 
-            # Si la autenticación falló en headless, reintentar visible para
-            # que el usuario pueda seleccionar el certificado manualmente.
-            if self._result.get('reason') == 'auth_failed':
+            # Si en modo automático falla la autenticación, reintentar visible
+            if auto_mode and self._result.get('reason') == 'auth_failed':
                 _progress('Reintentando con navegador visible...')
                 self._result = dehu_selenium.check_with_selenium(
                     log_folder, headless=False, progress_cb=_progress,
@@ -869,9 +940,9 @@ class DehuPage(ctk.CTkFrame):
 
     def _ensure_cert_ready(self, cert_path: str, password: str, progress) -> str:
         """
-        Prepara el certificado para que Edge headless pueda autenticarse:
-        lo importa al almacén de Windows si hace falta y activa la
-        autoselección filtrada a su titular. Devuelve el CN del titular.
+        Prepara el certificado para la comprobación. Solo activa la
+        autoselección de certificado si el usuario la ha habilitado
+        explícitamente (modo automático). Devuelve el CN del titular.
         """
         if not cert_path:
             return ''
@@ -879,15 +950,16 @@ class DehuPage(ctk.CTkFrame):
         subject_cn = info.get('name', '') if info.get('ok') else ''
         issuer_cn = info.get('issuer', '') if info.get('ok') else ''
 
+        # Solo importar/activar autoselección si el usuario eligió modo automático
+        auto_mode = self.cfg['dehu'].get('auto_mode', 'false').strip().lower() == 'true'
+        if not auto_mode:
+            return subject_cn
+
         try:
             from cert_manager import cert_scanner, edge_policy
-            # Importar al almacén del usuario si no está ya
             if subject_cn and not cert_scanner.is_cert_in_user_store(subject_cn):
                 progress('Importando certificado al almacén de Windows...')
-                ok, msg = cert_scanner.import_pfx_to_user_store(cert_path, password)
-                if not ok:
-                    logger.warning('No se pudo importar el certificado: %s', msg)
-            # Activar autoselección para los portales del Estado
+                cert_scanner.import_pfx_to_user_store(cert_path, password)
             if edge_policy.is_supported() and not edge_policy.is_enabled():
                 progress('Activando selección automática de certificado...')
                 edge_policy.enable(subject_cn=subject_cn, issuer_cn=issuer_cn)
