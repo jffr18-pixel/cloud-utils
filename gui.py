@@ -486,8 +486,9 @@ class DashboardPage(ctk.CTkFrame):
                              font=F(size=12), text_color='#7b3f00',
                              ).pack(anchor='w', padx=16, pady=(10, 2))
             if expiring > 0:
+                _alert_days = int(self.cfg['general'].get('alert_days', 30))
                 ctk.CTkLabel(a,
-                             text=f'⏰  {expiring} certificado(s) caducan en menos de {alert_days} días',
+                             text=f'⏰  {expiring} certificado(s) caducan en menos de {_alert_days} días',
                              font=F(size=12), text_color='#7b3f00',
                              ).pack(anchor='w', padx=16, pady=(2, 10))
 
@@ -920,7 +921,7 @@ class DehuPage(ctk.CTkFrame):
                 if debug_html and Path(debug_html).exists():
                     def _open_html(p=debug_html):
                         import webbrowser
-                        webbrowser.open(Path(p).as_uri())
+                        webbrowser.open(Path(p).resolve().as_uri())
                     action_btn(diag_card, '🌐 Abrir HTML completo en navegador',
                                PRIMARY, _open_html, width=260).pack(pady=(6, 8))
             return
@@ -966,7 +967,7 @@ class DehuPage(ctk.CTkFrame):
         if debug_html.exists():
             def _open_debug():
                 import webbrowser
-                webbrowser.open(debug_html.as_uri())
+                webbrowser.open(debug_html.resolve().as_uri())
             action_btn(err_card, '🔍 Ver respuesta de DEHU', '#7b1f1f', _open_debug,
                        width=200).pack(pady=(0, 12))
         else:
