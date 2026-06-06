@@ -828,15 +828,34 @@ class DehuPage(ctk.CTkFrame):
         threading.Thread(target=self._do_check, daemon=True).start()
 
     def _do_check(self):
-        from cert_manager.dehu_session import DEHUSession
-        from cert_manager import dehu_checker
-        cert_path, password = self._active_cert()
+        from cert_manager import dehu_selenium
         log_folder = Path(self.cfg['general']['log_folder'])
+
+        def _progress(msg):
+            if self.app:
+                self.after(0, lambda m=msg: self.app.set_status(m, ACCENT))
+
         try:
-            with DEHUSession(cert_path, password,
-                             self.cfg['dehu']['base_url'],
-                             int(self.cfg['dehu']['timeout'])) as session:
-                self._result = dehu_checker.check(session, log_folder)
+            # DEHú carga las notificaciones con JavaScript, así que usamos
+            # Selenium + Edge (ejecuta JS) en lugar de requests.
+            if dehu_selenium.selenium_available():
+                self._result = dehu_selenium.check_with_selenium(
+                    log_folder, headless=False, progress_cb=_progress)
+            else:
+                # Fallback a requests (no verá notificaciones cargadas por JS,
+                # pero al menos diagnostica el problema)
+                from cert_manager.dehu_session import DEHUSession
+                from cert_manager import dehu_checker
+                cert_path, password = self._active_cert()
+                with DEHUSession(cert_path, password,
+                                 self.cfg['dehu']['base_url'],
+                                 int(self.cfg['dehu']['timeout'])) as session:
+                    self._result = dehu_checker.check(session, log_folder)
+                if not self._result.get('error'):
+                    self._result['error'] = (
+                        'Para leer DEHú se necesita Selenium (el portal usa '
+                        'JavaScript).\nInstálalo con: pip install -r requirements.txt'
+                    )
             self.after(0, self._show_results)
         except Exception as e:
             self.after(0, lambda: self._show_error(str(e)))
