@@ -32,6 +32,16 @@ _CONFIG_DEFECTO = {
     "smtp_password": "",
     "smtp_remitente": "",
     "smtp_tls": True,
+    # Recepcion de email (IMAP)
+    "imap_host": "",
+    "imap_port": 993,
+    "imap_user": "",
+    "imap_password": "",
+    "imap_ssl": True,
+    "imap_carpeta": "INBOX",
+    # Notificaciones automaticas de caducidad
+    "notif_caducidad_dias": 30,
+    "notif_caducidad_ultima": "",
     # Proteccion de datos (RGPD): dias de conservacion (0 = sin limite)
     "rgpd_retencion_dias": 0,
 }

@@ -18,8 +18,11 @@ from revision import (
     comunicacion,
     config,
     ficha,
+    formularios,
     historial,
+    imap_import,
     informe,
+    portal,
     tramites,
 )
 
@@ -434,12 +437,14 @@ def barra_lateral():
         pagina = st.radio(
             "Menu",
             [
+                "Dashboard",
                 "Revisar expediente",
                 "Historial",
                 "Seguimiento",
                 "Caducidades",
                 "Calendario",
                 "Estadisticas",
+                "Asistente IA",
                 "Tramites",
                 "Gestoria",
                 "Ajustes",
@@ -508,23 +513,76 @@ def pagina_revisar(api_key, modelo, dias_aviso):
             marca = "**(obligatorio)**" if doc["obligatorio"] else "(opcional)"
             st.markdown(f"- {doc['nombre']} {marca} — {doc.get('notas', '')}")
 
+    # Importar desde email (IMAP) -----------------------------------------------
+    cfg_imap = config.cargar_config()
+    if cfg_imap.get("imap_host"):
+        with st.expander("📧 Importar adjuntos desde email"):
+            if st.button("Conectar y ver emails recientes", key="imap_connect"):
+                try:
+                    imap = imap_import.conectar(
+                        cfg_imap["imap_host"], cfg_imap["imap_port"],
+                        cfg_imap["imap_user"], cfg_imap["imap_password"],
+                        ssl=cfg_imap.get("imap_ssl", True),
+                    )
+                    emails = imap_import.listar_emails(imap, cfg_imap.get("imap_carpeta", "INBOX"))
+                    st.session_state["imap_conn"] = imap
+                    st.session_state["imap_emails"] = emails
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"No se pudo conectar al servidor IMAP: {exc}")
+
+            emails_cargados = st.session_state.get("imap_emails", [])
+            if emails_cargados:
+                opciones_email = {
+                    e["uid"]: f"{e['fecha'][:16]}  ·  {e['remitente'][:30]}  —  {e['asunto']}"
+                    for e in emails_cargados
+                    if e.get("tiene_adjuntos")
+                }
+                if opciones_email:
+                    uid_sel = st.selectbox(
+                        "Email con adjuntos", list(opciones_email),
+                        format_func=lambda u: opciones_email[u], key="imap_uid",
+                    )
+                    if st.button("Descargar adjuntos de este email", key="imap_dl"):
+                        imap = st.session_state.get("imap_conn")
+                        if imap:
+                            adjuntos = imap_import.descargar_adjuntos(imap, uid_sel)
+                            st.session_state["imap_adjuntos"] = adjuntos
+                            st.success(f"{len(adjuntos)} adjunto(s) descargados.")
+                        else:
+                            st.warning("Reconecta primero.")
+                else:
+                    st.info("No se encontraron emails con adjuntos admitidos.")
+
+            # Mostrar adjuntos descargados como archivos "virtuales"
+            imap_adj = st.session_state.get("imap_adjuntos", [])
+            if imap_adj:
+                st.caption(
+                    "Adjuntos listos. Se analizaran junto con los archivos subidos abajo."
+                )
+
     archivos = st.file_uploader(
         "Documentos del expediente (PDF, JPG, PNG, HEIC)",
         type=analizador.extensiones_admitidas(),
         accept_multiple_files=True,
         help="Puedes subir varias fotos y PDF a la vez.",
     )
+    # Combinar archivos subidos + adjuntos de email
+    imap_adj = st.session_state.get("imap_adjuntos", [])
+    archivos_virtuales = [(n, d) for n, d in imap_adj]  # (nombre, bytes)
 
     items, grupos, modelo_sec = None, None, None
-    if archivos:
+    todos_archivos = list(archivos or [])
+    # Archivos virtuales de IMAP se tratan como un archivo adicional por nombre
+    if archivos or archivos_virtuales:
         st.markdown("##### Agrupar paginas de un mismo documento")
         st.caption(
             "Pon el **mismo numero de grupo** a las fotos que sean el mismo documento "
             "(p.ej. las 4 fotos de un pasaporte). Por defecto cada archivo va por separado."
         )
         col_grupo = "Grupo (mismo nº = mismo documento)"
+        nombres_todos = [a.name for a in todos_archivos] + [n for n, _ in archivos_virtuales]
         df = pd.DataFrame(
-            {"Archivo": [a.name for a in archivos], col_grupo: list(range(1, len(archivos) + 1))}
+            {"Archivo": nombres_todos, col_grupo: list(range(1, len(nombres_todos) + 1))}
         )
         editado = st.data_editor(
             df, disabled=["Archivo"], hide_index=True, use_container_width=True,
@@ -532,9 +590,10 @@ def pagina_revisar(api_key, modelo, dias_aviso):
             key="editor_grupos",
         )
         grupos = {}
-        for i, archivo in enumerate(archivos):
+        datos_todos = [(a.name, a.getvalue()) for a in todos_archivos] + archivos_virtuales
+        for i, (nombre, datos) in enumerate(datos_todos):
             clave = int(editado.iloc[i][col_grupo])
-            grupos.setdefault(clave, []).append((archivo.name, archivo.getvalue()))
+            grupos.setdefault(clave, []).append((nombre, datos))
         items = [grupos[k] for k in sorted(grupos)]
 
         doble = st.checkbox(
@@ -546,8 +605,10 @@ def pagina_revisar(api_key, modelo, dias_aviso):
             sec = st.selectbox("Segundo modelo", nombres_mod, index=idx_sec)
             modelo_sec = MODELOS[sec]
 
-        c1, c2 = st.columns(2)
+        c1, c2, c3 = st.columns(3)
         analizar = c1.button("🔍 Analizar expediente", type="primary", use_container_width=True)
+        if c3.button("📊 Comparar tramites", use_container_width=True):
+            st.session_state["mostrar_comparador"] = True
         if c2.button("🔎 Sugerir tramite (IA)", use_container_width=True):
             try:
                 cliente = obtener_cliente(api_key)
@@ -564,6 +625,11 @@ def pagina_revisar(api_key, modelo, dias_aviso):
                 st.error(f"No se pudo sugerir el tramite: {exc}")
     else:
         analizar = False
+
+    # Comparador de tramites
+    if st.session_state.get("mostrar_comparador") and items:
+        st.session_state["mostrar_comparador"] = False
+        _mostrar_comparador(items, tramite_id)
 
     if analizar and items:
         try:
@@ -714,6 +780,35 @@ def pagina_caducidades():
         "tiempo.</p>",
         unsafe_allow_html=True,
     )
+
+    cfg = config.cargar_config()
+    dias_notif = int(cfg.get("notif_caducidad_dias", 30) or 30)
+    ultima_notif = cfg.get("notif_caducidad_ultima", "")
+
+    with st.expander("📧 Enviar avisos por email a los clientes"):
+        st.caption(
+            "Envia un email a los clientes que tienen documentos que caducan pronto. "
+            "Solo se envia a expedientes con email del cliente registrado (Seguimiento)."
+        )
+        if ultima_notif:
+            st.caption(f"Ultimo envio: {ultima_notif}")
+        d_notif = st.number_input(
+            "Avisar a clientes con documentos que caducan en menos de (dias)",
+            min_value=1, max_value=365, value=dias_notif, step=15,
+        )
+        if st.button("📤 Enviar avisos ahora", type="primary"):
+            gestoria = config.cargar_config()
+            env, fall, s_email = comunicacion.enviar_avisos_caducidad(gestoria, gestoria, int(d_notif))
+            cfg["notif_caducidad_dias"] = int(d_notif)
+            cfg["notif_caducidad_ultima"] = date.today().isoformat()
+            config.guardar_config(cfg)
+            if env or fall or s_email:
+                st.success(
+                    f"Enviados: {env} · Fallidos: {fall} · Sin email registrado: {s_email}"
+                )
+            else:
+                st.info("No hay documentos que caduquen en ese periodo.")
+
     dias = st.slider("Mostrar lo que caduca en los proximos (dias)", 0, 365, 90, step=15)
     avisos = historial.proximas_caducidades(dias)
     if not avisos:
@@ -1039,6 +1134,38 @@ def mostrar_resultados(resultados, tramite_id, solicitante, hoy, prefijo="rev", 
         except Exception as exc:  # noqa: BLE001
             st.caption(f"Carta Word no disponible: {exc}")
 
+    # Formularios oficiales pre-rellenados
+    st.subheader("Formularios oficiales (pre-rellenados)")
+    st.caption(
+        "Campos rellenados automaticamente con los datos extraidos. "
+        "Revisa y completa antes de presentar."
+    )
+    f1, f2 = st.columns(2)
+    with f1:
+        try:
+            ex01 = formularios.generar_ex01(
+                resultados, solicitante=solicitante, tramite_id=tramite_id, gestoria=gestoria
+            )
+            st.download_button(
+                "⬇️ EX-01 (circunstancias excepcionales)", data=ex01,
+                file_name=f"EX01_{nombre_base}_{fecha}.pdf", mime="application/pdf",
+                use_container_width=True, key=f"{prefijo}_ex01",
+            )
+        except Exception as exc:  # noqa: BLE001
+            st.caption(f"EX-01 no disponible: {exc}")
+    with f2:
+        try:
+            ex03 = formularios.generar_ex03(
+                resultados, solicitante=solicitante, tramite_id=tramite_id, gestoria=gestoria
+            )
+            st.download_button(
+                "⬇️ EX-03 (renovacion residencia)", data=ex03,
+                file_name=f"EX03_{nombre_base}_{fecha}.pdf", mime="application/pdf",
+                use_container_width=True, key=f"{prefijo}_ex03",
+            )
+        except Exception as exc:  # noqa: BLE001
+            st.caption(f"EX-03 no disponible: {exc}")
+
     # Ficha estructurada (Excel / CSV)
     st.subheader("Ficha del expediente (datos)")
     meta_ficha = {"solicitante": solicitante, "tramite_id": tramite_id, "fecha": fecha}
@@ -1176,6 +1303,10 @@ def pagina_seguimiento(api_key, modelo, dias_aviso):
     c1, c2, c3 = st.columns(3)
     numero = c1.text_input("Nº de expediente", value=reg.get("numero_expediente", ""))
     nie = c2.text_input("NIE", value=reg.get("nie", ""))
+    email_cliente = c3.text_input(
+        "Email del cliente (para avisos)", value=reg.get("email_cliente", ""),
+        help="Se usa para enviar avisos automaticos de caducidad."
+    )
     resultado = c3.selectbox(
         "Resultado final",
         ["pendiente", "aprobado", "denegado"],
@@ -1187,12 +1318,36 @@ def pagina_seguimiento(api_key, modelo, dias_aviso):
     if b1.button("💾 Guardar datos de presentacion", type="primary"):
         historial.marcar_presentado(eid, numero.strip(), nie.strip())
         historial.marcar_resultado(eid, resultado)
+        historial.actualizar(eid, email_cliente=email_cliente.strip())
         st.success("Datos guardados.")
         st.rerun()
     if b2.button("🔒 Anonimizar (RGPD)"):
         historial.anonimizar(eid)
         st.success("Datos personales del expediente eliminados.")
         st.rerun()
+
+    # Portal de estado para el cliente
+    st.markdown("##### Portal de estado para el cliente")
+    st.caption(
+        "Genera un HTML que puedes enviar al cliente (por email o WhatsApp). "
+        "Muestra el estado del expediente, documentos pendientes y el historial."
+    )
+    if st.button("🌐 Generar portal del cliente", use_container_width=False):
+        try:
+            checklist_p, _ = analizador.evaluar_expediente(reg.get("resultados", []), reg["tramite_id"])
+            tramite_n = tramites.TRAMITES.get(reg["tramite_id"], {}).get("nombre", reg["tramite_id"])
+            html_portal = portal.generar_html(reg, checklist_p, tramite_n)
+            token = portal.obtener_o_crear_token(eid)
+            st.download_button(
+                "⬇️ Descargar portal (.html)",
+                data=html_portal.encode("utf-8"),
+                file_name=f"estado_{eid[:12]}.html",
+                mime="text/html",
+                key=f"portal_{eid}",
+            )
+            st.caption(f"Token de acceso: `{token}` (guardado en el expediente).")
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"No se pudo generar el portal: {exc}")
 
     st.markdown("##### Linea de tiempo del expediente")
     seguimiento = reg.get("seguimiento", [])
@@ -1346,6 +1501,26 @@ def pagina_ajustes():
     st.caption("La contrasena se guarda en local. Usa una contrasena de aplicacion si tu correo lo permite.")
 
     st.divider()
+    st.subheader("Recepcion de email (IMAP)")
+    st.caption("Permite importar documentos directamente desde la bandeja de entrada.")
+    with st.form("imap"):
+        c1, c2 = st.columns(2)
+        imap_host = c1.text_input("Servidor IMAP", value=cfg.get("imap_host", ""))
+        imap_port = c2.number_input("Puerto IMAP", value=int(cfg.get("imap_port", 993) or 993), step=1)
+        imap_user = c1.text_input("Usuario IMAP", value=cfg.get("imap_user", ""))
+        imap_pass = c2.text_input("Contrasena IMAP", value=cfg.get("imap_password", ""), type="password")
+        imap_ssl = c1.checkbox("Usar SSL (993)", value=bool(cfg.get("imap_ssl", True)))
+        imap_carpeta = c2.text_input("Carpeta", value=cfg.get("imap_carpeta", "INBOX"))
+        if st.form_submit_button("💾 Guardar IMAP"):
+            cfg.update({
+                "imap_host": imap_host.strip(), "imap_port": int(imap_port),
+                "imap_user": imap_user.strip(), "imap_password": imap_pass,
+                "imap_ssl": imap_ssl, "imap_carpeta": imap_carpeta.strip() or "INBOX",
+            })
+            config.guardar_config(cfg)
+            st.success("Configuracion IMAP guardada.")
+
+    st.divider()
     st.subheader("Proteccion de datos (RGPD)")
     dias = st.number_input(
         "Conservar expedientes (dias; 0 = sin limite)",
@@ -1375,12 +1550,255 @@ def pagina_ajustes():
 
 
 # --------------------------------------------------------------------------- #
+#  Comparador de tramites
+# --------------------------------------------------------------------------- #
+def _mostrar_comparador(items, tramite_actual):
+    """Muestra una tabla comparando cuantos documentos cumple el expediente para cada tramite."""
+    # Usamos los datos ya cargados si existen; si no, una evaluacion rapida sin IA
+    resultados_cache = st.session_state.get("resultados")
+    if not resultados_cache:
+        st.info("Analiza el expediente primero para comparar tramites con datos reales.")
+        return
+
+    nombres_tramite = {tid: t["nombre"] for tid, t in tramites.TRAMITES.items()}
+    filas = []
+    for tid in tramites.TRAMITES:
+        checklist, _ = analizador.evaluar_expediente(resultados_cache, tid)
+        total = len([c for c in checklist if c["obligatorio"]])
+        correctos = sum(1 for c in checklist if c["obligatorio"] and c["estado"] == "correcto")
+        faltan = sum(1 for c in checklist if c["estado"] == "falta")
+        caducados = sum(1 for c in checklist if c["estado"] == "caducado")
+        listo = analizador.expediente_listo(checklist)
+        pct = round(100 * correctos / total) if total else 0
+        filas.append({
+            "Tramite": nombres_tramite[tid],
+            "Compatibilidad": pct,
+            "Correctos": correctos,
+            "Faltan": faltan,
+            "Caducados": caducados,
+            "Listo": "✅" if listo else "❌",
+            "_id": tid,
+        })
+
+    filas.sort(key=lambda x: -x["Compatibilidad"])
+    st.subheader("Comparador de tramites")
+    st.caption("Que tramites podria solicitar el cliente con la documentacion aportada.")
+    df_comp = pd.DataFrame(
+        [{k: v for k, v in f.items() if k != "_id"} for f in filas]
+    )
+    st.dataframe(df_comp, hide_index=True, use_container_width=True)
+
+    mejor = filas[0]
+    if mejor["_id"] != tramite_actual:
+        st.info(
+            f"El tramite con mayor compatibilidad es **{mejor['Tramite']}** "
+            f"({mejor['Compatibilidad']} %). "
+            "Seleccionalo en el desplegable de arriba si procede."
+        )
+
+
+# --------------------------------------------------------------------------- #
+#  Pagina: Dashboard
+# --------------------------------------------------------------------------- #
+def pagina_dashboard():
+    st.title("Dashboard")
+    st.markdown(
+        '<p class="bz-page-subtitle">Resumen del dia: tareas pendientes, caducidades urgentes '
+        "y actividad reciente.</p>",
+        unsafe_allow_html=True,
+    )
+
+    hoy = date.today().isoformat()
+    todas_tareas = historial.todas_las_tareas(incluir_hechas=False)
+    tareas_hoy = [t for t in todas_tareas if t["fecha"] <= hoy]
+    cad7 = historial.proximas_caducidades(7)
+    cad30 = historial.proximas_caducidades(30)
+    registros = historial.listar()
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Expedientes totales", len(registros))
+    m2.metric("Tareas vencidas / hoy", len(tareas_hoy))
+    m3.metric("Caducan esta semana", len(cad7))
+    m4.metric("Caducan este mes", len(cad30))
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        st.subheader("Tareas para hoy")
+        if not tareas_hoy:
+            st.success("No hay tareas vencidas ni para hoy.")
+        else:
+            for t in tareas_hoy[:8]:
+                vencida = t["fecha"] < hoy
+                icono = "🔴" if vencida else "🗓️"
+                cols = st.columns([5, 1])
+                cols[0].write(
+                    f"{icono} **{t['fecha']}** — {t['descripcion']}  "
+                    f"_({t['solicitante']})_"
+                )
+                if cols[1].button("✓", key=f"dash_t_{t['expediente_id']}_{t['indice']}"):
+                    historial.marcar_tarea(t["expediente_id"], t["indice"], True)
+                    st.rerun()
+
+    with c2:
+        st.subheader("Caducidades urgentes (7 dias)")
+        if not cad7:
+            st.success("Ninguna caducidad urgente.")
+        else:
+            for av in cad7[:8]:
+                icono = "⛔" if av["vencido"] else "🟠"
+                st.write(
+                    f"{icono} **{av['documento']}** — {av['solicitante']}  "
+                    f"({av['dias_restantes']} dias)"
+                )
+
+    st.divider()
+    st.subheader("Actividad reciente")
+    if not registros:
+        st.info("Aun no hay expedientes revisados.")
+    else:
+        nombres_tramite = {tid: t["nombre"] for tid, t in tramites.TRAMITES.items()}
+        for r in registros[:6]:
+            estado = "✅" if r["listo"] else "⛔"
+            tramite_n = nombres_tramite.get(r["tramite_id"], r["tramite_id"])
+            st.write(
+                f"{estado} **{r['solicitante'] or 'sin nombre'}** — {tramite_n}  "
+                f"· _{r['fecha'][:10]}_"
+            )
+
+
+# --------------------------------------------------------------------------- #
+#  Pagina: Asistente IA (chat con el expediente)
+# --------------------------------------------------------------------------- #
+def pagina_asistente(api_key, modelo):
+    st.title("Asistente IA")
+    st.markdown(
+        '<p class="bz-page-subtitle">Pregunta sobre cualquier expediente del historial: '
+        "documentos que faltan, caducidades, requisitos del tramite o cualquier duda.</p>",
+        unsafe_allow_html=True,
+    )
+
+    registros = historial.listar()
+    if not registros:
+        st.info("Aun no hay expedientes en el historial. Revisa uno primero.")
+        return
+
+    etiquetas = {
+        r["id"]: f"{r['fecha'][:10]}  ·  {r['solicitante'] or 'sin nombre'}  —  "
+                 f"{tramites.TRAMITES.get(r['tramite_id'], {}).get('nombre', r['tramite_id'])}"
+        for r in registros
+    }
+    eid = st.selectbox(
+        "Expediente de contexto", list(etiquetas), format_func=lambda i: etiquetas[i]
+    )
+
+    # Limpiar historial de chat si cambia el expediente
+    if st.session_state.get("chat_eid") != eid:
+        st.session_state["chat_eid"] = eid
+        st.session_state["chat_msgs"] = []
+
+    registro = historial.cargar(eid)
+    if not registro:
+        st.error("No se pudo cargar el expediente.")
+        return
+
+    # Mostrar contexto resumido
+    tramite_nombre = tramites.TRAMITES.get(registro["tramite_id"], {}).get("nombre", "")
+    checklist, _ = analizador.evaluar_expediente(registro.get("resultados", []), registro["tramite_id"])
+    faltan = sum(1 for c in checklist if c["estado"] == "falta")
+    caducados = sum(1 for c in checklist if c["estado"] == "caducado")
+    with st.expander("Ver resumen del expediente en contexto"):
+        st.write(f"**Tramite:** {tramite_nombre}")
+        st.write(f"**Solicitante:** {registro.get('solicitante') or '-'}")
+        st.write(f"**NIE:** {registro.get('nie') or '-'}")
+        st.write(f"**Documentos que faltan:** {faltan}  |  **Caducados:** {caducados}")
+
+    # Chat
+    msgs = st.session_state.get("chat_msgs", [])
+    for msg in msgs:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    if prompt := st.chat_input("Pregunta sobre este expediente..."):
+        msgs.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.chat_message("assistant"):
+            with st.spinner("Consultando..."):
+                try:
+                    respuesta = _chat_expediente(api_key, modelo, registro, checklist, msgs)
+                except Exception as exc:  # noqa: BLE001
+                    respuesta = f"No se pudo obtener respuesta: {exc}"
+            st.markdown(respuesta)
+
+        msgs.append({"role": "assistant", "content": respuesta})
+        st.session_state["chat_msgs"] = msgs
+
+    if msgs and st.button("Limpiar conversacion"):
+        st.session_state["chat_msgs"] = []
+        st.rerun()
+
+
+def _chat_expediente(api_key, modelo, registro, checklist, mensajes):
+    """Llama a Claude con el expediente como contexto del sistema."""
+    tramite_nombre = tramites.TRAMITES.get(registro["tramite_id"], {}).get("nombre", registro["tramite_id"])
+    lineas = [
+        f"Expediente de extranjeria:",
+        f"- Solicitante: {registro.get('solicitante') or 'desconocido'}",
+        f"- Tramite: {tramite_nombre}",
+        f"- Fecha revision: {registro.get('fecha', '')[:10]}",
+        f"- Nº expediente: {registro.get('numero_expediente') or 'no registrado'}",
+        f"- NIE: {registro.get('nie') or 'no registrado'}",
+        "",
+        "Estado del checklist:",
+    ]
+    for item in checklist:
+        lineas.append(f"  - {item['nombre']}: {item['estado']}")
+    lineas.append("")
+    lineas.append("Documentos analizados:")
+    for doc in registro.get("resultados", []):
+        linea = f"  - {doc.get('tipo_nombre') or doc.get('tipo_id')}: {doc.get('estado', '-')}"
+        if doc.get("fecha_caducidad"):
+            linea += f" (caduca: {doc['fecha_caducidad']})"
+        if doc.get("incidencias"):
+            linea += f" | Incidencias: {'; '.join(doc['incidencias'])}"
+        lineas.append(linea)
+
+    seguimiento = registro.get("seguimiento", [])
+    if seguimiento:
+        lineas.append("")
+        lineas.append("Historial de seguimiento:")
+        for ev in seguimiento[-5:]:
+            lineas.append(f"  - {ev['fecha']}: {ev['estado']} {ev.get('nota', '')}")
+
+    system = (
+        "Eres un asistente especializado en derecho de extranjeria espanol (tramites de residencia "
+        "y trabajo: arraigo, regularizacion, etc.). Tienes acceso al expediente de un cliente "
+        "concreto. Responde de forma concisa y practica. Si no sabes algo con certeza, indicalo. "
+        "No inventes normativa.\n\n"
+        + "\n".join(lineas)
+    )
+
+    cliente = obtener_cliente(api_key)
+    resp = cliente.messages.create(
+        model=modelo,
+        max_tokens=1024,
+        system=system,
+        messages=[{"role": m["role"], "content": m["content"]} for m in mensajes],
+    )
+    return resp.content[0].text
+
+
+# --------------------------------------------------------------------------- #
 #  Main
 # --------------------------------------------------------------------------- #
 def main():
     st.markdown(_CSS, unsafe_allow_html=True)
     pagina, api_key, modelo, dias_aviso = barra_lateral()
-    if pagina == "Revisar expediente":
+    if pagina == "Dashboard":
+        pagina_dashboard()
+    elif pagina == "Revisar expediente":
         pagina_revisar(api_key, modelo, dias_aviso)
     elif pagina == "Historial":
         pagina_historial()
@@ -1392,6 +1810,8 @@ def main():
         pagina_calendario()
     elif pagina == "Estadisticas":
         pagina_estadisticas()
+    elif pagina == "Asistente IA":
+        pagina_asistente(api_key, modelo)
     elif pagina == "Tramites":
         pagina_tramites()
     elif pagina == "Gestoria":

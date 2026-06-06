@@ -43,6 +43,63 @@ def enlace_whatsapp(texto, telefono=""):
     return f"{base}{numero}?text=" + urllib.parse.quote(texto)
 
 
+def enviar_avisos_caducidad(smtp, gestoria, dias=30):
+    """Envia emails a clientes con documentos que caducan en los proximos 'dias' dias.
+
+    Solo envia a expedientes que tienen 'email_cliente' registrado.
+    Devuelve (enviados, fallidos, sin_email).
+    """
+    from . import historial as _hist
+
+    avisos = _hist.proximas_caducidades(dias)
+    if not avisos:
+        return 0, 0, 0
+
+    por_exp = {}
+    for av in avisos:
+        por_exp.setdefault(av["expediente_id"], []).append(av)
+
+    enviados = fallidos = sin_email = 0
+    for eid, av_list in por_exp.items():
+        reg = _hist.cargar(eid)
+        if not reg:
+            continue
+        email_cliente = (reg.get("email_cliente") or "").strip()
+        if not email_cliente:
+            sin_email += 1
+            continue
+        solicitante = reg.get("solicitante") or "cliente"
+        lineas = [
+            f"Hola {solicitante},", "",
+            "Le informamos de que los siguientes documentos de su tramite de extranjeria",
+            "requieren atencion:", "",
+        ]
+        for av in av_list:
+            if av["vencido"]:
+                estado = "VENCIDO"
+            else:
+                estado = f"caduca en {av['dias_restantes']} dias ({av['fecha_caducidad']})"
+            lineas.append(f"  - {av['documento']}: {estado}")
+        lineas += [
+            "", "Por favor, contacte con nosotros para renovarlos a la mayor brevedad.", "",
+        ]
+        if gestoria and gestoria.get("nombre_gestoria"):
+            lineas.append(gestoria["nombre_gestoria"])
+        if gestoria and gestoria.get("telefono"):
+            lineas.append(f"Tel: {gestoria['telefono']}")
+        if gestoria and gestoria.get("email"):
+            lineas.append(f"Email: {gestoria['email']}")
+
+        asunto = f"Documentos pendientes de renovacion - {solicitante}"
+        ok, _ = enviar_email(smtp, email_cliente, asunto, "\n".join(lineas))
+        if ok:
+            enviados += 1
+        else:
+            fallidos += 1
+
+    return enviados, fallidos, sin_email
+
+
 def enviar_email(smtp, destino, asunto, cuerpo, adjuntos=None):
     """Envia un email con adjuntos opcionales.
 
