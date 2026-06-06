@@ -29,10 +29,9 @@ def check(session: DEHUSession, log_folder: Path = Path('logs')) -> Dict[str, An
         return {'error': str(e), 'total': 0, 'new': [], 'all': [], 'checked_at': _now()}
 
     # Guardar HTML para diagnóstico
+    debug_path = log_folder / 'dehu_last_response.html'
     try:
-        debug_path = log_folder / 'dehu_last_response.html'
         debug_path.write_text(resp.text, encoding='utf-8', errors='replace')
-        logger.debug("HTML de DEHU guardado en %s (%d bytes)", debug_path, len(resp.text))
     except Exception:
         pass
 
@@ -40,14 +39,28 @@ def check(session: DEHUSession, log_folder: Path = Path('logs')) -> Dict[str, An
     final_url = getattr(resp, 'url', '') or ''
     auth_error = _detect_auth_problem(resp.text, final_url)
     if auth_error:
-        logger.warning("DEHU: problema de autenticación detectado — %s", auth_error)
         return {'error': auth_error, 'total': 0, 'new': [], 'all': [], 'checked_at': _now()}
 
     try:
-        all_notifications = _parse_inbox(resp.text)
+        all_notifications, diag = _parse_inbox(resp.text)
     except Exception as e:
-        logger.error("Error parseando buzón DEHU: %s", e)
         return {'error': f'Error leyendo la respuesta de DEHU: {e}', 'total': 0, 'new': [], 'all': [], 'checked_at': _now()}
+
+    previous_ids = _load_seen_ids(state_file)
+    new_notifications = [n for n in all_notifications if n['id'] not in previous_ids]
+    _save_seen_ids(state_file, {n['id'] for n in all_notifications})
+
+    result = {
+        'total': len(all_notifications),
+        'new': new_notifications,
+        'all': all_notifications,
+        'checked_at': _now(),
+        'diag': diag,
+        'debug_html': str(debug_path) if debug_path.exists() else '',
+    }
+
+    _write_daily_log(log_folder, result)
+    return result
 
     previous_ids = _load_seen_ids(state_file)
     new_notifications = [n for n in all_notifications if n['id'] not in previous_ids]
@@ -99,23 +112,54 @@ def _detect_auth_problem(html: str, url: str) -> str:
     return ''
 
 
-def _parse_inbox(html: str) -> List[Dict[str, Any]]:
+def _parse_inbox(html: str):
+    """Devuelve (lista_notificaciones, info_diagnostico)."""
     soup = BeautifulSoup(html, 'html.parser')
 
-    # Intentar múltiples selectores en orden de especificidad
-    rows = (
-        soup.select('table.listado tbody tr')
-        or soup.select('#tablaBuzon tbody tr')
-        or soup.select('table#buzon tbody tr')
-        or soup.select('.notificacion-row')
-        or soup.select('tr.notificacion')
-        or soup.select('table.tabla-listado tbody tr')
-        or soup.select('.listado-notificaciones tr')
-        or soup.select('tbody tr')          # cualquier tabla
-    )
+    # Información de diagnóstico
+    page_title = (soup.title.string or '').strip() if soup.title else ''
+    all_tables = soup.find_all('table')
+    table_ids = [t.get('id', '') or t.get('class', [''])[0] for t in all_tables]
+    body_text = ' '.join(soup.get_text(' ', strip=True).split())[:400]
+    has_script_heavy = len(soup.find_all('script')) > 5
 
-    # Filtrar filas de cabecera (sin celdas <td>)
-    rows = [r for r in rows if r.find('td')]
+    diag = {
+        'page_title': page_title,
+        'num_tables': len(all_tables),
+        'table_ids': table_ids[:6],
+        'body_preview': body_text,
+        'has_many_scripts': has_script_heavy,
+        'html_size': len(html),
+    }
+    logger.info("DEHU diagnóstico — título: %r, tablas: %d, scripts>5: %s",
+                page_title, len(all_tables), has_script_heavy)
+
+    # Intentar múltiples selectores en orden de especificidad
+    selectors = [
+        'table.listado tbody tr',
+        '#tablaBuzon tbody tr',
+        '#tablaNotificaciones tbody tr',
+        'table#buzon tbody tr',
+        '.notificacion-row',
+        'tr.notificacion',
+        'table.tabla-listado tbody tr',
+        '.listado-notificaciones tr',
+        'table.dataTable tbody tr',
+        'tbody tr',          # cualquier tabla como último recurso
+    ]
+
+    rows = []
+    used_selector = ''
+    for sel in selectors:
+        found = soup.select(sel)
+        found = [r for r in found if r.find('td')]
+        if found:
+            rows = found
+            used_selector = sel
+            logger.info("DEHU: selector usado: %r (%d filas)", sel, len(found))
+            break
+
+    diag['selector_used'] = used_selector
 
     notifications = []
     for row in rows:
@@ -123,14 +167,7 @@ def _parse_inbox(html: str) -> List[Dict[str, Any]]:
         if n:
             notifications.append(n)
 
-    if not notifications:
-        logger.info(
-            "DEHU: ninguna notificación encontrada con selectores de tabla. "
-            "Título de página: %s",
-            (soup.title.string if soup.title else 'sin título'),
-        )
-
-    return notifications
+    return notifications, diag
 
 
 def _extract_row(row) -> Optional[Dict[str, Any]]:

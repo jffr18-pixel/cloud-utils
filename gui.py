@@ -877,24 +877,52 @@ class DehuPage(ctk.CTkFrame):
                          ).pack(padx=14, pady=10)
 
         if not self._result['all']:
-            from cert_manager.config import load as _load_cfg
-            log_folder = Path(self.cfg['general']['log_folder'])
-            debug_html = log_folder / 'dehu_last_response.html'
-            msg = 'El buzón DEHU no contiene notificaciones.'
-            hint = ''
-            if debug_html.exists():
-                hint = (
-                    f'Si crees que debería haber notificaciones, revisa el archivo\n'
-                    f'{debug_html}\npara ver qué devolvió DEHU.'
-                )
+            diag = self._result.get('diag', {})
+            debug_html = self._result.get('debug_html', '')
+
             f_empty = ctk.CTkFrame(self._res, fg_color='transparent')
-            f_empty.pack(pady=30)
-            ctk.CTkLabel(f_empty, text=msg,
+            f_empty.pack(fill='x', padx=10, pady=16)
+
+            ctk.CTkLabel(f_empty,
+                         text='No se encontraron notificaciones en el buzón DEHU.',
                          text_color=TEXT_MUTED, font=F(size=13)).pack()
-            if hint:
-                ctk.CTkLabel(f_empty, text=hint,
-                             text_color=TEXT_MUTED, font=F(size=11),
-                             wraplength=520).pack(pady=(6, 0))
+
+            if diag:
+                # Mostrar información de diagnóstico
+                diag_card = ctk.CTkFrame(f_empty, fg_color='#f5f5f5', corner_radius=8,
+                                         border_width=1, border_color='#ddd')
+                diag_card.pack(fill='x', pady=(10, 0))
+                ctk.CTkLabel(diag_card, text='🔍 Diagnóstico de la respuesta de DEHU',
+                             font=F(size=12, weight='bold'),
+                             text_color='#555').pack(anchor='w', padx=12, pady=(8, 2))
+
+                title = diag.get('page_title', '')
+                num_t = diag.get('num_tables', 0)
+                scripts = diag.get('has_many_scripts', False)
+                preview = diag.get('body_preview', '')[:200]
+                html_kb = diag.get('html_size', 0) // 1024
+
+                lines = [
+                    f'Título de página: {title or "(sin título)"}',
+                    f'Tablas encontradas: {num_t}  ·  HTML: {html_kb} KB  ·  JavaScript pesado: {"Sí" if scripts else "No"}',
+                ]
+                if scripts and num_t == 0:
+                    lines.append('⚠ DEHU usa JavaScript para cargar los datos. '
+                                 'requests no ejecuta JS — las notificaciones no son visibles por API.')
+                if preview:
+                    lines.append(f'Texto de la página: {preview}')
+
+                for line in lines:
+                    ctk.CTkLabel(diag_card, text=line, font=F(size=11),
+                                 text_color='#444', wraplength=560,
+                                 anchor='w').pack(anchor='w', padx=12, pady=1)
+
+                if debug_html and Path(debug_html).exists():
+                    def _open_html(p=debug_html):
+                        import webbrowser
+                        webbrowser.open(Path(p).as_uri())
+                    action_btn(diag_card, '🌐 Abrir HTML completo en navegador',
+                               PRIMARY, _open_html, width=260).pack(pady=(6, 8))
             return
 
         tbl_header(self._res, [('Fecha', 108), ('Organismo', 215), ('Asunto', 305), ('Estado', 110)])
