@@ -877,8 +877,24 @@ class DehuPage(ctk.CTkFrame):
                          ).pack(padx=14, pady=10)
 
         if not self._result['all']:
-            ctk.CTkLabel(self._res, text='El buzón DEHU está vacío.',
-                         text_color=TEXT_MUTED, font=F(size=13)).pack(pady=30)
+            from cert_manager.config import load as _load_cfg
+            log_folder = Path(self.cfg['general']['log_folder'])
+            debug_html = log_folder / 'dehu_last_response.html'
+            msg = 'El buzón DEHU no contiene notificaciones.'
+            hint = ''
+            if debug_html.exists():
+                hint = (
+                    f'Si crees que debería haber notificaciones, revisa el archivo\n'
+                    f'{debug_html}\npara ver qué devolvió DEHU.'
+                )
+            f_empty = ctk.CTkFrame(self._res, fg_color='transparent')
+            f_empty.pack(pady=30)
+            ctk.CTkLabel(f_empty, text=msg,
+                         text_color=TEXT_MUTED, font=F(size=13)).pack()
+            if hint:
+                ctk.CTkLabel(f_empty, text=hint,
+                             text_color=TEXT_MUTED, font=F(size=11),
+                             wraplength=520).pack(pady=(6, 0))
             return
 
         tbl_header(self._res, [('Fecha', 108), ('Organismo', 215), ('Asunto', 305), ('Estado', 110)])
@@ -904,18 +920,31 @@ class DehuPage(ctk.CTkFrame):
         self._check_btn.configure(state='normal', text='🔍  Comprobar DEHU')
         self._prog.stop()
         self._prog.set(0)
-        self._status.configure(text=f'Error de conexión', text_color=DANGER)
+        self._status.configure(text='Error de conexión', text_color=DANGER)
         if self.app:
             self.app.set_status(f'Error DEHU: {msg[:60]}', DANGER)
         for w in self._res.winfo_children():
             w.destroy()
         err_card = ctk.CTkFrame(self._res, fg_color='#fdecea', corner_radius=10,
-                                 border_width=1, border_color='#f5c6cb')
+                                border_width=1, border_color='#f5c6cb')
         err_card.pack(fill='x', pady=20, padx=10)
         ctk.CTkLabel(err_card, text='❌  Error al conectar con DEHU',
                      font=F(size=13, weight='bold'), text_color=DANGER).pack(padx=16, pady=(12, 4))
         ctk.CTkLabel(err_card, text=msg, text_color='#7b1f1f',
-                     font=F(size=11), wraplength=540).pack(padx=16, pady=(0, 12))
+                     font=F(size=11), wraplength=540).pack(padx=16, pady=(0, 8))
+        # Botón para abrir el HTML de diagnóstico
+        log_folder = Path(self.cfg['general']['log_folder'])
+        debug_html = log_folder / 'dehu_last_response.html'
+        if debug_html.exists():
+            def _open_debug():
+                import webbrowser
+                webbrowser.open(debug_html.as_uri())
+            action_btn(err_card, '🔍 Ver respuesta de DEHU', '#7b1f1f', _open_debug,
+                       width=200).pack(pady=(0, 12))
+        else:
+            ctk.CTkLabel(err_card,
+                         text='Comprueba que el archivo .pfx y su contraseña son correctos.',
+                         text_color='#7b1f1f', font=F(size=11)).pack(padx=16, pady=(0, 12))
 
     def _download(self):
         if not self._result:
