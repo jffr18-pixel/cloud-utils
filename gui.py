@@ -698,9 +698,11 @@ class DehuPage(ctk.CTkFrame):
         ).pack(side='left')
 
         # Botón para restaurar el cuadro de selección de certificados
+        # Siempre visible en Windows: la política puede estar activa aunque
+        # is_enabled() no la detecte (p.ej. escrita por una versión anterior).
         try:
             from cert_manager import edge_policy
-            if edge_policy.is_supported() and edge_policy.is_enabled():
+            if edge_policy.is_supported():
                 action_btn(mrow, '🔓  Restaurar selector de certificados',
                            WARNING, self._restore_selector, width=270,
                            text_color=TEXT).pack(side='right')
