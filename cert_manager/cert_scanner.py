@@ -106,6 +106,57 @@ def is_admin() -> bool:
         return False
 
 
+def is_cert_in_user_store(subject_cn: str) -> bool:
+    """True si hay un certificado con ese CN en el almacén personal del usuario."""
+    if sys.platform != 'win32' or not subject_cn:
+        return False
+    try:
+        output = subprocess.check_output(
+            ['certutil', '-user', '-store', 'MY'],
+            stderr=subprocess.DEVNULL, text=True,
+            encoding='cp1252', errors='replace',
+        )
+        return subject_cn.lower() in output.lower()
+    except Exception:
+        return False
+
+
+def import_pfx_to_user_store(pfx_path: str, password: str = '') -> tuple:
+    """
+    Importa un .pfx al almacén personal del usuario (no requiere administrador).
+
+    Devuelve (ok: bool, mensaje: str).
+    """
+    if sys.platform != 'win32':
+        return False, "La importación solo está disponible en Windows."
+
+    path = pfx_path.strip().strip('"\'')
+    if not path:
+        return False, "Ruta del certificado vacía."
+
+    # certutil -user -p <pwd> -importpfx MY <archivo> NoExport
+    cmd = ['certutil', '-user', '-f']
+    if password:
+        cmd += ['-p', password]
+    cmd += ['-importpfx', 'MY', path, 'NoExport']
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True,
+                                encoding='cp1252', errors='replace')
+        if result.returncode == 0:
+            logger.info("Certificado importado al almacén del usuario: %s", path)
+            return True, ''
+        err = (result.stderr or result.stdout or '').strip()
+        low = err.lower()
+        if 'password' in low or 'contraseña' in low or '0x80070056' in low:
+            return False, "Contraseña del certificado incorrecta."
+        return False, err or "certutil no pudo importar el certificado."
+    except FileNotFoundError:
+        return False, "certutil no encontrado en el sistema."
+    except Exception as e:
+        return False, str(e)
+
+
 def delete_by_thumbprint(store_name: str, thumbprint: str) -> bool:
     """Borra un certificado del almacén por huella. Requiere administrador para MY.
 

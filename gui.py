@@ -835,30 +835,66 @@ class DehuPage(ctk.CTkFrame):
             if self.app:
                 self.after(0, lambda m=msg: self.app.set_status(m, ACCENT))
 
+        if not dehu_selenium.selenium_available():
+            self._result = {
+                'error': ('Para leer DEHú se necesita Selenium (el portal usa '
+                          'JavaScript).\nInstálalo con: pip install -r requirements.txt'),
+                'reason': 'no_selenium', 'total': 0, 'new': [], 'all': [],
+            }
+            self.after(0, self._show_results)
+            return
+
         try:
-            # DEHú carga las notificaciones con JavaScript, así que usamos
-            # Selenium + Edge (ejecuta JS) en lugar de requests.
-            if dehu_selenium.selenium_available():
+            cert_path, password = self._active_cert()
+            subject_cn = self._ensure_cert_ready(cert_path, password, _progress)
+
+            # 1er intento: Edge OCULTO (headless). Requiere cert en almacén
+            # de Windows + autoselección activa.
+            _progress('Comprobando DEHú en segundo plano...')
+            self._result = dehu_selenium.check_with_selenium(
+                log_folder, headless=True, progress_cb=_progress,
+                subject_cn=subject_cn)
+
+            # Si la autenticación falló en headless, reintentar visible para
+            # que el usuario pueda seleccionar el certificado manualmente.
+            if self._result.get('reason') == 'auth_failed':
+                _progress('Reintentando con navegador visible...')
                 self._result = dehu_selenium.check_with_selenium(
-                    log_folder, headless=False, progress_cb=_progress)
-            else:
-                # Fallback a requests (no verá notificaciones cargadas por JS,
-                # pero al menos diagnostica el problema)
-                from cert_manager.dehu_session import DEHUSession
-                from cert_manager import dehu_checker
-                cert_path, password = self._active_cert()
-                with DEHUSession(cert_path, password,
-                                 self.cfg['dehu']['base_url'],
-                                 int(self.cfg['dehu']['timeout'])) as session:
-                    self._result = dehu_checker.check(session, log_folder)
-                if not self._result.get('error'):
-                    self._result['error'] = (
-                        'Para leer DEHú se necesita Selenium (el portal usa '
-                        'JavaScript).\nInstálalo con: pip install -r requirements.txt'
-                    )
+                    log_folder, headless=False, progress_cb=_progress,
+                    subject_cn=subject_cn)
+
             self.after(0, self._show_results)
         except Exception as e:
             self.after(0, lambda: self._show_error(str(e)))
+
+    def _ensure_cert_ready(self, cert_path: str, password: str, progress) -> str:
+        """
+        Prepara el certificado para que Edge headless pueda autenticarse:
+        lo importa al almacén de Windows si hace falta y activa la
+        autoselección filtrada a su titular. Devuelve el CN del titular.
+        """
+        if not cert_path:
+            return ''
+        info = _load_pfx_info(cert_path, password)
+        subject_cn = info.get('name', '') if info.get('ok') else ''
+        issuer_cn = info.get('issuer', '') if info.get('ok') else ''
+
+        try:
+            from cert_manager import cert_scanner, edge_policy
+            # Importar al almacén del usuario si no está ya
+            if subject_cn and not cert_scanner.is_cert_in_user_store(subject_cn):
+                progress('Importando certificado al almacén de Windows...')
+                ok, msg = cert_scanner.import_pfx_to_user_store(cert_path, password)
+                if not ok:
+                    logger.warning('No se pudo importar el certificado: %s', msg)
+            # Activar autoselección para los portales del Estado
+            if edge_policy.is_supported() and not edge_policy.is_enabled():
+                progress('Activando selección automática de certificado...')
+                edge_policy.enable(subject_cn=subject_cn, issuer_cn=issuer_cn)
+        except Exception as e:
+            logger.warning('Preparación de certificado incompleta: %s', e)
+
+        return subject_cn
 
     def _show_results(self):
         self._check_btn.configure(state='normal', text='🔍  Comprobar DEHU')

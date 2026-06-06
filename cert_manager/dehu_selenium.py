@@ -36,17 +36,22 @@ def selenium_available() -> bool:
 
 def check_with_selenium(
     log_folder: Path = Path('logs'),
-    headless: bool = False,
+    headless: bool = True,
     progress_cb=None,
+    subject_cn: str = '',
 ) -> Dict[str, Any]:
     """
-    Abre Edge, navega al buzón DEHú, espera a que cargue el JavaScript y
-    extrae las notificaciones.
+    Abre Edge (oculto por defecto), navega al buzón DEHú, espera a que cargue
+    el JavaScript y extrae las notificaciones para mostrarlas en la app.
 
-    progress_cb(msg) opcional para informar del progreso.
+    headless=True ejecuta Edge invisible: requiere que el certificado esté en
+    el almacén de Windows y que la autoselección esté activa (si no, no podrá
+    autenticarse porque no hay diálogo posible en modo oculto).
+
+    subject_cn: nombre del titular del certificado, para verificar autenticación.
 
     Devuelve el mismo formato que dehu_checker.check():
-        {'total', 'new', 'all', 'checked_at'} o {'error', ...}
+        {'total', 'new', 'all', 'checked_at'} o {'error', 'reason', ...}
     """
     log_folder.mkdir(parents=True, exist_ok=True)
     state_file = log_folder / _STATE_FILENAME
@@ -62,41 +67,40 @@ def check_with_selenium(
                 'Falta el módulo "selenium" para leer DEHú.\n'
                 'Instálalo con: pip install -r requirements.txt'
             ),
+            'reason': 'no_selenium',
             'total': 0, 'new': [], 'all': [], 'checked_at': _now(),
         }
 
     driver = None
     try:
-        _cb('Abriendo navegador Edge...')
+        _cb('Conectando con DEHú en segundo plano...' if headless
+            else 'Abriendo navegador Edge...')
         driver = _build_driver(headless)
         driver.set_page_load_timeout(60)
 
-        _cb('Conectando con DEHú...')
+        _cb('Autenticando con tu certificado...')
         driver.get(_BUZON_URL)
 
-        _cb('Esperando autenticación con certificado...')
-        time.sleep(_CERT_DIALOG_WAIT)
+        if not headless:
+            # Modo visible: dar tiempo a seleccionar el certificado a mano
+            time.sleep(_CERT_DIALOG_WAIT)
 
-        _cb('Esperando a que carguen las notificaciones...')
+        _cb('Leyendo notificaciones...')
         notifications, diag = _wait_and_parse(driver, log_folder)
 
-        # Guardar el HTML renderizado para diagnóstico
         try:
             (log_folder / 'dehu_rendered.html').write_text(
                 driver.page_source, encoding='utf-8', errors='replace')
         except Exception:
             pass
 
-        # Detectar si seguimos en login
+        # Detectar si seguimos en login (autenticación fallida)
         if not notifications and _looks_like_login(driver):
             return {
                 'error': (
-                    'DEHú pide identificación con certificado.\n\n'
-                    'El certificado no se seleccionó automáticamente. Para evitar '
-                    'el diálogo, activa la autoselección en la pestaña "Servicios" '
-                    '(botón ⚡), o selecciona el certificado manualmente en el '
-                    'navegador que se abre.'
+                    'El certificado no se autenticó automáticamente en DEHú.'
                 ),
+                'reason': 'auth_failed',
                 'total': 0, 'new': [], 'all': [], 'checked_at': _now(),
                 'diag': diag,
             }
@@ -118,7 +122,8 @@ def check_with_selenium(
 
     except Exception as e:
         logger.error('Error leyendo DEHú con Selenium: %s', e)
-        return {'error': str(e), 'total': 0, 'new': [], 'all': [], 'checked_at': _now()}
+        return {'error': str(e), 'reason': 'exception',
+                'total': 0, 'new': [], 'all': [], 'checked_at': _now()}
     finally:
         if driver:
             try:
