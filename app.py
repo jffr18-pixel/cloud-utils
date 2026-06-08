@@ -363,6 +363,34 @@ hr {
 .bz-exp  { background:#FFEBEE; color:#B71C1C; }
 .bz-miss { background:#FCE4EC; color:#880E4F; }
 .bz-opt  { background:#F3F3F3; color:#555555; }
+
+/* ── FICHA: tarjetas con icono para lectura rapida ────────── */
+.bz-ficha-dato {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: #F5F2FA;
+    border: 1px solid #E4DCEF;
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+}
+.bz-ficha-icono {
+    font-size: 1.15rem;
+    margin-right: 6px;
+}
+.bz-ficha-etiqueta {
+    color: #6B5F82;
+    font-size: 0.74rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.bz-ficha-valor {
+    color: #000000;
+    font-size: 1rem;
+    font-weight: 600;
+}
 </style>
 """
 
@@ -492,7 +520,7 @@ def pagina_revisar(api_key, modelo, dias_aviso):
         st.warning("No hay tramites definidos. Ve a la pestana 'Tramites' para crear uno.")
         return
 
-    opciones = tramites.lista_tramites()
+    opciones = tramites.lista_tramites_con_icono()
     etiquetas = [n for _, n in opciones]
     sugerido = st.session_state.get("tramite_sugerido")
     idx_def = next((i for i, (t, _) in enumerate(opciones) if t == sugerido), 0)
@@ -510,8 +538,9 @@ def pagina_revisar(api_key, modelo, dias_aviso):
     st.info(tramites.TRAMITES[tramite_id].get("descripcion", ""))
     with st.expander("Ver documentacion exigida para este tramite"):
         for doc in tramites.documentos_de(tramite_id):
-            marca = "**(obligatorio)**" if doc["obligatorio"] else "(opcional)"
-            st.markdown(f"- {doc['nombre']} {marca} — {doc.get('notas', '')}")
+            marca = "🔴 **obligatorio**" if doc["obligatorio"] else "⚪ opcional"
+            icono = tramites.icono_documento(doc["id"])
+            st.markdown(f"{icono} **{doc['nombre']}** — {marca}  \n*{doc.get('notas', '')}*")
 
     # Importar desde email (IMAP) -----------------------------------------------
     cfg_imap = config.cargar_config()
@@ -865,7 +894,7 @@ def pagina_tramites():
             else:
                 st.warning("Indica un nombre.")
 
-    opciones = tramites.lista_tramites()
+    opciones = tramites.lista_tramites_con_icono()
     if not opciones:
         st.info("No hay tramites. Crea uno arriba.")
         return
@@ -893,6 +922,7 @@ def pagina_tramites():
     df = pd.DataFrame(
         [
             {
+                "Icono": tramites.icono_documento(d["id"]),
                 "ID": d["id"], "Documento": d["nombre"],
                 "Obligatorio": bool(d["obligatorio"]), "Caduca": bool(d.get("caduca", False)),
                 "Notas": d.get("notas", ""),
@@ -902,11 +932,12 @@ def pagina_tramites():
     )
     if df.empty:
         df = pd.DataFrame(
-            [{"ID": "", "Documento": "", "Obligatorio": True, "Caduca": False, "Notas": ""}]
+            [{"Icono": "📄", "ID": "", "Documento": "", "Obligatorio": True, "Caduca": False, "Notas": ""}]
         )
     editado = st.data_editor(
         df, num_rows="dynamic", hide_index=True, use_container_width=True,
         column_config={
+            "Icono": st.column_config.TextColumn(disabled=True, help="Se asigna automaticamente segun el ID del documento"),
             "Obligatorio": st.column_config.CheckboxColumn(),
             "Caduca": st.column_config.CheckboxColumn(),
         },
@@ -1048,9 +1079,10 @@ def mostrar_resultados(resultados, tramite_id, solicitante, hoy, prefijo="rev", 
 
     st.subheader("Checklist de documentacion")
     for fila in checklist:
-        icono, etiqueta = _BADGE.get(fila["estado"], ("•", fila["estado"]))
+        badge, etiqueta = _BADGE.get(fila["estado"], ("•", fila["estado"]))
+        icono_doc = tramites.icono_documento(fila["id"])
         oblig = " · obligatorio" if fila["obligatorio"] else " · opcional"
-        with st.expander(f"{icono} {fila['nombre']} — {etiqueta}{oblig}"):
+        with st.expander(f"{badge} {icono_doc} {fila['nombre']} — {etiqueta}{oblig}"):
             if fila["documentos"]:
                 for doc in fila["documentos"]:
                     _mostrar_documento(doc, previews)
@@ -1169,6 +1201,24 @@ def mostrar_resultados(resultados, tramite_id, solicitante, hoy, prefijo="rev", 
     # Ficha estructurada (Excel / CSV)
     st.subheader("Ficha del expediente (datos)")
     meta_ficha = {"solicitante": solicitante, "tramite_id": tramite_id, "fecha": fecha}
+    datos_ficha = ficha.construir_ficha(resultados, meta_ficha)
+    _ICONOS_FICHA = {
+        "Solicitante": "🧑", "Titular (documentos)": "🪪", "Nº de pasaporte": "🛂",
+        "Pais/nacionalidad": "🌍", "NIE": "🔢", "Nº de expediente": "📁",
+        "Tramite": tramites.icono_tramite(tramite_id), "Fecha de revision": "📅",
+        "Documentos aportados": "📎",
+    }
+    fc1, fc2 = st.columns(2)
+    for i, (clave, valor) in enumerate(datos_ficha.items()):
+        col = fc1 if i % 2 == 0 else fc2
+        icono = _ICONOS_FICHA.get(clave, "•")
+        col.markdown(
+            f"<div class='bz-ficha-dato'><span class='bz-ficha-icono'>{icono}</span>"
+            f"<span class='bz-ficha-etiqueta'>{clave}</span><br>"
+            f"<span class='bz-ficha-valor'>{valor or '—'}</span></div>",
+            unsafe_allow_html=True,
+        )
+    st.markdown("")
     e1, e2 = st.columns(2)
     with e1:
         try:

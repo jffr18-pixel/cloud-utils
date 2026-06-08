@@ -618,6 +618,68 @@ TRAMITES_DEFECTO = {
 
 
 # ---------------------------------------------------------------------------
+# Iconos (apoyo visual para una lectura rapida del expediente de un vistazo)
+# ---------------------------------------------------------------------------
+_ICONO_TRAMITE_DEFECTO = "📁"
+_ICONOS_TRAMITE = {
+    "regularizacion_extraordinaria": "🆕",
+    "cambio_humanitario_residencia_trabajo": "🤝",
+    "arraigo_social": "🏘️",
+    "arraigo_sociolaboral": "💼",
+    "arraigo_laboral": "🔧",
+    "arraigo_familiar": "👨‍👩‍👧",
+    "arraigo_formacion": "🎓",
+    "arraigo_segunda_oportunidad": "🔄",
+}
+
+_ICONO_DOCUMENTO_DEFECTO = "📄"
+_ICONOS_DOCUMENTO = {
+    "pasaporte": "🛂",
+    "antecedentes_espana": "📜",
+    "antecedentes_origen": "📜",
+    "empadronamiento": "🏠",
+    "empadronamiento_conjunto": "🏠",
+    "tasa_790_052": "💶",
+    "solicitud_ex": "📝",
+    "solicitud_ex10": "📝",
+    "solicitud_ex32": "📝",
+    "solicitud_ex_humanitaria": "📝",
+    "prueba_permanencia_2": "📅",
+    "prueba_permanencia_5_meses": "📅",
+    "prueba_presencia_antes_2026": "📅",
+    "vida_laboral": "💼",
+    "fotografia": "📸",
+    "contrato_trabajo": "📄",
+    "cuenta_propia": "🧾",
+    "documentacion_empresa": "🏢",
+    "informe_integracion": "🤝",
+    "informe_aprovechamiento": "🎓",
+    "vinculo_familiar": "👪",
+    "vinculo_familiar_residente": "👪",
+    "circunstancia_familia": "👪",
+    "circunstancia_trabajo": "💼",
+    "circunstancia_vulnerabilidad": "🆘",
+    "certificado_discapacidad": "♿",
+    "documentacion_menor_ue": "🧒",
+    "matricula_o_admision": "🎓",
+    "resolucion_laboral": "⚖️",
+    "resolucion_o_informe_causa": "⚖️",
+    "autorizacion_humanitaria_vigente": "🪪",
+    "autorizacion_previa": "🪪",
+}
+
+
+def icono_tramite(tramite_id):
+    """Emoji representativo del tramite, para identificarlo de un vistazo."""
+    return _ICONOS_TRAMITE.get(tramite_id, _ICONO_TRAMITE_DEFECTO)
+
+
+def icono_documento(doc_id):
+    """Emoji representativo del tipo de documento, para escanear listas rapido."""
+    return _ICONOS_DOCUMENTO.get(doc_id, _ICONO_DOCUMENTO_DEFECTO)
+
+
+# ---------------------------------------------------------------------------
 # Conjunto ACTIVO de tramites
 # ---------------------------------------------------------------------------
 # Arranca con los valores por defecto y puede sustituirse por una version
@@ -640,6 +702,11 @@ def aplicar(personalizados):
 def lista_tramites():
     """Devuelve [(id, nombre), ...] para poblar el desplegable de la interfaz."""
     return [(tid, datos["nombre"]) for tid, datos in TRAMITES.items()]
+
+
+def lista_tramites_con_icono():
+    """Devuelve [(id, "icono nombre"), ...] para desplegables con apoyo visual."""
+    return [(tid, f"{icono_tramite(tid)} {datos['nombre']}") for tid, datos in TRAMITES.items()]
 
 
 def documentos_de(tramite_id):
