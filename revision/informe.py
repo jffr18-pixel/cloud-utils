@@ -574,8 +574,13 @@ def generar_requerimiento(checklist, tramite_id, solicitante="", gestoria=None, 
     return "\n".join(_texto_requerimiento(checklist, tramite_id, solicitante, gestoria, hoy))
 
 
-def generar_requerimiento_docx(checklist, tramite_id, solicitante="", gestoria=None, hoy=None):
-    """Carta de requerimiento en formato Word (con membrete si esta configurado)."""
+def generar_requerimiento_docx(checklist, tramite_id, solicitante="", gestoria=None,
+                               hoy=None, firma_imagen=None):
+    """Carta de requerimiento en formato Word (con membrete si esta configurado).
+
+    Si se aporta 'firma_imagen' (bytes de una imagen PNG/JPG), se incorpora al
+    final del documento como constancia de conformidad firmada por el cliente.
+    """
     from docx import Document
     from docx.shared import Inches, Pt
 
@@ -596,6 +601,18 @@ def generar_requerimiento_docx(checklist, tramite_id, solicitante="", gestoria=N
 
     for parrafo in _texto_requerimiento(checklist, tramite_id, solicitante, gestoria, hoy):
         doc.add_paragraph(parrafo)
+
+    if firma_imagen:
+        doc.add_paragraph("")
+        p = doc.add_paragraph()
+        run = p.add_run("Firma del cliente (conforme):")
+        run.bold = True
+        try:
+            doc.add_picture(io.BytesIO(firma_imagen), width=Inches(2.2))
+        except Exception:  # noqa: BLE001
+            pass
+        if solicitante:
+            doc.add_paragraph(solicitante)
 
     buffer = io.BytesIO()
     doc.save(buffer)

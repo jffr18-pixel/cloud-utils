@@ -391,6 +391,122 @@ hr {
     font-size: 1rem;
     font-weight: 600;
 }
+
+/* ── HERO "HOY" (resumen destacado del dashboard) ─────────── */
+.bz-hero-hoy {
+    background: linear-gradient(120deg, #9373B2 0%, #6B5F9E 100%);
+    border-radius: 16px;
+    padding: 1.4rem 1.8rem;
+    margin-bottom: 1.4rem;
+    color: #FFFFFF;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2.2rem;
+}
+.bz-hero-hoy .bz-hero-titulo {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-bottom: 2px;
+}
+.bz-hero-hoy .bz-hero-sub {
+    font-size: 0.85rem;
+    color: #EDE6F6;
+}
+.bz-hero-chip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255,255,255,0.14);
+    border-radius: 12px;
+    padding: 10px 16px;
+}
+.bz-hero-chip .bz-hero-icono { font-size: 1.6rem; }
+.bz-hero-chip .bz-hero-num { font-size: 1.4rem; font-weight: 800; line-height: 1; }
+.bz-hero-chip .bz-hero-label { font-size: 0.72rem; color: #EDE6F6; text-transform: uppercase; letter-spacing: 0.04em; }
+.bz-hero-chip.bz-hero-ok { background: rgba(255,234,99,0.92); color: #4A3B00; }
+.bz-hero-chip.bz-hero-ok .bz-hero-num,
+.bz-hero-chip.bz-hero-ok .bz-hero-label { color: #4A3B00; }
+</style>
+"""
+
+# ── MODO OSCURO: capa de overrides que se inyecta encima de _CSS ──────────── #
+_CSS_DARK = """
+<style>
+[data-testid="stAppViewContainer"],
+.main, .main .block-container, [data-testid="stHeader"] {
+    background-color: #15121E !important;
+}
+html, body, [class*="css"], p, span, label, li, .stMarkdown, .stMarkdown p {
+    color: #E4DEF0 !important;
+}
+h1 { color: #FFFFFF !important; border-bottom-color: #9373B2 !important; }
+h2, h3, h4 { color: #E4DEF0 !important; }
+.bz-page-subtitle, .stCaption, small, [data-testid="stCaptionContainer"] {
+    color: #A99CC4 !important;
+}
+
+[data-testid="stMetric"] {
+    background: #1F1A2C !important;
+    border-color: #3A2F56 !important;
+}
+[data-testid="stMetricValue"] { color: #C9A8E8 !important; }
+[data-testid="stMetricLabel"] p { color: #A99CC4 !important; }
+
+[data-testid="stExpander"] {
+    background: #1B1726 !important;
+    border-color: #3A2F56 !important;
+}
+[data-testid="stExpander"] details summary {
+    background: #221D33 !important;
+    color: #E4DEF0 !important;
+}
+[data-testid="stExpander"] details summary:hover { background: #2C2440 !important; }
+[data-testid="stExpander"] details[open] summary {
+    background: #2C2440 !important;
+    color: #D9C2F0 !important;
+    border-bottom-color: #3A2F56 !important;
+}
+
+[data-baseweb="input"] > div, [data-baseweb="textarea"] > div,
+[data-baseweb="select"] > div:first-child, [data-baseweb="popover"] {
+    background-color: #1F1A2C !important;
+    border-color: #3A2F56 !important;
+    color: #E4DEF0 !important;
+}
+[data-baseweb="input"] input, [data-baseweb="textarea"] textarea {
+    color: #E4DEF0 !important;
+}
+
+[data-testid="stDataFrame"], [data-testid="stDataEditor"] {
+    border-color: #3A2F56 !important;
+}
+
+.bz-ficha-dato { background: #1F1A2C !important; border-color: #3A2F56 !important; }
+.bz-ficha-etiqueta { color: #A99CC4 !important; }
+.bz-ficha-valor { color: #FFFFFF !important; }
+
+[data-testid="stAlert"][data-baseweb*="positive"], div[class*="stSuccess"] {
+    background-color: #1B2E1D !important; border-left-color: #4CAF50 !important;
+}
+[data-testid="stAlert"][data-baseweb*="negative"], div[class*="stError"] {
+    background-color: #341A1A !important; border-left-color: #E57373 !important;
+}
+[data-testid="stAlert"][data-baseweb*="warning"], div[class*="stWarning"] {
+    background-color: #332E14 !important; border-left-color: #FFEA63 !important;
+}
+[data-testid="stAlert"][data-baseweb*="info"], div[class*="stInfo"] {
+    background-color: #251F35 !important; border-left-color: #9373B2 !important;
+}
+[data-testid="stAlert"] * { color: #E4DEF0 !important; }
+
+.stButton > button:not([kind="primary"]) {
+    background: #1F1A2C !important;
+    color: #C9A8E8 !important;
+    border-color: #6B5F9E !important;
+}
+.stButton > button:not([kind="primary"]):hover { background: #2C2440 !important; }
+hr { border-color: #3A2F56 !important; }
 </style>
 """
 
@@ -420,6 +536,39 @@ def _slug(texto):
         texto = texto.replace(a, b)
     texto = re.sub(r"[^a-z0-9]+", "_", texto).strip("_")
     return texto or "tramite"
+
+
+def _rellenar_plantilla(texto, contexto):
+    """Sustituye los comodines {solicitante}, {tramite}... sin romper si faltan datos."""
+    class _Defecto(dict):
+        def __missing__(self, clave):
+            return ""
+    try:
+        return texto.format_map(_Defecto(contexto))
+    except (ValueError, IndexError):
+        return texto
+
+
+def _buscar_expedientes(consulta, limite=8):
+    """Busca expedientes por solicitante, NIE o nº de expediente (insensible a mayusculas)."""
+    consulta = (consulta or "").strip().lower()
+    if not consulta:
+        return []
+    encontrados = []
+    for meta in historial.listar():
+        registro = historial.cargar(meta["id"])
+        if not registro:
+            continue
+        campos = (
+            registro.get("solicitante", ""),
+            registro.get("nie", ""),
+            registro.get("numero_expediente", ""),
+        )
+        if any(consulta in (c or "").lower() for c in campos):
+            encontrados.append(registro)
+        if len(encontrados) >= limite:
+            break
+    return encontrados
 
 
 # --------------------------------------------------------------------------- #
@@ -456,10 +605,25 @@ def barra_lateral():
         if st.session_state.get("perfil_activo") != perfil:
             config.establecer_perfil(perfil)
             st.session_state["perfil_activo"] = perfil
-            for clave in ("resultados", "previews", "tramite_sugerido"):
+            for clave in ("resultados", "previews", "tramite_sugerido", "eid_actual"):
                 st.session_state.pop(clave, None)
         else:
             config.establecer_perfil(perfil)
+
+        # Busqueda global: localiza un expediente por nombre, NIE o nº y abre
+        # directamente su seguimiento, sin tener que pasar por el Historial.
+        busqueda = st.text_input("🔍 Buscar expediente", placeholder="Nombre, NIE o nº de expediente")
+        if busqueda.strip():
+            encontrados = _buscar_expedientes(busqueda)
+            if not encontrados:
+                st.caption("Sin resultados.")
+            else:
+                for reg in encontrados:
+                    etiqueta = f"{reg.get('solicitante') or 'sin nombre'} · {reg.get('fecha', '')[:10]}"
+                    if st.button(f"👤 {etiqueta}", key=f"buscar_{reg['id']}", use_container_width=True):
+                        st.session_state["menu_radio"] = "Seguimiento"
+                        st.session_state["seguimiento_eid_sugerido"] = reg["id"]
+                        st.rerun()
 
         st.divider()
         pagina = st.radio(
@@ -467,6 +631,7 @@ def barra_lateral():
             [
                 "Dashboard",
                 "Revisar expediente",
+                "Tablero",
                 "Historial",
                 "Seguimiento",
                 "Caducidades",
@@ -474,12 +639,16 @@ def barra_lateral():
                 "Estadisticas",
                 "Asistente IA",
                 "Tramites",
+                "Plantillas",
                 "Gestoria",
                 "Ajustes",
             ],
             label_visibility="collapsed",
+            key="menu_radio",
         )
         st.divider()
+
+        st.checkbox("🌙 Modo oscuro", key="modo_oscuro")
 
         api_key_env = os.environ.get("ANTHROPIC_API_KEY")
         if api_key_env:
@@ -691,8 +860,10 @@ def pagina_revisar(api_key, modelo, dias_aviso):
             previews[datos["archivo"]] = paginas
         barra.empty()
 
+        nuevo_eid = None
         try:
-            historial.guardar(tramite_id, solicitante, resultados)
+            nuevo_eid = historial.guardar(tramite_id, solicitante, resultados)
+            historial.generar_tareas_automaticas(nuevo_eid, hoy=hoy)
         except Exception:  # noqa: BLE001
             pass
 
@@ -701,13 +872,56 @@ def pagina_revisar(api_key, modelo, dias_aviso):
         st.session_state["tramite_id"] = tramite_id
         st.session_state["solicitante"] = solicitante
         st.session_state["hoy"] = hoy
+        st.session_state["eid_actual"] = nuevo_eid
 
     if "resultados" in st.session_state:
         mostrar_resultados(
             st.session_state["resultados"], st.session_state["tramite_id"],
             st.session_state["solicitante"], st.session_state["hoy"],
             previews=st.session_state.get("previews"),
+            eid=st.session_state.get("eid_actual"),
         )
+
+
+# --------------------------------------------------------------------------- #
+#  Pagina: Tablero (vista Kanban de expedientes por fase)
+# --------------------------------------------------------------------------- #
+def pagina_tablero():
+    st.title("Tablero de expedientes")
+    st.markdown(
+        '<p class="bz-page-subtitle">Vision visual del flujo de trabajo: cada '
+        "expediente aparece en su fase actual, de un vistazo.</p>",
+        unsafe_allow_html=True,
+    )
+
+    grupos = historial.tablero()
+    nombres_tramite = {tid: t["nombre"] for tid, t in tramites.TRAMITES.items()}
+    if not any(grupos.values()):
+        st.info("Aun no hay expedientes. Revisa uno primero.")
+        return
+
+    columnas = st.columns(len(historial.COLUMNAS_TABLERO))
+    for col, (clave, titulo) in zip(columnas, historial.COLUMNAS_TABLERO):
+        with col:
+            elementos = grupos[clave]
+            st.markdown(f"##### {titulo}  ·  {len(elementos)}")
+            if not elementos:
+                st.caption("Sin expedientes en esta fase.")
+            for meta in elementos:
+                tramite_n = nombres_tramite.get(meta["tramite_id"], meta["tramite_id"])
+                icono_t = tramites.icono_tramite(meta["tramite_id"])
+                st.markdown(
+                    f"<div class='bz-ficha-dato'>"
+                    f"<span class='bz-ficha-etiqueta'>{icono_t} {tramite_n}</span>"
+                    f"<span class='bz-ficha-valor'>{meta.get('solicitante') or 'sin nombre'}</span>"
+                    f"<span style='color:#6B5F82;font-size:0.78rem;'>{meta['fecha'][:10]}</span>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+                if st.button("Ver seguimiento", key=f"tab_{clave}_{meta['id']}", use_container_width=True):
+                    st.session_state["menu_radio"] = "Seguimiento"
+                    st.session_state["seguimiento_eid_sugerido"] = meta["id"]
+                    st.rerun()
 
 
 # --------------------------------------------------------------------------- #
@@ -778,7 +992,7 @@ def pagina_historial():
         st.divider()
         mostrar_resultados(
             registro["resultados"], registro["tramite_id"], registro["solicitante"],
-            date.fromisoformat(registro["fecha"][:10]), prefijo=f"hist_{sel}",
+            date.fromisoformat(registro["fecha"][:10]), prefijo=f"hist_{sel}", eid=sel,
         )
 
 
@@ -982,6 +1196,55 @@ def pagina_tramites():
 
 
 # --------------------------------------------------------------------------- #
+#  Pagina: Plantillas de mensajes
+# --------------------------------------------------------------------------- #
+def pagina_plantillas():
+    st.title("Plantillas de mensajes")
+    st.markdown(
+        '<p class="bz-page-subtitle">Textos reutilizables para situaciones '
+        "habituales con el cliente. Usa "
+        "<code>{solicitante}</code>, <code>{tramite}</code>, "
+        "<code>{numero_expediente}</code> y <code>{gestoria}</code> como "
+        "comodines: se sustituyen automaticamente al usarlas en Seguimiento.</p>",
+        unsafe_allow_html=True,
+    )
+
+    plantillas = config.cargar_plantillas()
+    df = pd.DataFrame(
+        [
+            {"ID": pid, "Nombre": p["nombre"], "Texto": p["texto"]}
+            for pid, p in plantillas.items()
+        ]
+    )
+    if df.empty:
+        df = pd.DataFrame([{"ID": "", "Nombre": "", "Texto": ""}])
+
+    editado = st.data_editor(
+        df, num_rows="dynamic", hide_index=True, use_container_width=True,
+        column_config={"Texto": st.column_config.TextColumn(width="large")},
+        key="editor_plantillas",
+    )
+
+    c1, c2 = st.columns(2)
+    if c1.button("💾 Guardar plantillas", type="primary"):
+        nuevas = {}
+        for _, fila in editado.iterrows():
+            nombre = str(fila["Nombre"]).strip()
+            texto = str(fila["Texto"]).strip()
+            if not nombre or not texto:
+                continue
+            pid = str(fila["ID"]).strip() or _slug(nombre)
+            nuevas[pid] = {"nombre": nombre, "texto": texto}
+        config.guardar_plantillas(nuevas)
+        st.success("Plantillas guardadas.")
+        st.rerun()
+    if c2.button("↩️ Restablecer por defecto"):
+        config.restablecer_plantillas()
+        st.success("Plantillas restablecidas a los valores por defecto.")
+        st.rerun()
+
+
+# --------------------------------------------------------------------------- #
 #  Pagina: Gestoria (membrete)
 # --------------------------------------------------------------------------- #
 def pagina_gestoria():
@@ -1031,7 +1294,8 @@ def pagina_gestoria():
 # --------------------------------------------------------------------------- #
 #  Render comun de resultados + descargas
 # --------------------------------------------------------------------------- #
-def mostrar_resultados(resultados, tramite_id, solicitante, hoy, prefijo="rev", previews=None):
+def mostrar_resultados(resultados, tramite_id, solicitante, hoy, prefijo="rev", previews=None, eid=None):
+    firma_cliente = historial.obtener_firma(eid) if eid else None
     if tramite_id not in tramites.TRAMITES:
         st.error("El tramite de este expediente ya no existe. Vuelve a crearlo para verlo.")
         return
@@ -1155,7 +1419,8 @@ def mostrar_resultados(resultados, tramite_id, solicitante, hoy, prefijo="rev", 
     with r2:
         try:
             req_docx = informe.generar_requerimiento_docx(
-                checklist, tramite_id, solicitante=solicitante, gestoria=gestoria, hoy=hoy
+                checklist, tramite_id, solicitante=solicitante, gestoria=gestoria, hoy=hoy,
+                firma_imagen=firma_cliente,
             )
             st.download_button(
                 "⬇️ Carta (.docx)", data=req_docx,
@@ -1267,7 +1532,8 @@ def mostrar_resultados(resultados, tramite_id, solicitante, hoy, prefijo="rev", 
                         f"requerimiento_{nombre_base}.docx",
                         informe.generar_requerimiento_docx(checklist, tramite_id,
                                                            solicitante=solicitante,
-                                                           gestoria=gestoria, hoy=hoy),
+                                                           gestoria=gestoria, hoy=hoy,
+                                                           firma_imagen=firma_cliente),
                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     ))
                 except Exception:  # noqa: BLE001
@@ -1344,7 +1610,10 @@ def pagina_seguimiento(api_key, modelo, dias_aviso):
         r["id"]: f"{r['fecha'].replace('T', ' ')} · {r['solicitante'] or 'sin nombre'}"
         for r in registros
     }
-    eid = st.selectbox("Expediente", list(etiquetas), format_func=lambda i: etiquetas[i])
+    ids = list(etiquetas)
+    sugerido_eid = st.session_state.pop("seguimiento_eid_sugerido", None)
+    idx_def = ids.index(sugerido_eid) if sugerido_eid in ids else 0
+    eid = st.selectbox("Expediente", ids, index=idx_def, format_func=lambda i: etiquetas[i])
     reg = historial.cargar(eid)
     if not reg:
         return
@@ -1398,6 +1667,56 @@ def pagina_seguimiento(api_key, modelo, dias_aviso):
             st.caption(f"Token de acceso: `{token}` (guardado en el expediente).")
         except Exception as exc:  # noqa: BLE001
             st.error(f"No se pudo generar el portal: {exc}")
+
+    # Mensajes rapidos a partir de plantillas reutilizables ---------------------
+    st.markdown("##### Mensajes rapidos")
+    st.caption(
+        "Elige una plantilla (editable en 'Plantillas') y se rellena sola con los "
+        "datos de este expediente, lista para copiar o enviar por WhatsApp."
+    )
+    plantillas_msg = config.cargar_plantillas()
+    if plantillas_msg:
+        gestoria_msg = config.cargar_config()
+        ids_plantilla = list(plantillas_msg)
+        sel_plantilla = st.selectbox(
+            "Plantilla", ids_plantilla,
+            format_func=lambda pid: plantillas_msg[pid]["nombre"], key=f"plant_sel_{eid}",
+        )
+        contexto_msg = {
+            "solicitante": reg.get("solicitante") or "cliente",
+            "tramite": tramites.TRAMITES.get(reg["tramite_id"], {}).get("nombre", reg["tramite_id"]),
+            "numero_expediente": reg.get("numero_expediente") or "(sin asignar)",
+            "gestoria": gestoria_msg.get("nombre_gestoria", ""),
+        }
+        texto_rellenado = _rellenar_plantilla(plantillas_msg[sel_plantilla]["texto"], contexto_msg)
+        st.text_area("Mensaje", value=texto_rellenado, height=140, key=f"plant_txt_{eid}")
+        tel_msg = st.text_input("Telefono del cliente (opcional, para abrir en WhatsApp)", key=f"plant_tel_{eid}")
+        st.markdown(f"[📲 Abrir en WhatsApp]({comunicacion.enlace_whatsapp(texto_rellenado, tel_msg)})")
+    else:
+        st.caption("No hay plantillas disponibles. Crea alguna en la pagina 'Plantillas'.")
+
+    # Firma del cliente (constancia visual de conformidad) ----------------------
+    st.markdown("##### Firma del cliente")
+    st.caption(
+        "Sube una foto o escaneo de la firma del cliente (en papel o tableta). "
+        "Se incorporara a la carta de requerimiento como constancia de conformidad."
+    )
+    firma_actual = historial.obtener_firma(eid)
+    if firma_actual:
+        st.image(firma_actual, caption="Firma guardada", width=240)
+        if st.button("🗑️ Eliminar firma", key=f"firma_del_{eid}"):
+            historial.eliminar_firma(eid)
+            st.success("Firma eliminada.")
+            st.rerun()
+    else:
+        archivo_firma = st.file_uploader(
+            "Imagen de la firma (PNG o JPG)", type=["png", "jpg", "jpeg"], key=f"firma_up_{eid}"
+        )
+        if archivo_firma and st.button("💾 Guardar firma", key=f"firma_save_{eid}"):
+            ext = archivo_firma.name.rsplit(".", 1)[-1].lower()
+            historial.guardar_firma(eid, archivo_firma.getvalue(), ext)
+            st.success("Firma guardada. Se incluira en la proxima carta generada.")
+            st.rerun()
 
     st.markdown("##### Linea de tiempo del expediente")
     seguimiento = reg.get("seguimiento", [])
@@ -1682,6 +2001,38 @@ def pagina_dashboard():
     cad30 = historial.proximas_caducidades(30)
     registros = historial.listar()
 
+    urgentes_vencidas = sum(1 for t in tareas_hoy if t["fecha"] < hoy)
+    urgentes_cad = sum(1 for av in cad7 if av["vencido"])
+    if not tareas_hoy and not cad7:
+        chips = (
+            "<div class='bz-hero-chip bz-hero-ok'>"
+            "<span class='bz-hero-icono'>🎉</span>"
+            "<div><div class='bz-hero-num'>Todo al dia</div>"
+            "<div class='bz-hero-label'>Sin tareas ni caducidades urgentes</div></div></div>"
+        )
+    else:
+        chips = (
+            f"<div class='bz-hero-chip'><span class='bz-hero-icono'>📋</span>"
+            f"<div><div class='bz-hero-num'>{len(tareas_hoy)}</div>"
+            f"<div class='bz-hero-label'>Tareas para hoy</div></div></div>"
+            f"<div class='bz-hero-chip'><span class='bz-hero-icono'>🔴</span>"
+            f"<div><div class='bz-hero-num'>{urgentes_vencidas}</div>"
+            f"<div class='bz-hero-label'>Vencidas</div></div></div>"
+            f"<div class='bz-hero-chip'><span class='bz-hero-icono'>⏰</span>"
+            f"<div><div class='bz-hero-num'>{len(cad7)}</div>"
+            f"<div class='bz-hero-label'>Caducan esta semana</div></div></div>"
+            f"<div class='bz-hero-chip'><span class='bz-hero-icono'>⛔</span>"
+            f"<div><div class='bz-hero-num'>{urgentes_cad}</div>"
+            f"<div class='bz-hero-label'>Ya vencidas</div></div></div>"
+        )
+    st.markdown(
+        "<div class='bz-hero-hoy'>"
+        "<div><div class='bz-hero-titulo'>👋 Resumen de hoy</div>"
+        f"<div class='bz-hero-sub'>{date.today().strftime('%d/%m/%Y')}</div></div>"
+        f"{chips}</div>",
+        unsafe_allow_html=True,
+    )
+
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Expedientes totales", len(registros))
     m2.metric("Tareas vencidas / hoy", len(tareas_hoy))
@@ -1862,11 +2213,15 @@ def _chat_expediente(api_key, modelo, registro, checklist, mensajes):
 # --------------------------------------------------------------------------- #
 def main():
     st.markdown(_CSS, unsafe_allow_html=True)
+    if st.session_state.get("modo_oscuro"):
+        st.markdown(_CSS_DARK, unsafe_allow_html=True)
     pagina, api_key, modelo, dias_aviso = barra_lateral()
     if pagina == "Dashboard":
         pagina_dashboard()
     elif pagina == "Revisar expediente":
         pagina_revisar(api_key, modelo, dias_aviso)
+    elif pagina == "Tablero":
+        pagina_tablero()
     elif pagina == "Historial":
         pagina_historial()
     elif pagina == "Seguimiento":
@@ -1881,6 +2236,8 @@ def main():
         pagina_asistente(api_key, modelo)
     elif pagina == "Tramites":
         pagina_tramites()
+    elif pagina == "Plantillas":
+        pagina_plantillas()
     elif pagina == "Gestoria":
         pagina_gestoria()
     elif pagina == "Ajustes":

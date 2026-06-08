@@ -6,6 +6,7 @@ subcarpeta con su configuracion, sus tramites y su historial, lo que permite que
 varias personas o despachos trabajen por separado en la misma instalacion.
 """
 
+import copy
 import json
 import os
 import re
@@ -47,6 +48,62 @@ _CONFIG_DEFECTO = {
 }
 
 _EXT_LOGO = (".png", ".jpg", ".jpeg")
+
+# ----------------------- Plantillas de mensajes (defecto) ------------------- #
+# Texto reutilizable para situaciones recurrentes con el cliente. Admiten estas
+# variables, que se sustituyen al usarlas: {solicitante}, {tramite},
+# {numero_expediente}, {gestoria}.
+_PLANTILLAS_DEFECTO = {
+    "falta_documentacion": {
+        "nombre": "Falta documentacion",
+        "texto": (
+            "Hola {solicitante}, te escribimos porque para continuar con tu tramite "
+            "de {tramite} todavia necesitamos que nos envies algunos documentos "
+            "pendientes. En cuanto los tengamos, seguimos adelante. ¡Gracias!"
+        ),
+    },
+    "cita_concedida": {
+        "nombre": "Cita concedida",
+        "texto": (
+            "Hola {solicitante}, te confirmamos que ya tenemos cita para tu tramite "
+            "de {tramite}. En cuanto se confirmen fecha, hora y lugar te avisamos "
+            "con todos los detalles."
+        ),
+    },
+    "expediente_presentado": {
+        "nombre": "Expediente presentado",
+        "texto": (
+            "Hola {solicitante}, te confirmamos que tu expediente de {tramite} ya "
+            "ha sido presentado (nº {numero_expediente}). Ahora toca esperar la "
+            "resolucion; te iremos informando de cualquier novedad."
+        ),
+    },
+    "resuelto_favorable": {
+        "nombre": "Resuelto favorablemente",
+        "texto": (
+            "Hola {solicitante}, ¡buenas noticias! Tu tramite de {tramite} ha sido "
+            "resuelto favorablemente. Nos pondremos en contacto contigo para los "
+            "siguientes pasos."
+        ),
+    },
+    "resuelto_desfavorable": {
+        "nombre": "Resuelto desfavorable",
+        "texto": (
+            "Hola {solicitante}, te informamos de que tu tramite de {tramite} ha "
+            "recibido una resolucion desfavorable. Vamos a estudiar contigo las "
+            "opciones disponibles (recurso, nueva solicitud...). Te llamamos para "
+            "explicarte los detalles con calma."
+        ),
+    },
+    "recordatorio_cita": {
+        "nombre": "Recordatorio de cita",
+        "texto": (
+            "Hola {solicitante}, te recordamos tu cita relacionada con el tramite "
+            "de {tramite}. Si necesitas cambiarla, avisanos con antelacion. ¡Hasta "
+            "pronto!"
+        ),
+    },
+}
 
 
 def _slug(texto):
@@ -177,6 +234,38 @@ def inicializar():
         tramites.aplicar(custom)
     else:
         tramites.restablecer()
+
+
+# ------------------------- Plantillas de mensajes --------------------------- #
+def _plantillas_file():
+    return BASE_DIR / "plantillas.json"
+
+
+def cargar_plantillas():
+    """Devuelve las plantillas de mensajes del perfil (o las de por defecto)."""
+    ruta = _plantillas_file()
+    if ruta.exists():
+        try:
+            datos = json.loads(ruta.read_text(encoding="utf-8"))
+            if datos:
+                return datos
+        except (json.JSONDecodeError, OSError):
+            pass
+    return copy.deepcopy(_PLANTILLAS_DEFECTO)
+
+
+def guardar_plantillas(data):
+    _asegurar_dir()
+    _plantillas_file().write_text(
+        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def restablecer_plantillas():
+    """Borra la personalizacion y vuelve a las plantillas de por defecto."""
+    ruta = _plantillas_file()
+    if ruta.exists():
+        ruta.unlink()
 
 
 # --------------------------- Copia de seguridad ----------------------------- #

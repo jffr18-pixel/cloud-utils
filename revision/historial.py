@@ -7,7 +7,9 @@ lo que permite regenerar el checklist y el informe en cualquier formato despues.
 
 import hashlib
 import json
-from datetime import date, datetime, timezone
+import os
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
 from . import config, tramites
 from .analizador import _parse_fecha, evaluar_expediente, expediente_listo
@@ -128,6 +130,32 @@ def marcar_presentado(eid, numero_expediente, nie="", fecha=None):
 
 
 # ------------------------------ Tareas / agenda ----------------------------- #
+_TAREAS_AUTOMATICAS = [
+    (15, "Revisar si falta enviar documentacion pendiente"),
+    (30, "Confirmar cita / fecha de presentacion del expediente"),
+    (90, "Consultar el estado del expediente ('Como va lo mio')"),
+]
+
+
+def generar_tareas_automaticas(eid, hoy=None):
+    """Anade al expediente las tareas de seguimiento habituales tras revisarlo.
+
+    Solo se anaden si el expediente no tiene ninguna tarea todavia, para no
+    duplicarlas en revisiones posteriores del mismo expediente.
+    """
+    registro = cargar(eid)
+    if not registro or registro.get("tareas"):
+        return registro
+    hoy = hoy or date.today()
+    for dias, descripcion in _TAREAS_AUTOMATICAS:
+        fecha = (hoy + timedelta(days=dias)).isoformat()
+        registro.setdefault("tareas", []).append(
+            {"descripcion": descripcion, "fecha": fecha, "hecha": False}
+        )
+    _guardar_registro(registro)
+    return registro
+
+
 def anadir_tarea(eid, descripcion, fecha, hecha=False):
     registro = cargar(eid)
     if not registro:
@@ -398,3 +426,75 @@ def exportar_ics(incluir_caducidades=True, dias_caducidad=60):
         "END:VCALENDAR",
     ])
     return cuerpo + "\r\n"
+
+
+# --------------------------- Tablero (vista Kanban) -------------------------- #
+COLUMNAS_TABLERO = [
+    ("pendiente_doc", "📥 Pendiente de documentacion"),
+    ("listo", "✅ Listo para presentar"),
+    ("presentado", "📨 Presentado / en tramite"),
+    ("resuelto", "🏁 Resuelto"),
+]
+
+
+def _columna_de(registro):
+    """Determina en que columna del tablero situar un expediente."""
+    if registro.get("resultado_final") in ("aprobado", "denegado"):
+        return "resuelto"
+    if registro.get("presentado"):
+        return "presentado"
+    if registro.get("listo"):
+        return "listo"
+    return "pendiente_doc"
+
+
+def tablero():
+    """Agrupa los expedientes por su fase de tramitacion para el tablero visual."""
+    grupos = {clave: [] for clave, _ in COLUMNAS_TABLERO}
+    for meta in listar():
+        grupos[_columna_de(meta)].append(meta)
+    return grupos
+
+
+# ------------------------------ Firma del cliente ---------------------------- #
+def _dir_firmas():
+    d = config.BASE_DIR / "historial" / "firmas"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def guardar_firma(eid, datos, ext="png"):
+    """Guarda la imagen de la firma del cliente para este expediente.
+
+    Se usa para incorporarla a las cartas y autorizaciones generadas.
+    Sustituye cualquier firma anterior del mismo expediente.
+    """
+    ext = (ext or "png").lstrip(".").lower() or "png"
+    d = _dir_firmas()
+    for previo in d.glob(f"{eid}.*"):
+        previo.unlink()
+    ruta = d / f"{eid}.{ext}"
+    ruta.write_bytes(datos)
+    actualizar(eid, firma_path=str(ruta))
+    return str(ruta)
+
+
+def obtener_firma(eid):
+    """Devuelve los bytes de la firma guardada del expediente, o None si no hay."""
+    registro = cargar(eid)
+    if not registro:
+        return None
+    ruta = registro.get("firma_path", "")
+    if ruta and os.path.exists(ruta):
+        return Path(ruta).read_bytes()
+    return None
+
+
+def eliminar_firma(eid):
+    registro = cargar(eid)
+    if not registro:
+        return
+    ruta = registro.get("firma_path", "")
+    if ruta and os.path.exists(ruta):
+        os.remove(ruta)
+    actualizar(eid, firma_path="")
