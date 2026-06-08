@@ -427,6 +427,49 @@ hr {
 .bz-hero-chip.bz-hero-ok { background: rgba(255,234,99,0.92); color: #4A3B00; }
 .bz-hero-chip.bz-hero-ok .bz-hero-num,
 .bz-hero-chip.bz-hero-ok .bz-hero-label { color: #4A3B00; }
+
+/* ── TARJETAS DE LISTA (tareas, caducidades, actividad reciente) ───── */
+.bz-list-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: #FFFFFF;
+    border: 1px solid #E4DCEF;
+    border-left: 5px solid #C9A8E8;
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 3px rgba(60, 40, 90, 0.06);
+}
+.bz-list-card .bz-card-icono {
+    font-size: 1.7rem;
+    line-height: 1;
+}
+.bz-list-card .bz-card-texto { flex: 1; min-width: 0; }
+.bz-list-card .bz-card-titulo {
+    font-weight: 700;
+    color: #2B2440;
+    font-size: 0.92rem;
+}
+.bz-list-card .bz-card-sub {
+    color: #6B5F82;
+    font-size: 0.78rem;
+    margin-top: 1px;
+}
+.bz-list-card.bz-card-urgente { border-left-color: #E53935; background: #FFF6F6; }
+.bz-list-card.bz-card-aviso   { border-left-color: #FB8C00; background: #FFFAF3; }
+.bz-list-card.bz-card-ok      { border-left-color: #43A047; background: #F5FBF5; }
+.bz-list-card.bz-card-info    { border-left-color: #7E57C2; background: #FAF7FE; }
+
+/* Barra de progreso de dias restantes hasta caducidad */
+.bz-cad-bar-track {
+    background: #EFEAF6;
+    border-radius: 6px;
+    height: 7px;
+    overflow: hidden;
+    margin-top: 8px;
+}
+.bz-cad-bar-fill { height: 100%; border-radius: 6px; }
 </style>
 """
 
@@ -485,6 +528,19 @@ h2, h3, h4 { color: #E4DEF0 !important; }
 .bz-ficha-dato { background: #1F1A2C !important; border-color: #3A2F56 !important; }
 .bz-ficha-etiqueta { color: #A99CC4 !important; }
 .bz-ficha-valor { color: #FFFFFF !important; }
+
+.bz-list-card {
+    background: #1F1A2C !important;
+    border-color: #3A2F56 !important;
+    box-shadow: none !important;
+}
+.bz-list-card .bz-card-titulo { color: #EFEAF7 !important; }
+.bz-list-card .bz-card-sub { color: #A99CC4 !important; }
+.bz-list-card.bz-card-urgente { background: #2E1B22 !important; }
+.bz-list-card.bz-card-aviso   { background: #2E2519 !important; }
+.bz-list-card.bz-card-ok      { background: #1A2A1E !important; }
+.bz-list-card.bz-card-info    { background: #241D38 !important; }
+.bz-cad-bar-track { background: #3A2F56 !important; }
 
 [data-testid="stAlert"][data-baseweb*="positive"], div[class*="stSuccess"] {
     background-color: #1B2E1D !important; border-left-color: #4CAF50 !important;
@@ -1059,23 +1115,80 @@ def pagina_caducidades():
         return
 
     vencidos = [a for a in avisos if a["vencido"]]
-    if vencidos:
-        st.error(f"⛔ {len(vencidos)} documento(s) ya vencido(s).")
+    semana = [a for a in avisos if not a["vencido"] and a["dias_restantes"] <= 7]
+    resto = [a for a in avisos if not a["vencido"] and a["dias_restantes"] > 7]
 
-    tabla = pd.DataFrame(
-        [
-            {
-                "Solicitante": a["solicitante"],
-                "Tramite": a["tramite"],
-                "Documento": a["documento"],
-                "Caduca": a["fecha_caducidad"],
-                "Dias": a["dias_restantes"],
-                "Estado": "⛔ Vencido" if a["vencido"] else "🟠 Caduca pronto",
-            }
-            for a in avisos
-        ]
+    chips = (
+        f"<div class='bz-hero-chip'><span class='bz-hero-icono'>⛔</span>"
+        f"<div><div class='bz-hero-num'>{len(vencidos)}</div>"
+        f"<div class='bz-hero-label'>Ya vencidos</div></div></div>"
+        f"<div class='bz-hero-chip'><span class='bz-hero-icono'>🟠</span>"
+        f"<div><div class='bz-hero-num'>{len(semana)}</div>"
+        f"<div class='bz-hero-label'>Caducan en 7 dias</div></div></div>"
+        f"<div class='bz-hero-chip'><span class='bz-hero-icono'>📋</span>"
+        f"<div><div class='bz-hero-num'>{len(avisos)}</div>"
+        f"<div class='bz-hero-label'>Total en {dias} dias</div></div></div>"
     )
-    st.dataframe(tabla, hide_index=True, use_container_width=True)
+    st.markdown(
+        "<div class='bz-hero-hoy'>"
+        "<div><div class='bz-hero-titulo'>📑 Resumen de caducidades</div>"
+        f"<div class='bz-hero-sub'>Documentos analizados a fecha de hoy</div></div>"
+        f"{chips}</div>",
+        unsafe_allow_html=True,
+    )
+
+    def _tarjeta_caducidad(av):
+        vencido = av["vencido"]
+        dias_r = av["dias_restantes"]
+        clase = "bz-card-urgente" if vencido else ("bz-card-aviso" if dias_r <= 7 else "bz-card-info")
+        icono = "⛔" if vencido else ("🟠" if dias_r <= 7 else "🟡")
+        texto = "Ya ha caducado" if vencido else f"Caduca en {dias_r} dia(s)"
+        periodo = max(dias, 1)
+        pct = 0 if vencido else max(4, min(100, round(100 - (dias_r / periodo) * 100)))
+        color = "#E53935" if vencido or dias_r <= 3 else ("#FB8C00" if dias_r <= 10 else "#FDD835")
+        st.markdown(
+            f"<div class='bz-list-card {clase}'>"
+            f"<span class='bz-card-icono'>{icono}</span>"
+            "<div class='bz-card-texto'>"
+            f"<div class='bz-card-titulo'>{av['documento']} — {av['solicitante']}</div>"
+            f"<div class='bz-card-sub'>{av['tramite']} · {texto} · vence el {av['fecha_caducidad']}</div>"
+            f"<div class='bz-cad-bar-track'><div class='bz-cad-bar-fill' "
+            f"style='width:{pct}%; background:{color};'></div></div>"
+            "</div></div>",
+            unsafe_allow_html=True,
+        )
+
+    if vencidos:
+        st.error(f"⛔ {len(vencidos)} documento(s) ya vencido(s) — conviene avisar cuanto antes.")
+        st.subheader("⛔ Ya vencidos")
+        for av in vencidos:
+            _tarjeta_caducidad(av)
+
+    if semana:
+        st.subheader("🟠 Caducan en los proximos 7 dias")
+        for av in semana:
+            _tarjeta_caducidad(av)
+
+    if resto:
+        st.subheader("🟡 Caducan mas adelante")
+        for av in resto:
+            _tarjeta_caducidad(av)
+
+    with st.expander("📊 Ver como tabla"):
+        tabla = pd.DataFrame(
+            [
+                {
+                    "Solicitante": a["solicitante"],
+                    "Tramite": a["tramite"],
+                    "Documento": a["documento"],
+                    "Caduca": a["fecha_caducidad"],
+                    "Dias": a["dias_restantes"],
+                    "Estado": "⛔ Vencido" if a["vencido"] else "🟠 Caduca pronto",
+                }
+                for a in avisos
+            ]
+        )
+        st.dataframe(tabla, hide_index=True, use_container_width=True)
 
 
 # --------------------------------------------------------------------------- #
@@ -2042,46 +2155,75 @@ def pagina_dashboard():
     c1, c2 = st.columns(2)
 
     with c1:
-        st.subheader("Tareas para hoy")
+        st.subheader("📋 Tareas para hoy")
         if not tareas_hoy:
             st.success("No hay tareas vencidas ni para hoy.")
         else:
             for t in tareas_hoy[:8]:
                 vencida = t["fecha"] < hoy
+                clase = "bz-card-urgente" if vencida else "bz-card-info"
                 icono = "🔴" if vencida else "🗓️"
-                cols = st.columns([5, 1])
-                cols[0].write(
-                    f"{icono} **{t['fecha']}** — {t['descripcion']}  "
-                    f"_({t['solicitante']})_"
+                etiqueta = "Vencida" if vencida else ("Para hoy" if t["fecha"] == hoy else "Proxima")
+                cols = st.columns([6, 1])
+                cols[0].markdown(
+                    f"<div class='bz-list-card {clase}'>"
+                    f"<span class='bz-card-icono'>{icono}</span>"
+                    "<div class='bz-card-texto'>"
+                    f"<div class='bz-card-titulo'>{t['descripcion']}</div>"
+                    f"<div class='bz-card-sub'>{t['solicitante']} · {etiqueta} ({t['fecha']})</div>"
+                    "</div></div>",
+                    unsafe_allow_html=True,
                 )
                 if cols[1].button("✓", key=f"dash_t_{t['expediente_id']}_{t['indice']}"):
                     historial.marcar_tarea(t["expediente_id"], t["indice"], True)
                     st.rerun()
 
     with c2:
-        st.subheader("Caducidades urgentes (7 dias)")
+        st.subheader("⏰ Caducidades urgentes (7 dias)")
         if not cad7:
             st.success("Ninguna caducidad urgente.")
         else:
             for av in cad7[:8]:
-                icono = "⛔" if av["vencido"] else "🟠"
-                st.write(
-                    f"{icono} **{av['documento']}** — {av['solicitante']}  "
-                    f"({av['dias_restantes']} dias)"
+                vencido = av["vencido"]
+                dias_r = av["dias_restantes"]
+                clase = "bz-card-urgente" if vencido else "bz-card-aviso"
+                icono = "⛔" if vencido else "🟠"
+                texto = "Ya ha caducado" if vencido else f"Caduca en {dias_r} dia(s)"
+                pct = 0 if vencido else max(6, min(100, round((dias_r / 7) * 100)))
+                color = "#E53935" if vencido or dias_r <= 2 else "#FB8C00"
+                st.markdown(
+                    f"<div class='bz-list-card {clase}'>"
+                    f"<span class='bz-card-icono'>{icono}</span>"
+                    "<div class='bz-card-texto'>"
+                    f"<div class='bz-card-titulo'>{av['documento']} — {av['solicitante']}</div>"
+                    f"<div class='bz-card-sub'>{texto} · vence el {av['fecha_caducidad']}</div>"
+                    f"<div class='bz-cad-bar-track'><div class='bz-cad-bar-fill' "
+                    f"style='width:{pct}%; background:{color};'></div></div>"
+                    "</div></div>",
+                    unsafe_allow_html=True,
                 )
 
     st.divider()
-    st.subheader("Actividad reciente")
+    st.subheader("🕘 Actividad reciente")
     if not registros:
         st.info("Aun no hay expedientes revisados.")
     else:
         nombres_tramite = {tid: t["nombre"] for tid, t in tramites.TRAMITES.items()}
         for r in registros[:6]:
-            estado = "✅" if r["listo"] else "⛔"
+            listo = r["listo"]
+            clase = "bz-card-ok" if listo else "bz-card-aviso"
+            icono_estado = "✅" if listo else "⏳"
+            estado_txt = "Listo para presentar" if listo else "Pendiente de documentacion"
             tramite_n = nombres_tramite.get(r["tramite_id"], r["tramite_id"])
-            st.write(
-                f"{estado} **{r['solicitante'] or 'sin nombre'}** — {tramite_n}  "
-                f"· _{r['fecha'][:10]}_"
+            icono_tr = tramites.icono_tramite(r["tramite_id"])
+            st.markdown(
+                f"<div class='bz-list-card {clase}'>"
+                f"<span class='bz-card-icono'>{icono_tr}</span>"
+                "<div class='bz-card-texto'>"
+                f"<div class='bz-card-titulo'>{r['solicitante'] or 'Sin nombre'} — {tramite_n}</div>"
+                f"<div class='bz-card-sub'>{icono_estado} {estado_txt} · {r['fecha'][:10]}</div>"
+                "</div></div>",
+                unsafe_allow_html=True,
             )
 
 
