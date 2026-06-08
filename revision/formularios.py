@@ -7,7 +7,7 @@ es un PDF orientativo que el gestor revisa y completa antes de presentar.
 
 from datetime import date
 
-from fpdf2 import FPDF
+from fpdf import FPDF
 
 _SUST = {
     "á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u", "ü": "u", "ñ": "n",
