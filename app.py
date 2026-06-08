@@ -1476,6 +1476,23 @@ def pagina_calendario():
         "(presentaciones, renovaciones, consultas).</p>",
         unsafe_allow_html=True,
     )
+
+    with st.expander("📤 Exportar a Outlook / Google Calendar (.ics)"):
+        st.caption(
+            "Descarga un archivo .ics con las tareas pendientes y las proximas "
+            "caducidades como eventos de dia completo. Para verlo siempre actualizado "
+            "en Outlook, importalo y repite la descarga periodicamente, o publica el "
+            "archivo en una URL fija y suscribela como 'calendario desde Internet'."
+        )
+        incluir_cad = st.checkbox("Incluir proximas caducidades de documentos", value=True)
+        dias_cad = st.slider("Caducidades dentro de (dias)", 7, 180, 60, step=7)
+        ics = historial.exportar_ics(incluir_caducidades=incluir_cad, dias_caducidad=dias_cad)
+        st.download_button(
+            "⬇️ Descargar calendario (.ics)", data=ics,
+            file_name="burocracia_zero_calendario.ics", mime="text/calendar",
+            use_container_width=True,
+        )
+
     tareas = historial.todas_las_tareas(incluir_hechas=False)
     if not tareas:
         st.success("No hay tareas pendientes.")

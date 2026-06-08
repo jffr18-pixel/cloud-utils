@@ -5,8 +5,9 @@ resultados del analisis (no los archivos originales, por privacidad y tamano),
 lo que permite regenerar el checklist y el informe en cualquier formato despues.
 """
 
+import hashlib
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from . import config, tramites
 from .analizador import _parse_fecha, evaluar_expediente, expediente_listo
@@ -324,3 +325,76 @@ def proximas_caducidades(dias=90, hoy=None):
                 )
     avisos.sort(key=lambda a: a["dias_restantes"])
     return avisos
+
+
+# ----------------------- Exportacion a calendario (.ics) -------------------- #
+def _escapar_ics(texto):
+    return (
+        (texto or "")
+        .replace("\\", "\\\\")
+        .replace(";", "\\;")
+        .replace(",", "\\,")
+        .replace("\n", "\\n")
+    )
+
+
+def _evento_ics(uid, dtstamp, fecha_yyyymmdd, resumen, descripcion=""):
+    lineas = [
+        "BEGIN:VEVENT",
+        f"UID:{uid}",
+        f"DTSTAMP:{dtstamp}",
+        f"DTSTART;VALUE=DATE:{fecha_yyyymmdd}",
+        f"SUMMARY:{_escapar_ics(resumen)}",
+    ]
+    if descripcion:
+        lineas.append(f"DESCRIPTION:{_escapar_ics(descripcion)}")
+    lineas.append("END:VEVENT")
+    return "\r\n".join(lineas)
+
+
+def exportar_ics(incluir_caducidades=True, dias_caducidad=60):
+    """Genera un calendario .ics con las tareas pendientes y, opcionalmente,
+    las proximas caducidades de documentos.
+
+    El archivo resultante se puede importar (o suscribir, si se publica en una
+    URL) en Outlook, Google Calendar o Apple Calendar: cada tarea y cada
+    caducidad aparece como un evento de dia completo en su fecha.
+    """
+    dtstamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    eventos = []
+
+    for t in todas_las_tareas(incluir_hechas=False):
+        fecha = t["fecha"].replace("-", "")
+        uid = f"tarea-{t['expediente_id']}-{t['indice']}@burocraciazero"
+        resumen = f"📋 {t['descripcion']} — {t['solicitante']}"
+        eventos.append(_evento_ics(
+            uid, dtstamp, fecha, resumen,
+            "Tarea de seguimiento de un expediente de extranjeria.",
+        ))
+
+    if incluir_caducidades:
+        for av in proximas_caducidades(dias_caducidad):
+            fecha = av["fecha_caducidad"].replace("-", "")
+            clave = hashlib.md5(
+                f"{av['expediente_id']}-{av['documento']}-{av['fecha_caducidad']}".encode("utf-8")
+            ).hexdigest()[:12]
+            uid = f"caducidad-{clave}@burocraciazero"
+            estado = "VENCIDO" if av["vencido"] else f"caduca en {av['dias_restantes']} dias"
+            resumen = f"⏰ Caducidad: {av['documento']} ({estado}) — {av['solicitante']}"
+            descripcion = (
+                f"Tramite: {av['tramite']}. "
+                f"Documento: {av['documento']}. Estado: {estado}."
+            )
+            eventos.append(_evento_ics(uid, dtstamp, fecha, resumen, descripcion))
+
+    cuerpo = "\r\n".join([
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Burocracia Zero//Revision de Extranjeria//ES",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "X-WR-CALNAME:Burocracia Zero - Plazos de extranjeria",
+        *eventos,
+        "END:VCALENDAR",
+    ])
+    return cuerpo + "\r\n"
