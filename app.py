@@ -669,6 +669,9 @@ def _buscar_expedientes(consulta, limite=8):
 #  Barra lateral: perfil + configuracion comun
 # --------------------------------------------------------------------------- #
 def barra_lateral():
+    # Aplicar navegacion pendiente ANTES de que el radio se renderice.
+    if "_menu_nav" in st.session_state:
+        st.session_state["menu_radio"] = st.session_state.pop("_menu_nav")
     with st.sidebar:
         st.markdown(
             """
@@ -715,7 +718,7 @@ def barra_lateral():
                 for reg in encontrados:
                     etiqueta = f"{reg.get('solicitante') or 'sin nombre'} · {reg.get('fecha', '')[:10]}"
                     if st.button(f"👤 {etiqueta}", key=f"buscar_{reg['id']}", use_container_width=True):
-                        st.session_state["menu_radio"] = "Seguimiento"
+                        st.session_state["_menu_nav"] = "Seguimiento"
                         st.session_state["seguimiento_eid_sugerido"] = reg["id"]
                         st.rerun()
 
@@ -1013,7 +1016,7 @@ def pagina_tablero():
                     unsafe_allow_html=True,
                 )
                 if st.button("Ver seguimiento", key=f"tab_{clave}_{meta['id']}", use_container_width=True):
-                    st.session_state["menu_radio"] = "Seguimiento"
+                    st.session_state["_menu_nav"] = "Seguimiento"
                     st.session_state["seguimiento_eid_sugerido"] = meta["id"]
                     st.rerun()
 
@@ -2203,7 +2206,7 @@ def pagina_dashboard():
                 unsafe_allow_html=True,
             )
             if st.button(titulo, key=f"qa_{destino}", use_container_width=True):
-                st.session_state["menu_radio"] = destino
+                st.session_state["_menu_nav"] = destino
                 st.rerun()
 
     st.divider()
