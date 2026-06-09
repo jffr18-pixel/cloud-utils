@@ -2260,7 +2260,8 @@ def pagina_seguimiento(api_key, modelo, dias_aviso):
         marca = "✅" if tarea.get("hecha") else "⬜"
         cols = st.columns([4, 1])
         cols[0].write(f"{marca} {tarea['fecha']} — {tarea['descripcion']}")
-        if not tarea.get("hecha") and cols[1].button("Hecha", key=f"t_{eid}_{i}"):
+        # Siempre renderizamos el botón (DOM estable), disabled cuando ya está hecha
+        if cols[1].button("Hecha", key=f"t_{eid}_{i}", disabled=bool(tarea.get("hecha"))):
             historial.marcar_tarea(eid, i, True)
             st.rerun()
     with st.form(f"tarea_{eid}"):
@@ -2372,8 +2373,7 @@ def pagina_citas():
         sub = f"{c.get('tipo','')} · {hora_str}{sub_exp}"
         if c.get("reserva"):
             sub += f" · Ref: {c['reserva']}"
-        col_card, col_btn = st.columns([5, 1])
-        col_card.markdown(
+        st.markdown(
             f"<div class='bz-list-card {clase}'>"
             f"<span class='bz-card-icono'>{icono}</span>"
             "<div class='bz-card-texto'>"
@@ -2384,13 +2384,17 @@ def pagina_citas():
             unsafe_allow_html=True,
         )
         if mostrar_botones:
-            with col_btn:
-                if not c.get("hecha") and st.button("✓", key=f"cita_ok_{c['id']}"):
-                    citas.actualizar_cita(c["id"], hecha=True)
-                    st.rerun()
-                if st.button("🗑️", key=f"cita_del_{c['id']}"):
-                    citas.eliminar_cita(c["id"])
-                    st.rerun()
+            bc1, bc2 = st.columns(2)
+            # Siempre renderizamos ambos botones (DOM estable); disabled cuando no aplica
+            if bc1.button(
+                "✓ Hecha", key=f"cita_ok_{c['id']}",
+                disabled=bool(c.get("hecha")), use_container_width=True,
+            ):
+                citas.actualizar_cita(c["id"], hecha=True)
+                st.rerun()
+            if bc2.button("🗑️ Eliminar", key=f"cita_del_{c['id']}", use_container_width=True):
+                citas.eliminar_cita(c["id"])
+                st.rerun()
 
     if pendientes:
         st.subheader(f"📅 Próximas citas ({len(pendientes)})")
@@ -2702,8 +2706,7 @@ def pagina_dashboard():
                 clase = "bz-card-urgente" if vencida else "bz-card-info"
                 icono = "🔴" if vencida else "🗓️"
                 etiqueta = "Vencida" if vencida else ("Para hoy" if t["fecha"] == hoy else "Proxima")
-                cols = st.columns([6, 1])
-                cols[0].markdown(
+                st.markdown(
                     f"<div class='bz-list-card {clase}'>"
                     f"<span class='bz-card-icono'>{icono}</span>"
                     "<div class='bz-card-texto'>"
@@ -2712,7 +2715,10 @@ def pagina_dashboard():
                     "</div></div>",
                     unsafe_allow_html=True,
                 )
-                if cols[1].button("✓", key=f"dash_t_{t['expediente_id']}_{t['indice']}"):
+                if st.button(
+                    "✓ Marcar hecha", key=f"dash_t_{t['expediente_id']}_{t['indice']}",
+                    use_container_width=True,
+                ):
                     historial.marcar_tarea(t["expediente_id"], t["indice"], True)
                     st.rerun()
 
