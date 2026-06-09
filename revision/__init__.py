@@ -24,6 +24,7 @@ from . import (
     historial,
     imap_import,
     informe,
+    ocr_analisis,
     portal,
     tramites,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "historial",
     "imap_import",
     "informe",
+    "ocr_analisis",
     "portal",
     "tramites",
 ]

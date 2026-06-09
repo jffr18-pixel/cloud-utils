@@ -25,6 +25,7 @@ from revision import (
     historial,
     imap_import,
     informe,
+    ocr_analisis,
     portal,
     tramites,
 )
@@ -814,15 +815,23 @@ def pagina_revisar(api_key, modelo, dias_aviso):
         st.warning("No hay tramites definidos. Ve a la pestana 'Tramites' para crear uno.")
         return
 
-    tab_alta, tab_docs = st.tabs(["➕  Alta de cliente", "📄  Analizar documentos"])
+    tab_alta, tab_docs, tab_ocr = st.tabs([
+        "➕  Alta de cliente",
+        "📄  Analizar con IA",
+        "🔍  Analizar con OCR (sin IA)",
+    ])
 
     # ── TAB 1: ALTA RÁPIDA ─────────────────────────────────────────────────── #
     with tab_alta:
         _pagina_alta_rapida()
 
-    # ── TAB 2: ANÁLISIS DE DOCUMENTOS ──────────────────────────────────────── #
+    # ── TAB 2: ANÁLISIS CON IA ─────────────────────────────────────────────── #
     with tab_docs:
         _pagina_analizar_docs(api_key, modelo, dias_aviso)
+
+    # ── TAB 3: ANÁLISIS CON OCR ────────────────────────────────────────────── #
+    with tab_ocr:
+        _pagina_ocr()
 
 
 def _pagina_alta_rapida():
@@ -1222,6 +1231,172 @@ def _pagina_analizar_docs(api_key, modelo, dias_aviso):
             previews=st.session_state.get("previews"),
             eid=st.session_state.get("eid_actual"),
         )
+
+
+# --------------------------------------------------------------------------- #
+#  OCR: Analisis sin IA
+# --------------------------------------------------------------------------- #
+def _pagina_ocr():
+    st.markdown(
+        "Extrae datos de los documentos usando **OCR** (reconocimiento optico de "
+        "caracteres), sin necesidad de clave de API ni conexion a internet. "
+        "Funciona mejor con documentos de buena calidad y texto legible. "
+        "Para documentos borrosos o complejos, usa la pestaña **Analizar con IA**.",
+    )
+
+    opciones = tramites.lista_tramites_con_icono()
+    etiquetas = [n for _, n in opciones]
+    idx_def_ocr = 0
+    sugerido_ocr = st.session_state.get("tramite_sugerido")
+    if sugerido_ocr:
+        t_ids_ocr = [t for t, _ in opciones]
+        if sugerido_ocr in t_ids_ocr:
+            idx_def_ocr = t_ids_ocr.index(sugerido_ocr)
+
+    col_ocr1, col_ocr2 = st.columns([3, 1])
+    idx_tramite_ocr = col_ocr1.selectbox(
+        "Tramite", range(len(etiquetas)),
+        format_func=lambda i: etiquetas[i],
+        index=idx_def_ocr,
+        key="ocr_tramite",
+    )
+    tramite_id_ocr = opciones[idx_tramite_ocr][0]
+    solicitante_ocr = col_ocr2.text_input("Solicitante (opcional)", key="ocr_sol")
+
+    archivos_ocr = st.file_uploader(
+        "Sube los documentos (PDF, JPG, PNG…)",
+        type=analizador.extensiones_admitidas(),
+        accept_multiple_files=True,
+        key="ocr_files",
+    )
+
+    if not archivos_ocr:
+        st.caption("Sube uno o mas documentos para comenzar.")
+        return
+
+    st.info(
+        f"{len(archivos_ocr)} archivo(s) cargado(s). "
+        "Puedes agrupar varias paginas del mismo documento subiendo varios archivos; "
+        "la app los tratara por separado.",
+    )
+
+    if not st.button("🔍 Analizar con OCR", type="primary", use_container_width=False, key="ocr_btn"):
+        return
+
+    resultados_ocr = []
+    barra_ocr = st.progress(0.0, text="Extrayendo texto...")
+    for i, archivo in enumerate(archivos_ocr, start=1):
+        barra_ocr.progress(i / len(archivos_ocr), text=f"Analizando {archivo.name} ({i}/{len(archivos_ocr)})")
+        try:
+            res = ocr_analisis.analizar_con_ocr(archivo.name, archivo.getvalue())
+        except Exception as exc:  # noqa: BLE001
+            res = {
+                "tipo_id": "no_identificado", "tipo_nombre": "Error",
+                "titular": None, "numero": None, "pais_emision": None,
+                "nacionalidad_doc": None, "fecha_nacimiento": None, "sexo": None,
+                "fecha_emision": None, "fecha_caducidad": None,
+                "fecha_acredita_desde": None,
+                "estado": "desconocido", "legibilidad": "mala",
+                "incidencias": [f"Error al procesar: {exc}"],
+                "resumen": f"Error: {exc}",
+                "archivo": archivo.name, "archivos": [archivo.name],
+                "_modo": "ocr", "_ocr_texto": "",
+            }
+        resultados_ocr.append(res)
+    barra_ocr.empty()
+
+    # ── Guardar en historial ─────────────────────────────────────────────── #
+    eid_ocr = None
+    datos_cliente_ocr = {}
+    try:
+        eid_ocr = historial.guardar(tramite_id_ocr, solicitante_ocr, resultados_ocr)
+        historial.generar_tareas_automaticas(eid_ocr)
+        datos_cliente_ocr = analizador.extraer_datos_cliente(resultados_ocr)
+        if datos_cliente_ocr:
+            if not solicitante_ocr and datos_cliente_ocr.get("nombre"):
+                historial.actualizar(eid_ocr, solicitante=datos_cliente_ocr["nombre"])
+            historial.actualizar(eid_ocr, **datos_cliente_ocr)
+    except Exception:  # noqa: BLE001
+        pass
+
+    # ── Banner de datos detectados ───────────────────────────────────────── #
+    if datos_cliente_ocr:
+        _LABELS_OCR = {
+            "nombre": ("👤", "Nombre"),
+            "nacionalidad": ("🌍", "Nacionalidad"),
+            "fecha_nacimiento": ("🎂", "F. nacimiento"),
+            "num_pasaporte": ("🛂", "Pasaporte"),
+            "cad_pasaporte": ("⏳", "Cad. pasaporte"),
+            "nie": ("🪪", "NIE"),
+            "fecha_entrada_espana": ("✈️", "Entrada en España"),
+        }
+        chips_ocr = "".join(
+            f"<span style='display:inline-block;background:#1A2A1A;border:1px solid #4A7A4A;"
+            f"border-radius:20px;padding:3px 10px;margin:3px;font-size:0.82rem;color:#C4D8C4;'>"
+            f"{ico} <b style='color:#6AAF6A;'>{lab}:</b> {datos_cliente_ocr[k]}</span>"
+            for k, (ico, lab) in _LABELS_OCR.items() if k in datos_cliente_ocr
+        )
+        st.markdown(
+            f"<div style='background:#0F1F0F;border:1px solid #4A7A4A;border-radius:10px;"
+            f"padding:10px 14px;margin-bottom:12px;'>"
+            f"<div style='font-size:0.85rem;color:#6AAF6A;font-weight:600;margin-bottom:6px;'>"
+            f"✨ Datos extraidos por OCR y guardados en el expediente</div>"
+            f"{chips_ocr}</div>",
+            unsafe_allow_html=True,
+        )
+
+    # ── Resultados por documento ─────────────────────────────────────────── #
+    st.subheader("Resultados del analisis OCR")
+    nombres_tramite = {tid: t["nombre"] for tid, t in tramites.TRAMITES.items()}
+    _ESTADO_COLOR = {
+        "vigente": "bz-card-ok", "sin_caducidad": "bz-card-ok",
+        "proximo_a_caducar": "bz-card-aviso", "caducado": "bz-card-urgente",
+        "desconocido": "bz-card-info", "ilegible": "bz-card-urgente",
+    }
+    _ESTADO_ICO = {
+        "vigente": "✅", "sin_caducidad": "✅",
+        "proximo_a_caducar": "🟠", "caducado": "⛔",
+        "desconocido": "❓", "ilegible": "🔴",
+    }
+    for res in resultados_ocr:
+        clase = _ESTADO_COLOR.get(res.get("estado", ""), "bz-card-info")
+        ico_estado = _ESTADO_ICO.get(res.get("estado", ""), "❓")
+        st.markdown(
+            f"<div class='bz-list-card {clase}'>"
+            f"<span class='bz-card-icono'>{ico_estado}</span>"
+            "<div class='bz-card-texto'>"
+            f"<div class='bz-card-titulo'>{res.get('tipo_nombre','?')} — {res.get('archivo','')}</div>"
+            f"<div class='bz-card-sub'>{res.get('resumen','')}</div>"
+            "</div></div>",
+            unsafe_allow_html=True,
+        )
+        if res.get("incidencias"):
+            for inc in res["incidencias"]:
+                st.warning(f"⚠️ {inc}", icon=None)
+        # Mostrar texto OCR extraido en un expander (util para depuracion)
+        texto_raw = res.get("_ocr_texto", "")
+        if texto_raw:
+            with st.expander(f"Texto extraido — {res.get('archivo','')}"):
+                st.text(texto_raw)
+
+    # ── Checklist del tramite ────────────────────────────────────────────── #
+    st.subheader("Checklist del tramite")
+    checklist_ocr, no_id_ocr = analizador.evaluar_expediente(resultados_ocr, tramite_id_ocr)
+    _ICONO_CL = {
+        "correcto": "✅", "falta": "❌", "caducado": "⛔",
+        "proximo_a_caducar": "🟠", "con_incidencias": "⚠️", "falta_opcional": "⬜",
+    }
+    for fila in checklist_ocr:
+        ico_cl = _ICONO_CL.get(fila["estado"], "❓")
+        oblig = "**Obligatorio**" if fila["obligatorio"] else "Opcional"
+        st.write(f"{ico_cl} {fila['nombre']} — {oblig}")
+
+    if eid_ocr:
+        st.success(f"Expediente guardado en el historial (ID: {eid_ocr[:16]}).")
+        if st.button("Ver expediente en Seguimiento", key="ocr_ver_seg"):
+            st.session_state["seguimiento_eid_sugerido"] = eid_ocr
+            st.session_state["_menu_nav"] = "Seguimiento"
+            st.rerun()
 
 
 # --------------------------------------------------------------------------- #
