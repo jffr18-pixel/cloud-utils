@@ -411,6 +411,47 @@ def analizar_documento(
     return datos
 
 
+# Mapeo de tipo_id generico del OCR → IDs de requisito de tramite que satisface.
+# Permite que los resultados OCR (que usan categorias amplias) encajen en el checklist.
+_ALIAS_TIPO_DOC = {
+    "pasaporte":          ["pasaporte"],
+    "nie":                ["nie"],
+    "tie":                ["tie"],
+    "dni":                ["dni"],
+    "empadronamiento":    ["empadronamiento", "empadronamiento_conjunto",
+                           "prueba_permanencia_2", "prueba_presencia_antes_2026",
+                           "prueba_permanencia_5_meses"],
+    "vida_laboral":       ["vida_laboral"],
+    "contrato_trabajo":   ["contrato_trabajo", "circunstancia_trabajo"],
+    "nomina":             ["nomina", "documentacion_empresa"],
+    "informe_arraigo":    ["informe_integracion"],
+    "certificado_penal":  ["antecedentes_espana", "antecedentes_origen"],
+    "acta_nacimiento":    ["vinculo_familiar", "vinculo_familiar_residente",
+                           "circunstancia_familia"],
+    "titulo_academico":   ["matricula_o_admision", "informe_aprovechamiento"],
+    "seguro_medico":      ["seguro_medico"],
+    "tarjeta_comunitaria": ["documentacion_menor_ue"],
+    "solicitud_ex":       ["solicitud_ex", "solicitud_ex10", "solicitud_ex32",
+                           "solicitud_ex_humanitaria"],
+    "tasa":               ["tasa_790_052"],
+    "resolucion":         ["resolucion_laboral", "autorizacion_previa",
+                           "autorizacion_humanitaria_vigente",
+                           "resolucion_o_informe_causa"],
+    "vinculo_familiar":   ["vinculo_familiar", "vinculo_familiar_residente",
+                           "circunstancia_familia"],
+    "cuenta_propia":      ["cuenta_propia", "circunstancia_trabajo",
+                           "documentacion_empresa"],
+    "certificado_discapacidad": ["certificado_discapacidad",
+                                 "circunstancia_vulnerabilidad"],
+}
+
+# Indice inverso: req_id → lista de tipo_id OCR que lo satisfacen
+_REQ_A_TIPOS_OCR: dict[str, list[str]] = {}
+for _tipo, _reqs in _ALIAS_TIPO_DOC.items():
+    for _req in _reqs:
+        _REQ_A_TIPOS_OCR.setdefault(_req, []).append(_tipo)
+
+
 def evaluar_expediente(documentos_analizados, tramite_id):
     """Cruza los documentos analizados con la lista exigida por el tramite.
 
@@ -424,6 +465,12 @@ def evaluar_expediente(documentos_analizados, tramite_id):
     checklist = []
     for requisito in tramites.documentos_de(tramite_id):
         encontrados = por_tipo.get(requisito["id"], [])
+        if not encontrados:
+            # Buscar por alias: un tipo OCR generico puede satisfacer este requisito
+            for tipo_alias in _REQ_A_TIPOS_OCR.get(requisito["id"], []):
+                if tipo_alias in por_tipo:
+                    encontrados = por_tipo[tipo_alias]
+                    break
         if not encontrados:
             estado = "falta" if requisito["obligatorio"] else "falta_opcional"
         else:
