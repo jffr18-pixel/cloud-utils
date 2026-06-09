@@ -8,6 +8,7 @@ lo que permite regenerar el checklist y el informe en cualquier formato despues.
 import hashlib
 import json
 import os
+from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -314,6 +315,21 @@ def estadisticas():
                 nombre_d = doc.get("tipo_nombre") or doc.get("tipo_id", "documento")
                 fallos_doc[nombre_d] = fallos_doc.get(nombre_d, 0) + 1
 
+    por_mes = defaultdict(int)
+    rentabilidad = {}
+    for r in registros:
+        mes = r.get("fecha", "")[:7]
+        if mes:
+            por_mes[mes] += 1
+        tn = nombres_tramite.get(r.get("tramite_id"), r.get("tramite_id", ""))
+        h = r.get("honorarios")
+        if h and h.get("importe", 0) > 0:
+            if tn not in rentabilidad:
+                rentabilidad[tn] = {"total": 0.0, "cobrado": 0.0, "count": 0}
+            rentabilidad[tn]["total"] += h.get("importe", 0)
+            rentabilidad[tn]["cobrado"] += h.get("cobrado", 0)
+            rentabilidad[tn]["count"] += 1
+
     return {
         "total": total,
         "completos": completos,
@@ -321,6 +337,8 @@ def estadisticas():
         "por_tramite": por_tramite,
         "por_resultado": por_resultado,
         "fallos_doc": dict(sorted(fallos_doc.items(), key=lambda x: -x[1])),
+        "por_mes": dict(sorted(por_mes.items())),
+        "rentabilidad": rentabilidad,
     }
 
 
@@ -548,3 +566,81 @@ def eliminar_firma(eid):
     if ruta and os.path.exists(ruta):
         os.remove(ruta)
     actualizar(eid, firma_path="")
+
+
+# --------------------------- Duplicar expediente ---------------------------- #
+def duplicar(eid, nuevo_tramite_id):
+    """Crea un expediente nuevo copiando los datos personales del original.
+
+    Util para gestionar varios tramites del mismo cliente: no hace falta
+    volver a introducir todos los datos personales.
+    """
+    original = cargar(eid)
+    if not original:
+        return None
+    _CAMPOS = [
+        "nombre", "fecha_nacimiento", "nacionalidad", "nie", "num_pasaporte",
+        "cad_pasaporte", "fecha_entrada_espana", "telefono", "email_cliente",
+        "direccion", "ciudad", "empleador", "fecha_contrato", "tipo_contrato",
+    ]
+    datos = {k: original.get(k, "") for k in _CAMPOS if original.get(k)}
+    nuevo_eid = alta_rapida(nuevo_tramite_id, datos)
+    anadir_seguimiento(
+        nuevo_eid, "Duplicado",
+        f"Creado a partir del expediente {original.get('solicitante', eid[:16])}",
+    )
+    return nuevo_eid
+
+
+# ----------------------- Registro de comunicaciones ------------------------- #
+def registrar_comunicacion(eid, canal, texto):
+    """Anota en el expediente un mensaje enviado al cliente (WhatsApp, email, SMS...)."""
+    registro = cargar(eid)
+    if not registro:
+        return None
+    registro.setdefault("comunicaciones", []).append({
+        "fecha": datetime.now().isoformat(timespec="seconds"),
+        "canal": canal or "otro",
+        "texto": (texto or "").strip(),
+    })
+    _guardar_registro(registro)
+    return registro
+
+
+# ----------------------- Proximas renovaciones ------------------------------ #
+_PALABRAS_RENOVABLES = (
+    "tie", "nie", "tarjeta", "permiso", "autorizacion", "residencia",
+)
+
+
+def proximas_renovaciones(dias=90, hoy=None):
+    """Expedientes cuyo TIE/permiso/NIE caduca en los proximos N dias."""
+    if hoy is None:
+        hoy = date.today()
+    avisos = []
+    for meta in listar():
+        registro = cargar(meta["id"])
+        if not registro:
+            continue
+        if registro.get("resultado_final") in ("aprobado", "denegado"):
+            continue
+        for doc in registro.get("resultados", []):
+            tipo_id = (doc.get("tipo_id") or "").lower()
+            if not any(p in tipo_id for p in _PALABRAS_RENOVABLES):
+                continue
+            caducidad = _parse_fecha(doc.get("fecha_caducidad"))
+            if not caducidad:
+                continue
+            restantes = (caducidad - hoy).days
+            if restantes <= dias:
+                avisos.append({
+                    "solicitante": registro.get("solicitante") or "-",
+                    "expediente_id": registro["id"],
+                    "tramite_actual": registro.get("tramite_id", ""),
+                    "documento": doc.get("tipo_nombre") or doc.get("tipo_id", "documento"),
+                    "fecha_caducidad": caducidad.isoformat(),
+                    "dias_restantes": restantes,
+                    "vencido": restantes < 0,
+                })
+    avisos.sort(key=lambda a: a["dias_restantes"])
+    return avisos

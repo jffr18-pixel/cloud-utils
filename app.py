@@ -645,7 +645,7 @@ def _rellenar_plantilla(texto, contexto):
 
 
 def _buscar_expedientes(consulta, limite=8):
-    """Busca expedientes por solicitante, NIE o nº de expediente (insensible a mayusculas)."""
+    """Busca expedientes por nombre, NIE, pasaporte, teléfono, email o nº expediente."""
     consulta = (consulta or "").strip().lower()
     if not consulta:
         return []
@@ -656,8 +656,12 @@ def _buscar_expedientes(consulta, limite=8):
             continue
         campos = (
             registro.get("solicitante", ""),
+            registro.get("nombre", ""),
             registro.get("nie", ""),
             registro.get("numero_expediente", ""),
+            registro.get("num_pasaporte", ""),
+            registro.get("telefono", ""),
+            registro.get("email_cliente", ""),
         )
         if any(consulta in (c or "").lower() for c in campos):
             encontrados.append(registro)
@@ -728,7 +732,9 @@ def barra_lateral():
             "Menu",
             [
                 "Dashboard",
+                "Urgente",
                 "Revisar expediente",
+                "Primera consulta",
                 "Tablero",
                 "Historial",
                 "Seguimiento",
@@ -2150,21 +2156,82 @@ def pagina_seguimiento(api_key, modelo, dias_aviso):
         st.rerun()
 
     # Portal de estado para el cliente
-    st.markdown("##### Portal de estado para el cliente")
+    st.markdown("##### 🌐 Portal de estado para el cliente")
     st.caption(
         "Genera un HTML que puedes enviar al cliente (por email o WhatsApp). "
         "Muestra el estado del expediente, documentos pendientes y el historial."
     )
-    if st.button("🌐 Generar portal del cliente", use_container_width=False):
+    _IDIOMAS_PORTAL = {
+        "es": "🇪🇸 Español",
+        "ar": "🇲🇦 Árabe",
+        "ro": "🇷🇴 Rumano",
+        "en": "🇬🇧 Inglés",
+        "zh": "🇨🇳 Chino",
+    }
+    idioma_sel = st.selectbox(
+        "Idioma del portal",
+        list(_IDIOMAS_PORTAL.keys()),
+        format_func=lambda k: _IDIOMAS_PORTAL[k],
+        key=f"portal_idioma_{eid}",
+    )
+    _TRADUCCIONES_PORTAL = {
+        "es": {},
+        "ar": {
+            "Estado de tu expediente": "حالة ملفك",
+            "Tramite": "الإجراء",
+            "Documentos": "الوثائق",
+            "Pendiente": "قيد الانتظار",
+            "Aprobado": "موافق عليه",
+            "Denegado": "مرفوض",
+            "Listo para presentar": "جاهز للتقديم",
+            "Falta": "مفقود",
+        },
+        "ro": {
+            "Estado de tu expediente": "Starea dosarului tău",
+            "Tramite": "Procedură",
+            "Documentos": "Documente",
+            "Pendiente": "În așteptare",
+            "Aprobado": "Aprobat",
+            "Denegado": "Respins",
+            "Listo para presentar": "Gata de depus",
+            "Falta": "Lipsește",
+        },
+        "en": {
+            "Estado de tu expediente": "Your case status",
+            "Tramite": "Procedure",
+            "Documentos": "Documents",
+            "Pendiente": "Pending",
+            "Aprobado": "Approved",
+            "Denegado": "Denied",
+            "Listo para presentar": "Ready to submit",
+            "Falta": "Missing",
+        },
+        "zh": {
+            "Estado de tu expediente": "您的案件状态",
+            "Tramite": "程序",
+            "Documentos": "文件",
+            "Pendiente": "待处理",
+            "Aprobado": "已批准",
+            "Denegado": "已拒绝",
+            "Listo para presentar": "准备提交",
+            "Falta": "缺少",
+        },
+    }
+
+    if st.button("🌐 Generar portal del cliente", key=f"gen_portal_{eid}", use_container_width=False):
         try:
             checklist_p, _ = analizador.evaluar_expediente(reg.get("resultados", []), reg["tramite_id"])
             tramite_n = tramites.TRAMITES.get(reg["tramite_id"], {}).get("nombre", reg["tramite_id"])
             html_portal = portal.generar_html(reg, checklist_p, tramite_n)
+            # Aplicar traducciones al HTML si el idioma no es español
+            traducciones = _TRADUCCIONES_PORTAL.get(idioma_sel, {})
+            for es_txt, trad_txt in traducciones.items():
+                html_portal = html_portal.replace(es_txt, trad_txt)
             token = portal.obtener_o_crear_token(eid)
             st.download_button(
                 "⬇️ Descargar portal (.html)",
                 data=html_portal.encode("utf-8"),
-                file_name=f"estado_{eid[:12]}.html",
+                file_name=f"estado_{eid[:12]}_{idioma_sel}.html",
                 mime="text/html",
                 key=f"portal_{eid}",
             )
@@ -2240,6 +2307,96 @@ def pagina_seguimiento(api_key, modelo, dias_aviso):
         historial.guardar_honorarios(eid, imp_v, cob_v, conc_v)
         st.success("Honorarios guardados.")
         st.rerun()
+
+    # ── Documentos descargables ────────────────────────────────────────────── #
+    st.markdown("##### 📥 Documentos descargables")
+    gestoria_dl = config.cargar_config()
+    dc1, dc2, dc3, dc4 = st.columns(4)
+    try:
+        ficha_bytes = informe.generar_ficha_completa_pdf(reg, gestoria_dl)
+        dc1.download_button(
+            "🖨️ Ficha PDF",
+            data=ficha_bytes,
+            file_name=f"ficha_{eid[:12]}.pdf",
+            mime="application/pdf",
+            key=f"ficha_dl_{eid}",
+            use_container_width=True,
+        )
+    except Exception as exc_fi:
+        dc1.caption(f"Ficha: {exc_fi}")
+    try:
+        encargo_bytes = informe.generar_hoja_encargo_docx(reg, gestoria_dl)
+        dc2.download_button(
+            "📝 Hoja encargo",
+            data=encargo_bytes,
+            file_name=f"encargo_{eid[:12]}.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            key=f"encargo_dl_{eid}",
+            use_container_width=True,
+        )
+    except Exception as exc_en:
+        dc2.caption(f"Encargo: {exc_en}")
+    try:
+        presup_bytes = informe.generar_presupuesto_pdf(reg, gestoria_dl)
+        dc3.download_button(
+            "🧾 Presupuesto PDF",
+            data=presup_bytes,
+            file_name=f"presupuesto_{eid[:12]}.pdf",
+            mime="application/pdf",
+            key=f"presup_dl_{eid}",
+            use_container_width=True,
+        )
+    except Exception as exc_pr:
+        dc3.caption(f"Presupuesto: {exc_pr}")
+    # Duplicar expediente
+    if dc4.button("📋 Duplicar expediente", key=f"dup_btn_{eid}", use_container_width=True):
+        st.session_state[f"dup_show_{eid}"] = True
+    if st.session_state.get(f"dup_show_{eid}"):
+        with st.form(f"dup_form_{eid}"):
+            st.caption("Elige el tramite para el nuevo expediente (los datos personales se copian).")
+            t_ids = list(tramites.TRAMITES.keys())
+            nuevo_t = st.selectbox(
+                "Nuevo tramite",
+                t_ids,
+                format_func=lambda tid: tramites.TRAMITES[tid]["nombre"],
+                key=f"dup_t_{eid}",
+            )
+            if st.form_submit_button("✅ Crear duplicado"):
+                nuevo_eid = historial.duplicar(eid, nuevo_t)
+                st.success(f"Expediente duplicado creado: {nuevo_eid[:16]}")
+                st.session_state[f"dup_show_{eid}"] = False
+                st.session_state["seguimiento_eid_sugerido"] = nuevo_eid
+                st.session_state["_menu_nav"] = "Seguimiento"
+                st.rerun()
+
+    # ── Registro de comunicaciones ─────────────────────────────────────────── #
+    st.markdown("##### 💬 Comunicaciones con el cliente")
+    comunicaciones = reg.get("comunicaciones", [])
+    if comunicaciones:
+        for com in reversed(comunicaciones[-10:]):
+            icono_com = {"whatsapp": "📲", "email": "📧", "sms": "💬", "llamada": "📞"}.get(
+                com.get("canal", ""), "💬"
+            )
+            st.markdown(
+                f"<div class='bz-list-card bz-card-info'>"
+                f"<span class='bz-card-icono'>{icono_com}</span>"
+                "<div class='bz-card-texto'>"
+                f"<div class='bz-card-titulo'>{com.get('texto','')[:120]}</div>"
+                f"<div class='bz-card-sub'>{com.get('canal','').capitalize()} · {com.get('fecha','')[:16]}</div>"
+                "</div></div>",
+                unsafe_allow_html=True,
+            )
+    else:
+        st.caption("Sin comunicaciones registradas.")
+    with st.form(f"com_{eid}"):
+        com_cols = st.columns([2, 4])
+        canal_sel = com_cols[0].selectbox(
+            "Canal", ["whatsapp", "email", "sms", "llamada", "otro"], key=f"com_canal_{eid}"
+        )
+        texto_com = com_cols[1].text_input("Texto del mensaje enviado", key=f"com_txt_{eid}")
+        if st.form_submit_button("📤 Registrar comunicacion") and texto_com.strip():
+            historial.registrar_comunicacion(eid, canal_sel, texto_com.strip())
+            st.rerun()
 
     st.markdown("##### Linea de tiempo del expediente")
     seguimiento = reg.get("seguimiento", [])
@@ -2452,6 +2609,8 @@ def pagina_calendario():
 #  Pagina: Estadisticas
 # --------------------------------------------------------------------------- #
 def pagina_estadisticas():
+    import altair as alt
+
     st.title("Estadisticas")
     st.markdown(
         '<p class="bz-page-subtitle">Metricas del perfil activo a partir del historial '
@@ -2462,20 +2621,143 @@ def pagina_estadisticas():
     if e["total"] == 0:
         st.info("Aun no hay expedientes para calcular estadisticas.")
         return
-    m1, m2, m3 = st.columns(3)
+
+    # ── KPIs ─────────────────────────────────────────────────────────────────
+    m1, m2, m3, m4 = st.columns(4)
     m1.metric("Expedientes", e["total"])
     m2.metric("Completos a la primera", f"{e['porcentaje_completos']} %")
     m3.metric("Aprobados", e["por_resultado"].get("aprobado", 0))
+    m4.metric("Denegados", e["por_resultado"].get("denegado", 0))
 
+    # ── Actividad mensual ────────────────────────────────────────────────────
+    if e.get("por_mes"):
+        st.subheader("Actividad mensual")
+        df_mes = pd.DataFrame(
+            [{"Mes": k, "Expedientes": v} for k, v in e["por_mes"].items()]
+        )
+        chart_mes = (
+            alt.Chart(df_mes)
+            .mark_bar(color="#9373B2", cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
+            .encode(
+                x=alt.X("Mes:O", axis=alt.Axis(labelAngle=-45)),
+                y=alt.Y("Expedientes:Q"),
+                tooltip=["Mes", "Expedientes"],
+            )
+            .properties(height=220)
+        )
+        st.altair_chart(chart_mes, use_container_width=True)
+
+    col_a, col_b = st.columns(2)
+
+    # ── Tramites ─────────────────────────────────────────────────────────────
     if e["por_tramite"]:
-        st.subheader("Expedientes por tramite")
-        st.bar_chart(pd.Series(e["por_tramite"]))
+        with col_a:
+            st.subheader("Expedientes por tramite")
+            df_tr = pd.DataFrame(
+                [{"Tramite": k, "Total": v} for k, v in e["por_tramite"].items()]
+            ).sort_values("Total", ascending=False)
+            chart_tr = (
+                alt.Chart(df_tr)
+                .mark_arc(innerRadius=45)
+                .encode(
+                    theta=alt.Theta("Total:Q"),
+                    color=alt.Color("Tramite:N", legend=alt.Legend(orient="bottom")),
+                    tooltip=["Tramite", "Total"],
+                )
+                .properties(height=260)
+            )
+            st.altair_chart(chart_tr, use_container_width=True)
+
+    # ── Resultados ───────────────────────────────────────────────────────────
     if e["por_resultado"]:
-        st.subheader("Resultado de los tramites")
-        st.bar_chart(pd.Series(e["por_resultado"]))
+        with col_b:
+            st.subheader("Resultado de los tramites")
+            _COLORES_RES = {
+                "aprobado": "#43A047", "denegado": "#E53935",
+                "pendiente": "#FB8C00", "sin_marcar": "#9E9E9E",
+            }
+            df_res = pd.DataFrame(
+                [{"Estado": k, "Total": v} for k, v in e["por_resultado"].items() if v > 0]
+            )
+            if not df_res.empty:
+                chart_res = (
+                    alt.Chart(df_res)
+                    .mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
+                    .encode(
+                        x=alt.X("Estado:O"),
+                        y=alt.Y("Total:Q"),
+                        color=alt.Color(
+                            "Estado:N",
+                            scale=alt.Scale(
+                                domain=list(_COLORES_RES.keys()),
+                                range=list(_COLORES_RES.values()),
+                            ),
+                            legend=None,
+                        ),
+                        tooltip=["Estado", "Total"],
+                    )
+                    .properties(height=260)
+                )
+                st.altair_chart(chart_res, use_container_width=True)
+
+    # ── Documentos que mas fallan ────────────────────────────────────────────
     if e["fallos_doc"]:
         st.subheader("Documentos que mas fallan (incidencias o caducados)")
-        st.bar_chart(pd.Series(e["fallos_doc"]))
+        df_doc = pd.DataFrame(
+            [{"Documento": k, "Incidencias": v}
+             for k, v in list(e["fallos_doc"].items())[:12]]
+        )
+        chart_doc = (
+            alt.Chart(df_doc)
+            .mark_bar(color="#E57373", cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
+            .encode(
+                x=alt.X("Incidencias:Q"),
+                y=alt.Y("Documento:N", sort="-x"),
+                tooltip=["Documento", "Incidencias"],
+            )
+            .properties(height=max(200, len(df_doc) * 28))
+        )
+        st.altair_chart(chart_doc, use_container_width=True)
+
+    # ── Rentabilidad por tramite ─────────────────────────────────────────────
+    rent = e.get("rentabilidad", {})
+    if rent:
+        st.subheader("Rentabilidad por tramite")
+        df_rent = pd.DataFrame([
+            {
+                "Tramite": k,
+                "Facturado (EUR)": round(v["total"], 2),
+                "Cobrado (EUR)": round(v["cobrado"], 2),
+                "Expedientes": v["count"],
+                "Media por exp.": round(v["total"] / v["count"], 2) if v["count"] else 0,
+            }
+            for k, v in rent.items()
+        ]).sort_values("Facturado (EUR)", ascending=False)
+        st.dataframe(df_rent, hide_index=True, use_container_width=True)
+
+        df_rent_chart = pd.DataFrame([
+            {"Tramite": k, "EUR": round(v["total"], 2), "Tipo": "Facturado"}
+            for k, v in rent.items()
+        ] + [
+            {"Tramite": k, "EUR": round(v["cobrado"], 2), "Tipo": "Cobrado"}
+            for k, v in rent.items()
+        ])
+        chart_rent = (
+            alt.Chart(df_rent_chart)
+            .mark_bar()
+            .encode(
+                x=alt.X("EUR:Q"),
+                y=alt.Y("Tramite:N", sort="-x"),
+                color=alt.Color(
+                    "Tipo:N",
+                    scale=alt.Scale(domain=["Facturado", "Cobrado"], range=["#9373B2", "#43A047"]),
+                ),
+                yOffset="Tipo:N",
+                tooltip=["Tramite", "Tipo", "EUR"],
+            )
+            .properties(height=max(200, len(rent) * 48))
+        )
+        st.altair_chart(chart_rent, use_container_width=True)
 
 
 # --------------------------------------------------------------------------- #
@@ -2668,8 +2950,8 @@ def pagina_dashboard():
     # ── Acciones rápidas ──────────────────────────────────────────────────── #
     _QA = [
         ("➕", "Nuevo expediente", "Revisar documentos de un cliente", "Revisar expediente"),
-        ("📂", "Ver historial",    "Todos los expedientes revisados",   "Historial"),
-        ("📊", "Tablero Kanban",   "Estado visual de todos los casos",  "Tablero"),
+        ("🧙", "Primera consulta", "Asistente para nuevos clientes",   "Primera consulta"),
+        ("🚦", "Urgente",          "Tareas y caducidades criticas",    "Urgente"),
         ("🗓️", "Citas",           "Agenda de citas previas",           "Citas"),
     ]
     qa_cols = st.columns(4)
@@ -2746,6 +3028,24 @@ def pagina_dashboard():
                     "</div></div>",
                     unsafe_allow_html=True,
                 )
+
+    # ── Panel de renovaciones ─────────────────────────────────────────────── #
+    renovaciones_dash = historial.proximas_renovaciones(60)
+    if renovaciones_dash:
+        st.divider()
+        st.subheader("🔔 Proximas renovaciones (60 dias)")
+        for rv in renovaciones_dash[:6]:
+            clase_rv = "bz-card-urgente" if rv["vencido"] or rv["dias_restantes"] <= 15 else "bz-card-aviso"
+            txt_rv = "Vencido" if rv["vencido"] else f"Caduca en {rv['dias_restantes']}d"
+            st.markdown(
+                f"<div class='bz-list-card {clase_rv}'>"
+                f"<span class='bz-card-icono'>🔔</span>"
+                "<div class='bz-card-texto'>"
+                f"<div class='bz-card-titulo'>{rv['documento']} — {rv['solicitante']}</div>"
+                f"<div class='bz-card-sub'>{txt_rv} · {rv['fecha_caducidad']}</div>"
+                "</div></div>",
+                unsafe_allow_html=True,
+            )
 
     st.divider()
     st.subheader("🕘 Actividad reciente")
@@ -2895,6 +3195,321 @@ def _chat_expediente(api_key, modelo, registro, checklist, mensajes):
 
 
 # --------------------------------------------------------------------------- #
+#  Pagina: Bandeja urgente
+# --------------------------------------------------------------------------- #
+def pagina_bandeja_urgente():
+    st.title("🚦 Bandeja urgente")
+    st.markdown(
+        '<p class="bz-page-subtitle">Todo lo que necesita atencion inmediata: tareas '
+        "vencidas, caducidades criticas, citas de manana y expedientes inactivos.</p>",
+        unsafe_allow_html=True,
+    )
+    hoy = date.today().isoformat()
+    manana = date.today().replace(day=date.today().day + 1).isoformat() if date.today().day < 28 else (
+        date.today().isoformat()  # fallback seguro
+    )
+
+    # Calcular manana de forma robusta
+    from datetime import timedelta as _td
+    manana = (date.today() + _td(days=1)).isoformat()
+
+    todas_tareas = historial.todas_las_tareas(incluir_hechas=False)
+    tareas_venc = [t for t in todas_tareas if t["fecha"] < hoy]
+    cad_criticas = historial.proximas_caducidades(7)
+    citas_manana = [c for c in citas.listar() if not c.get("hecha") and c.get("fecha") == manana]
+    renovaciones = historial.proximas_renovaciones(30)
+
+    # KPIs
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Tareas vencidas", len(tareas_venc), delta=None)
+    k2.metric("Docs caducan 7d", len(cad_criticas))
+    k3.metric("Citas manana", len(citas_manana))
+    k4.metric("Renovaciones 30d", len(renovaciones))
+
+    st.divider()
+    col_izq, col_der = st.columns(2)
+
+    with col_izq:
+        # Tareas vencidas
+        st.subheader("⬛ Tareas vencidas")
+        if not tareas_venc:
+            st.success("Sin tareas vencidas.")
+        else:
+            for t in tareas_venc[:10]:
+                st.markdown(
+                    f"<div class='bz-list-card bz-card-urgente'>"
+                    f"<span class='bz-card-icono'>🔴</span>"
+                    "<div class='bz-card-texto'>"
+                    f"<div class='bz-card-titulo'>{t['descripcion']}</div>"
+                    f"<div class='bz-card-sub'>{t['solicitante']} · vencio el {t['fecha']}</div>"
+                    "</div></div>",
+                    unsafe_allow_html=True,
+                )
+                if st.button("✓ Hecha", key=f"urg_t_{t['expediente_id']}_{t['indice']}",
+                             use_container_width=True):
+                    historial.marcar_tarea(t["expediente_id"], t["indice"], True)
+                    st.rerun()
+
+        st.divider()
+        # Citas de mañana
+        st.subheader("🗓️ Citas de manana")
+        if not citas_manana:
+            st.success("Sin citas para manana.")
+        else:
+            for c in citas_manana:
+                exp_label = c.get("expediente_id", "")[:12] if c.get("expediente_id") else "–"
+                st.markdown(
+                    f"<div class='bz-list-card bz-card-aviso'>"
+                    f"<span class='bz-card-icono'>📅</span>"
+                    "<div class='bz-card-texto'>"
+                    f"<div class='bz-card-titulo'>{c.get('oficina','–')} — {c.get('tipo','')}</div>"
+                    f"<div class='bz-card-sub'>{c.get('hora','') or 'Hora no indicada'} · Exp: {exp_label}</div>"
+                    "</div></div>",
+                    unsafe_allow_html=True,
+                )
+
+    with col_der:
+        # Caducidades criticas
+        st.subheader("⏰ Caducidades criticas (7 dias)")
+        if not cad_criticas:
+            st.success("Sin caducidades criticas.")
+        else:
+            for av in cad_criticas[:10]:
+                clase = "bz-card-urgente" if av["vencido"] else "bz-card-aviso"
+                ico = "⛔" if av["vencido"] else "🟠"
+                txt = "Ya ha caducado" if av["vencido"] else f"Caduca en {av['dias_restantes']}d"
+                st.markdown(
+                    f"<div class='bz-list-card {clase}'>"
+                    f"<span class='bz-card-icono'>{ico}</span>"
+                    "<div class='bz-card-texto'>"
+                    f"<div class='bz-card-titulo'>{av['documento']} — {av['solicitante']}</div>"
+                    f"<div class='bz-card-sub'>{txt} · {av['fecha_caducidad']}</div>"
+                    "</div></div>",
+                    unsafe_allow_html=True,
+                )
+
+        st.divider()
+        # Renovaciones proximas
+        st.subheader("🔔 Renovaciones proximas (30 dias)")
+        if not renovaciones:
+            st.success("Sin renovaciones urgentes.")
+        else:
+            for r in renovaciones[:8]:
+                clase = "bz-card-urgente" if r["vencido"] else "bz-card-aviso"
+                txt = "Vencido" if r["vencido"] else f"Caduca en {r['dias_restantes']}d"
+                st.markdown(
+                    f"<div class='bz-list-card {clase}'>"
+                    f"<span class='bz-card-icono'>🔔</span>"
+                    "<div class='bz-card-texto'>"
+                    f"<div class='bz-card-titulo'>{r['documento']} — {r['solicitante']}</div>"
+                    f"<div class='bz-card-sub'>{txt} · {r['fecha_caducidad']}</div>"
+                    "</div></div>",
+                    unsafe_allow_html=True,
+                )
+                if st.button(
+                    "Ver expediente", key=f"urg_ren_{r['expediente_id']}",
+                    use_container_width=True,
+                ):
+                    st.session_state["seguimiento_eid_sugerido"] = r["expediente_id"]
+                    st.session_state["_menu_nav"] = "Seguimiento"
+                    st.rerun()
+
+
+# --------------------------------------------------------------------------- #
+#  Pagina: Asistente de primera consulta (wizard)
+# --------------------------------------------------------------------------- #
+def pagina_primera_consulta():
+    st.title("🧙 Primera consulta")
+    st.markdown(
+        '<p class="bz-page-subtitle">Asistente paso a paso para capturar los datos del cliente, '
+        "diagnosticar su situacion y sugerir el tramite mas adecuado.</p>",
+        unsafe_allow_html=True,
+    )
+
+    paso = st.session_state.get("wiz_paso", 1)
+
+    # ── Barra de progreso del wizard ─────────────────────────────────────────
+    pasos_total = 4
+    pct_wiz = int((paso / pasos_total) * 100)
+    st.markdown(
+        f"<div style='margin-bottom:1rem;'>"
+        f"<div style='font-size:0.82rem;color:#9373B2;margin-bottom:4px;'>"
+        f"Paso {paso} de {pasos_total}</div>"
+        f"<div class='bz-cad-bar-track'>"
+        f"<div class='bz-cad-bar-fill' style='width:{pct_wiz}%;background:#9373B2;'></div>"
+        f"</div></div>",
+        unsafe_allow_html=True,
+    )
+
+    if paso == 1:
+        st.subheader("Paso 1: Datos personales del cliente")
+        with st.form("wiz_paso1"):
+            c1, c2, c3 = st.columns(3)
+            nombre = c1.text_input("Nombre completo *")
+            nac = c2.text_input("Nacionalidad *")
+            fnac = c3.text_input("Fecha de nacimiento (DD/MM/AAAA)")
+            c4, c5, c6 = st.columns(3)
+            pasaporte = c4.text_input("Nº pasaporte")
+            tel = c5.text_input("Telefono")
+            email = c6.text_input("Email")
+            fecha_entrada = st.text_input("Fecha de entrada en Espana (DD/MM/AAAA o AAAA)")
+            if st.form_submit_button("Siguiente →", type="primary"):
+                if not nombre.strip() or not nac.strip():
+                    st.error("Nombre y nacionalidad son obligatorios.")
+                else:
+                    st.session_state["wiz_datos"] = {
+                        "nombre": nombre.strip(), "nacionalidad": nac.strip(),
+                        "fecha_nacimiento": fnac.strip(), "num_pasaporte": pasaporte.strip(),
+                        "telefono": tel.strip(), "email_cliente": email.strip(),
+                        "fecha_entrada_espana": fecha_entrada.strip(),
+                    }
+                    st.session_state["wiz_paso"] = 2
+                    st.rerun()
+
+    elif paso == 2:
+        datos = st.session_state.get("wiz_datos", {})
+        st.subheader("Paso 2: Situacion actual")
+        with st.form("wiz_paso2"):
+            situacion = st.selectbox("Situacion juridica actual", [
+                "Estancia irregular (sin papeles)",
+                "Con visado de turista / estudiante caducado",
+                "Con NIE de larga duracion",
+                "Con permiso de residencia temporal",
+                "Con permiso en tramite",
+                "Familiar de ciudadano UE",
+                "Otra / no sabe",
+            ])
+            tiempo_espana = st.selectbox("Tiempo de residencia en Espana", [
+                "Menos de 1 ano", "1 a 2 anos", "2 a 3 anos",
+                "3 a 5 anos", "Mas de 5 anos",
+            ])
+            tiene_contrato = st.checkbox("Tiene oferta de trabajo o contrato laboral")
+            tiene_pareja = st.checkbox("Tiene pareja o familiar espanol/a o con residencia legal")
+            tiene_arraigo_social = st.checkbox("Lleva 3+ anos en Espana sin antecedentes penales")
+            c1w, c2w = st.columns(2)
+            if c1w.form_submit_button("← Atras"):
+                st.session_state["wiz_paso"] = 1
+                st.rerun()
+            if c2w.form_submit_button("Siguiente →", type="primary"):
+                datos.update({
+                    "wiz_situacion": situacion,
+                    "wiz_tiempo": tiempo_espana,
+                    "wiz_contrato": tiene_contrato,
+                    "wiz_pareja": tiene_pareja,
+                    "wiz_arraigo": tiene_arraigo_social,
+                })
+                st.session_state["wiz_datos"] = datos
+                st.session_state["wiz_paso"] = 3
+                st.rerun()
+
+    elif paso == 3:
+        datos = st.session_state.get("wiz_datos", {})
+        st.subheader("Paso 3: Diagnostico")
+
+        # Logica simple de sugerencia de tramite
+        sugerencias = []
+        _t = datos.get("wiz_tiempo", "")
+        _c = datos.get("wiz_contrato", False)
+        _p = datos.get("wiz_pareja", False)
+        _ar = datos.get("wiz_arraigo", False)
+        _sit = datos.get("wiz_situacion", "")
+
+        if _ar and not _c:
+            sugerencias.append(("arraigo_social", "Arraigo Social",
+                                "Lleva 3+ anos y no tiene contrato. Requiere informe de arraigo."))
+        if _ar and _c:
+            sugerencias.append(("arraigo_sociolaboral", "Arraigo Sociolaboral",
+                                "Lleva 3+ anos con oferta de trabajo. Perfil muy favorable."))
+        if _c and "1" in _t or "2" in _t:
+            sugerencias.append(("arraigo_laboral", "Arraigo Laboral",
+                                "Con contrato y tiempo en Espana. Requiere acreditacion de relacion laboral previa."))
+        if _p:
+            sugerencias.append(("arraigo_familiar", "Arraigo Familiar",
+                                "Tiene vinculo familiar con residente legal."))
+        if "5" in _t or "Mas" in _t:
+            sugerencias.append(("larga_duracion", "Residencia de Larga Duracion",
+                                "Con mas de 5 anos podria optar a residencia de larga duracion."))
+        if not sugerencias:
+            sugerencias.append(("arraigo_social", "Arraigo Social",
+                                "Tramite mas habitual para irregulares con tiempo de permanencia."))
+
+        st.markdown("**Tramites recomendados para este perfil:**")
+        for tid, tnombre, razon in sugerencias:
+            st.markdown(
+                f"<div class='bz-list-card bz-card-info'>"
+                f"<span class='bz-card-icono'>⚖️</span>"
+                "<div class='bz-card-texto'>"
+                f"<div class='bz-card-titulo'>{tnombre}</div>"
+                f"<div class='bz-card-sub'>{razon}</div>"
+                "</div></div>",
+                unsafe_allow_html=True,
+            )
+
+        t_ids_wiz = list(tramites.TRAMITES.keys())
+        tramite_def_wiz = sugerencias[0][0] if sugerencias[0][0] in t_ids_wiz else t_ids_wiz[0]
+        idx_def_wiz = t_ids_wiz.index(tramite_def_wiz) if tramite_def_wiz in t_ids_wiz else 0
+
+        with st.form("wiz_paso3"):
+            tramite_sel = st.selectbox(
+                "Tramite seleccionado para el expediente",
+                t_ids_wiz,
+                index=idx_def_wiz,
+                format_func=lambda tid: tramites.TRAMITES[tid]["nombre"],
+            )
+            honorarios_wiz = st.number_input("Honorarios estimados (EUR, opcional)", min_value=0.0, step=50.0)
+            c1w, c2w = st.columns(2)
+            if c1w.form_submit_button("← Atras"):
+                st.session_state["wiz_paso"] = 2
+                st.rerun()
+            if c2w.form_submit_button("Siguiente →", type="primary"):
+                datos["wiz_tramite"] = tramite_sel
+                datos["wiz_honorarios"] = float(honorarios_wiz)
+                st.session_state["wiz_datos"] = datos
+                st.session_state["wiz_paso"] = 4
+                st.rerun()
+
+    elif paso == 4:
+        datos = st.session_state.get("wiz_datos", {})
+        tramite_wiz = datos.get("wiz_tramite", "")
+        st.subheader("Paso 4: Confirmar y crear expediente")
+
+        tramite_nombre_wiz = tramites.TRAMITES.get(tramite_wiz, {}).get("nombre", tramite_wiz)
+        st.markdown(f"**Cliente:** {datos.get('nombre','—')}")
+        st.markdown(f"**Tramite:** {tramite_nombre_wiz}")
+        if datos.get("honorarios_wiz", 0) or datos.get("wiz_honorarios", 0):
+            hon_wiz = datos.get("wiz_honorarios", 0)
+            st.markdown(f"**Honorarios estimados:** {hon_wiz:.2f} €")
+
+        st.markdown("**Documentos que necesitara:**")
+        docs_wiz = tramites.documentos_de(tramite_wiz)
+        for d in docs_wiz:
+            oblig_icon = "🔴" if d["obligatorio"] else "⚪"
+            st.write(f"{oblig_icon} {d['nombre']}" + (f" — _{d['notas']}_" if d.get("notas") else ""))
+
+        c1w, c2w = st.columns(2)
+        if c1w.button("← Atras", key="wiz_atras4"):
+            st.session_state["wiz_paso"] = 3
+            st.rerun()
+        if c2w.button("✅ Crear expediente", type="primary", key="wiz_crear"):
+            campos_alta = {k: v for k, v in datos.items() if not k.startswith("wiz_")}
+            nuevo_eid = historial.alta_rapida(tramite_wiz, campos_alta)
+            hon_wiz = datos.get("wiz_honorarios", 0)
+            if hon_wiz:
+                historial.guardar_honorarios(nuevo_eid, hon_wiz, 0, tramite_nombre_wiz)
+            st.success(f"Expediente creado correctamente. ID: {nuevo_eid[:16]}")
+            st.session_state["wiz_paso"] = 1
+            st.session_state.pop("wiz_datos", None)
+            st.session_state["seguimiento_eid_sugerido"] = nuevo_eid
+            st.session_state["_menu_nav"] = "Seguimiento"
+            st.rerun()
+
+    if st.button("🔄 Reiniciar wizard", key="wiz_reset"):
+        st.session_state["wiz_paso"] = 1
+        st.session_state.pop("wiz_datos", None)
+        st.rerun()
+
+
+# --------------------------------------------------------------------------- #
 #  Main
 # --------------------------------------------------------------------------- #
 def main():
@@ -2904,8 +3519,12 @@ def main():
     pagina, api_key, modelo, dias_aviso = barra_lateral()
     if pagina == "Dashboard":
         pagina_dashboard()
+    elif pagina == "Urgente":
+        pagina_bandeja_urgente()
     elif pagina == "Revisar expediente":
         pagina_revisar(api_key, modelo, dias_aviso)
+    elif pagina == "Primera consulta":
+        pagina_primera_consulta()
     elif pagina == "Tablero":
         pagina_tablero()
     elif pagina == "Historial":

@@ -738,3 +738,303 @@ def generar_lista_docs_docx(tramite_id, solicitante="", gestoria=None, estado_do
     buffer = io.BytesIO()
     doc.save(buffer)
     return buffer.getvalue()
+
+
+# --------------------------------------------------------------------------- #
+#  Ficha completa del cliente — PDF de una pagina (resumen imprimible)
+# --------------------------------------------------------------------------- #
+def generar_ficha_completa_pdf(registro, gestoria=None):
+    """PDF de una pagina con los datos del cliente, estado del expediente y tareas."""
+    from fpdf import FPDF
+
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    _cabecera_pdf(pdf, gestoria)
+
+    def tit(t):
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.set_fill_color(230, 220, 250)
+        pdf.multi_cell(0, 6, _latin1(t), fill=True, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.ln(1)
+
+    def lin(etiq, val):
+        if not val:
+            return
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.cell(48, 5, _latin1(etiq + ":"))
+        pdf.set_font("Helvetica", "", 9)
+        pdf.multi_cell(0, 5, _latin1(str(val)), new_x="LMARGIN", new_y="NEXT")
+
+    tramite_n = tramites.TRAMITES.get(registro.get("tramite_id", ""), {}).get(
+        "nombre", registro.get("tramite_id", "-")
+    )
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.multi_cell(0, 7, _latin1(f"Ficha: {registro.get('solicitante') or '-'}"),
+                   new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.multi_cell(
+        0, 5,
+        _latin1(f"Tramite: {tramite_n}  |  Revision: {registro.get('fecha','')[:10]}"),
+        new_x="LMARGIN", new_y="NEXT",
+    )
+    pdf.ln(3)
+
+    tit("Datos personales")
+    lin("Nombre", registro.get("nombre") or registro.get("solicitante"))
+    lin("F. nacimiento", registro.get("fecha_nacimiento"))
+    lin("Nacionalidad", registro.get("nacionalidad"))
+    lin("NIE", registro.get("nie"))
+    lin("Pasaporte", registro.get("num_pasaporte"))
+    lin("Cad. pasaporte", registro.get("cad_pasaporte"))
+    lin("Entrada en Espana", registro.get("fecha_entrada_espana"))
+    lin("Telefono", registro.get("telefono"))
+    lin("Email", registro.get("email_cliente"))
+    lin("Direccion", f"{registro.get('direccion','') or ''} {registro.get('ciudad','') or ''}".strip())
+    lin("Empleador", registro.get("empleador"))
+    lin("Contrato", f"{registro.get('tipo_contrato','') or ''} {registro.get('fecha_contrato','') or ''}".strip())
+    pdf.ln(2)
+
+    tit("Estado del expediente")
+    lin("Nº expediente", registro.get("numero_expediente"))
+    lin("Resultado", registro.get("resultado_final", "pendiente"))
+    lin("Presentado", "Si" if registro.get("presentado") else "No")
+    h = registro.get("honorarios") or {}
+    if h.get("importe", 0):
+        lin("Honorarios", f"{h.get('importe',0):.2f} EUR  (cobrado: {h.get('cobrado',0):.2f} EUR)")
+    pdf.ln(2)
+
+    try:
+        from .analizador import evaluar_expediente
+        checklist, _ = evaluar_expediente(
+            registro.get("resultados", []), registro.get("tramite_id", "")
+        )
+    except Exception:
+        checklist = []
+
+    if checklist:
+        tit("Documentacion")
+        _IC = {"correcto": "OK", "falta": "FALTA", "caducado": "CADUCADO",
+               "proximo_a_caducar": "PRONTO", "con_incidencias": "REVISAR",
+               "falta_opcional": "OPCIONAL"}
+        pdf.set_font("Helvetica", "", 9)
+        for item in checklist:
+            icono = _IC.get(item["estado"], item["estado"])
+            pdf.cell(22, 5, _latin1(f"[{icono}]"))
+            pdf.multi_cell(0, 5, _latin1(item["nombre"]), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(2)
+
+    seg = registro.get("seguimiento", [])
+    if seg:
+        tit("Seguimiento")
+        for ev in seg[-5:]:
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.cell(24, 5, _latin1(ev.get("fecha", "")[:10]))
+            pdf.set_font("Helvetica", "", 9)
+            pdf.multi_cell(0, 5, _latin1(f"{ev.get('estado','')} {ev.get('nota','')}".strip()),
+                           new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(2)
+
+    tareas_pend = [t for t in registro.get("tareas", []) if not t.get("hecha")]
+    if tareas_pend:
+        tit("Tareas pendientes")
+        pdf.set_font("Helvetica", "", 9)
+        for t in tareas_pend[:6]:
+            pdf.multi_cell(0, 5, _latin1(f"  [ ] {t.get('fecha','')} — {t.get('descripcion','')}"),
+                           new_x="LMARGIN", new_y="NEXT")
+
+    if registro.get("notas"):
+        pdf.ln(2)
+        tit("Notas")
+        pdf.set_font("Helvetica", "", 9)
+        pdf.multi_cell(0, 5, _latin1(registro["notas"]), new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_y(-18)
+    pdf.multi_cell(0, 4, _latin1("Documento generado automaticamente — uso interno de la gestoria."),
+                   new_x="LMARGIN", new_y="NEXT")
+    return bytes(pdf.output())
+
+
+# --------------------------------------------------------------------------- #
+#  Hoja de encargo / contrato de servicios — Word
+# --------------------------------------------------------------------------- #
+def generar_hoja_encargo_docx(registro, gestoria=None):
+    """Hoja de encargo profesional pre-rellenada con datos del cliente y gestoria."""
+    from docx import Document
+    from docx.shared import Inches, Pt
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    h = registro.get("honorarios") or {}
+    importe = float(h.get("importe", 0))
+    concepto = h.get("concepto", "")
+    solicitante = registro.get("nombre") or registro.get("solicitante") or "el/la cliente"
+    tramite_n = tramites.TRAMITES.get(registro.get("tramite_id", ""), {}).get(
+        "nombre", registro.get("tramite_id", "-")
+    )
+    hoy_str = date.today().strftime("%d/%m/%Y")
+    nombre_g = (gestoria or {}).get("nombre_gestoria", "la gestoria")
+    contacto_g = _contacto(gestoria or {})
+
+    doc = Document()
+    for section in doc.sections:
+        section.top_margin = Inches(1)
+        section.bottom_margin = Inches(1)
+        section.left_margin = Inches(1.2)
+        section.right_margin = Inches(1.2)
+
+    if gestoria:
+        logo = gestoria.get("logo_path", "")
+        if logo and os.path.exists(logo) and logo.lower().endswith(_EXT_LOGO_DOCX):
+            try:
+                doc.add_picture(logo, width=Inches(1.4))
+            except Exception:
+                pass
+        if gestoria.get("nombre_gestoria"):
+            p = doc.add_paragraph(gestoria["nombre_gestoria"])
+            p.runs[0].bold = True
+            p.runs[0].font.size = Pt(13)
+        if contacto_g:
+            doc.add_paragraph(contacto_g).runs[0].font.size = Pt(9)
+        doc.add_paragraph("")
+
+    h1 = doc.add_heading("HOJA DE ENCARGO PROFESIONAL", level=1)
+    h1.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_fecha = doc.add_paragraph(f"Fecha: {hoy_str}")
+    p_fecha.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+    doc.add_paragraph("")
+    doc.add_paragraph(
+        f"De una parte, {nombre_g}" +
+        (f" ({contacto_g})" if contacto_g else "") +
+        ", en adelante EL PROFESIONAL."
+    )
+    doc.add_paragraph(f"De otra parte, D./Dna. {solicitante}, en adelante EL CLIENTE.")
+    nie = registro.get("nie", "")
+    pas = registro.get("num_pasaporte", "")
+    id_doc = f"NIE: {nie}" if nie else (f"Pasaporte: {pas}" if pas else "")
+    if id_doc:
+        doc.add_paragraph(f"Documento de identidad: {id_doc}")
+    if registro.get("telefono"):
+        doc.add_paragraph(f"Telefono de contacto: {registro['telefono']}")
+    if registro.get("email_cliente"):
+        doc.add_paragraph(f"Email: {registro['email_cliente']}")
+
+    doc.add_paragraph("")
+    doc.add_heading("OBJETO DEL ENCARGO", level=2)
+    doc.add_paragraph(
+        f"El cliente encarga a {nombre_g} la tramitacion del procedimiento de "
+        f"{tramite_n} ante las autoridades competentes, incluyendo la preparacion "
+        "de la documentacion, revision del expediente, presentacion y seguimiento."
+    )
+    if concepto:
+        doc.add_paragraph(f"Descripcion adicional: {concepto}")
+
+    doc.add_paragraph("")
+    doc.add_heading("HONORARIOS", level=2)
+    if importe:
+        doc.add_paragraph(
+            f"Los honorarios acordados ascienden a {importe:.2f} EUR "
+            "(IVA no incluido salvo indicacion contraria)."
+        )
+    else:
+        doc.add_paragraph("Los honorarios se acordaran por separado.")
+
+    doc.add_paragraph("")
+    doc.add_heading("OBLIGACIONES DEL CLIENTE", level=2)
+    for ob in [
+        "Aportar toda la documentacion necesaria en tiempo y forma.",
+        "Comunicar cualquier cambio de domicilio, situacion laboral o datos personales.",
+        "Conservar copias de todos los documentos entregados.",
+    ]:
+        doc.add_paragraph(ob, style="List Bullet")
+
+    doc.add_paragraph("")
+    doc.add_heading("PROTECCION DE DATOS", level=2)
+    doc.add_paragraph(
+        f"Los datos personales facilitados seran tratados por {nombre_g} conforme al "
+        "RGPD (Reglamento UE 2016/679) y la LOPDGDD."
+    )
+
+    doc.add_paragraph("")
+    doc.add_paragraph("")
+    sig = doc.add_table(rows=1, cols=2)
+    sig.cell(0, 0).text = f"Firma del profesional\n\n\n\n{nombre_g}"
+    sig.cell(0, 1).text = f"Firma del cliente\n\n\n\n{solicitante}"
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+# --------------------------------------------------------------------------- #
+#  Presupuesto / nota de honorarios — PDF
+# --------------------------------------------------------------------------- #
+def generar_presupuesto_pdf(registro, gestoria=None):
+    """PDF de presupuesto/factura con membrete, datos del cliente y honorarios."""
+    from fpdf import FPDF
+
+    h = registro.get("honorarios") or {}
+    importe = float(h.get("importe", 0))
+    cobrado = float(h.get("cobrado", 0))
+    pendiente = round(importe - cobrado, 2)
+    tramite_n = tramites.TRAMITES.get(registro.get("tramite_id", ""), {}).get("nombre", "Tramite")
+    concepto = h.get("concepto", "") or tramite_n
+    solicitante = registro.get("nombre") or registro.get("solicitante") or "Cliente"
+    hoy_str = date.today().strftime("%d/%m/%Y")
+    ref = (registro.get("numero_expediente") or registro.get("id", ""))[:16]
+
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    _cabecera_pdf(pdf, gestoria)
+
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.multi_cell(0, 8, "PRESUPUESTO / NOTA DE HONORARIOS", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.multi_cell(0, 5, _latin1(f"Referencia: {ref}  |  Fecha: {hoy_str}"),
+                   new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.multi_cell(0, 6, "CLIENTE", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.multi_cell(0, 5, _latin1(solicitante), new_x="LMARGIN", new_y="NEXT")
+    nie = registro.get("nie", "")
+    pas = registro.get("num_pasaporte", "")
+    id_doc = f"NIE: {nie}" if nie else (f"Pasaporte: {pas}" if pas else "")
+    if id_doc:
+        pdf.multi_cell(0, 5, _latin1(id_doc), new_x="LMARGIN", new_y="NEXT")
+    if registro.get("email_cliente"):
+        pdf.multi_cell(0, 5, _latin1(registro["email_cliente"]), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.multi_cell(0, 6, "SERVICIOS", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 9)
+    with pdf.table(col_widths=(100, 30, 30, 30), text_align="LEFT") as tabla:
+        enc = tabla.row()
+        for hdr in ("Concepto", "Importe", "Cobrado", "Pendiente"):
+            enc.cell(hdr)
+        row = tabla.row()
+        row.cell(_latin1(concepto))
+        row.cell(f"{importe:.2f} EUR")
+        row.cell(f"{cobrado:.2f} EUR")
+        row.cell(f"{pendiente:.2f} EUR")
+    pdf.ln(4)
+
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.multi_cell(0, 6, _latin1(f"TOTAL: {importe:.2f} EUR"), new_x="LMARGIN", new_y="NEXT")
+    if pendiente > 0:
+        pdf.set_font("Helvetica", "", 10)
+        pdf.multi_cell(0, 5, _latin1(f"Pendiente de cobro: {pendiente:.2f} EUR"),
+                       new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(6)
+
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.multi_cell(0, 4, _latin1(
+        "Este documento es un presupuesto/nota de honorarios. "
+        "No constituye factura fiscal."
+    ), new_x="LMARGIN", new_y="NEXT")
+    return bytes(pdf.output())
