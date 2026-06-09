@@ -622,7 +622,28 @@ _BADGE = {
 
 
 def obtener_cliente(api_key):
-    return anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
+    clave = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+    if not clave:
+        raise ValueError(
+            "No hay clave de API configurada. "
+            "Introduce tu clave de Anthropic en el panel lateral izquierdo "
+            "o define la variable de entorno ANTHROPIC_API_KEY."
+        )
+    return anthropic.Anthropic(api_key=clave)
+
+
+def _aviso_sin_clave(api_key):
+    """Muestra un aviso visible si no hay clave de API y devuelve True si falta."""
+    if api_key or os.environ.get("ANTHROPIC_API_KEY"):
+        return False
+    st.warning(
+        "⚠️ **Clave de API no configurada.** "
+        "Para usar la IA necesitas introducir tu clave de Anthropic en el "
+        "panel lateral izquierdo (campo *Clave de API de Anthropic*) o definir "
+        "la variable de entorno `ANTHROPIC_API_KEY`.",
+        icon=None,
+    )
+    return True
 
 
 def _slug(texto):
@@ -965,6 +986,7 @@ def _pagina_alta_rapida():
 
 def _pagina_analizar_docs(api_key, modelo, dias_aviso):
     """Flujo original: subir documentos → IA → guardar expediente."""
+    _aviso_sin_clave(api_key)
     opciones = tramites.lista_tramites_con_icono()
     etiquetas = [n for _, n in opciones]
     sugerido = st.session_state.get("tramite_sugerido")
@@ -3081,6 +3103,8 @@ def pagina_asistente(api_key, modelo):
         "documentos que faltan, caducidades, requisitos del tramite o cualquier duda.</p>",
         unsafe_allow_html=True,
     )
+    if _aviso_sin_clave(api_key):
+        return
 
     registros = historial.listar()
     if not registros:
