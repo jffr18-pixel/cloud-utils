@@ -46,6 +46,27 @@ def guardar(tramite_id, solicitante, resultados):
     return eid
 
 
+def alta_rapida(tramite_id, datos):
+    """Crea un expediente nuevo sin documentos a partir de los datos del cliente.
+
+    ``datos`` acepta cualquier subconjunto de:
+    nombre, fecha_nacimiento, nacionalidad, nie, num_pasaporte,
+    cad_pasaporte, fecha_entrada_espana, telefono, email,
+    direccion, ciudad, empleador, fecha_contrato, tipo_contrato,
+    num_expediente_admin, notas.
+
+    Devuelve el eid del expediente creado.
+    """
+    nombre = datos.get("nombre", "").strip()
+    eid = guardar(tramite_id, nombre, [])
+    extras = {k: v for k, v in datos.items() if k != "nombre" and v not in (None, "")}
+    if extras:
+        actualizar(eid, **extras)
+    generar_tareas_automaticas(eid)
+    anadir_seguimiento(eid, "Alta", "Expediente creado sin documentos (alta rapida)")
+    return eid
+
+
 def listar():
     """Devuelve los metadatos de las revisiones, de la mas reciente a la mas antigua."""
     salida = []

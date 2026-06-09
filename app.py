@@ -774,11 +774,10 @@ def barra_lateral():
 #  Pagina: Revisar expediente
 # --------------------------------------------------------------------------- #
 def pagina_revisar(api_key, modelo, dias_aviso):
-    st.title("Revisar expediente")
+    st.title("Nuevo expediente")
     st.markdown(
-        '<p class="bz-page-subtitle">Sube los documentos (PDF o fotos de WhatsApp) y la '
-        "herramienta los lee, clasifica y comprueba que documentacion falta, esta caducada "
-        'o tiene incidencias.</p>',
+        '<p class="bz-page-subtitle">Da de alta un cliente rellenando sus datos, '
+        "o sube directamente los documentos para que la IA los analice.</p>",
         unsafe_allow_html=True,
     )
 
@@ -786,6 +785,106 @@ def pagina_revisar(api_key, modelo, dias_aviso):
         st.warning("No hay tramites definidos. Ve a la pestana 'Tramites' para crear uno.")
         return
 
+    tab_alta, tab_docs = st.tabs(["➕  Alta de cliente", "📄  Analizar documentos"])
+
+    # ── TAB 1: ALTA RÁPIDA ─────────────────────────────────────────────────── #
+    with tab_alta:
+        _pagina_alta_rapida()
+
+    # ── TAB 2: ANÁLISIS DE DOCUMENTOS ──────────────────────────────────────── #
+    with tab_docs:
+        _pagina_analizar_docs(api_key, modelo, dias_aviso)
+
+
+def _pagina_alta_rapida():
+    """Formulario de alta de cliente sin documentos."""
+    opciones = tramites.lista_tramites_con_icono()
+    etiquetas = [n for _, n in opciones]
+
+    st.markdown("#### 👤 Datos personales")
+    c1, c2, c3 = st.columns(3)
+    nombre       = c1.text_input("Nombre completo *", key="ar_nombre")
+    fnac_raw     = c2.date_input("Fecha de nacimiento", value=None, key="ar_fnac")
+    nacionalidad = c3.text_input("Nacionalidad / País de origen", key="ar_nac")
+
+    c4, c5, c6 = st.columns(3)
+    nie          = c4.text_input("NIE / TIE (si ya lo tiene)", key="ar_nie")
+    num_pas      = c5.text_input("Nº de pasaporte", key="ar_numpas")
+    cad_pas_raw  = c6.date_input("Caducidad del pasaporte", value=None, key="ar_cadpas")
+
+    c7, c8 = st.columns(2)
+    fentrada_raw = c7.date_input("Fecha de entrada en España", value=None, key="ar_fentrada")
+    tramite_idx  = c8.selectbox(
+        "Tipo de trámite *", range(len(opciones)),
+        format_func=lambda i: etiquetas[i], key="ar_tramite",
+    )
+    tramite_id_ar = opciones[tramite_idx][0]
+
+    st.markdown("#### 📞 Datos de contacto")
+    d1, d2 = st.columns(2)
+    telefono = d1.text_input("Teléfono", key="ar_tel")
+    email_cl = d2.text_input("Email del cliente", key="ar_email")
+
+    d3, d4 = st.columns([3, 1])
+    direccion = d3.text_input("Dirección", key="ar_dir")
+    ciudad    = d4.text_input("Ciudad", key="ar_ciudad")
+
+    st.markdown("#### 💼 Datos laborales *(si aplica)*")
+    l1, l2, l3 = st.columns(3)
+    empleador     = l1.text_input("Empresa / empleador", key="ar_emp")
+    fecha_cont    = l2.date_input("Fecha inicio contrato", value=None, key="ar_fcont")
+    tipo_cont     = l3.selectbox(
+        "Tipo de contrato", ["", "Indefinido", "Temporal", "A tiempo parcial", "Otro"],
+        key="ar_tcont",
+    )
+
+    st.markdown("#### 📝 Notas iniciales")
+    notas = st.text_area("Notas u observaciones internas", height=80, key="ar_notas")
+
+    st.divider()
+    boton_alta = st.button(
+        "✅ Crear expediente", type="primary", use_container_width=True, key="ar_crear",
+    )
+
+    if boton_alta:
+        if not nombre.strip():
+            st.error("El nombre del cliente es obligatorio.")
+            return
+
+        def _d(v):
+            return v.isoformat() if v else ""
+
+        datos = {
+            "nombre":               nombre.strip(),
+            "fecha_nacimiento":     _d(fnac_raw),
+            "nacionalidad":         nacionalidad.strip(),
+            "nie":                  nie.strip(),
+            "num_pasaporte":        num_pas.strip(),
+            "cad_pasaporte":        _d(cad_pas_raw),
+            "fecha_entrada_espana": _d(fentrada_raw),
+            "telefono":             telefono.strip(),
+            "email_cliente":        email_cl.strip(),
+            "direccion":            direccion.strip(),
+            "ciudad":               ciudad.strip(),
+            "empleador":            empleador.strip(),
+            "fecha_contrato":       _d(fecha_cont),
+            "tipo_contrato":        tipo_cont if tipo_cont else "",
+            "notas":                notas.strip(),
+        }
+        try:
+            eid = historial.alta_rapida(tramite_id_ar, datos)
+            st.success(f"✅ Expediente creado correctamente (ID: `{eid}`)")
+            st.info("Ve a **Seguimiento** para ver la ficha, añadir documentos o enviar mensajes.")
+            if st.button("Ir a Seguimiento →", key="ar_ir_seg"):
+                st.session_state["_menu_nav"] = "Seguimiento"
+                st.session_state["seguimiento_eid_sugerido"] = eid
+                st.rerun()
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Error al crear el expediente: {exc}")
+
+
+def _pagina_analizar_docs(api_key, modelo, dias_aviso):
+    """Flujo original: subir documentos → IA → guardar expediente."""
     opciones = tramites.lista_tramites_con_icono()
     etiquetas = [n for _, n in opciones]
     sugerido = st.session_state.get("tramite_sugerido")
@@ -1771,6 +1870,95 @@ def pagina_seguimiento(api_key, modelo, dias_aviso):
     reg = historial.cargar(eid)
     if not reg:
         return
+
+    # ── Datos del cliente (alta rapida) ─────────────────────────────────────── #
+    _CAMPOS_CLIENTE = [
+        ("nombre",               "👤", "Nombre completo"),
+        ("fecha_nacimiento",     "🎂", "Fecha de nacimiento"),
+        ("nacionalidad",         "🌍", "Nacionalidad"),
+        ("num_pasaporte",        "🛂", "Nº de pasaporte"),
+        ("cad_pasaporte",        "⏳", "Caducidad del pasaporte"),
+        ("fecha_entrada_espana", "✈️", "Entrada en España"),
+        ("telefono",             "📞", "Teléfono"),
+        ("email_cliente",        "📧", "Email"),
+        ("direccion",            "🏠", "Dirección"),
+        ("ciudad",               "🏙️", "Ciudad"),
+        ("empleador",            "💼", "Empleador"),
+        ("fecha_contrato",       "📄", "Fecha de contrato"),
+        ("tipo_contrato",        "🗂️", "Tipo de contrato"),
+        ("notas",                "📝", "Notas"),
+    ]
+    campos_rellenos = [(k, ico, lab) for k, ico, lab in _CAMPOS_CLIENTE
+                       if reg.get(k) not in (None, "")]
+
+    if campos_rellenos or True:  # siempre mostramos el bloque para poder editar
+        with st.expander("👤 Datos del cliente", expanded=bool(campos_rellenos)):
+            if campos_rellenos:
+                fc1, fc2 = st.columns(2)
+                for i, (k, ico, lab) in enumerate(campos_rellenos):
+                    col = fc1 if i % 2 == 0 else fc2
+                    val = reg.get(k, "")
+                    # Notas ocupan ancho completo
+                    if k == "notas":
+                        st.markdown(
+                            f"<div class='bz-ficha-dato'>"
+                            f"<span class='bz-ficha-icono'>{ico}</span>"
+                            f"<span class='bz-ficha-etiqueta'>{lab}</span><br>"
+                            f"<span class='bz-ficha-valor'>{val}</span></div>",
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        col.markdown(
+                            f"<div class='bz-ficha-dato'>"
+                            f"<span class='bz-ficha-icono'>{ico}</span>"
+                            f"<span class='bz-ficha-etiqueta'>{lab}</span><br>"
+                            f"<span class='bz-ficha-valor'>{val}</span></div>",
+                            unsafe_allow_html=True,
+                        )
+                st.markdown("")
+            with st.form(f"edit_cliente_{eid}"):
+                st.markdown("###### ✏️ Editar datos del cliente")
+                e1, e2, e3 = st.columns(3)
+                v_nombre   = e1.text_input("Nombre completo",       value=reg.get("nombre", "") or reg.get("solicitante", ""), key=f"ec_nombre_{eid}")
+                v_fnac     = e2.text_input("Fecha de nacimiento",   value=reg.get("fecha_nacimiento", ""), key=f"ec_fnac_{eid}")
+                v_nac      = e3.text_input("Nacionalidad",          value=reg.get("nacionalidad", ""), key=f"ec_nac_{eid}")
+                e4, e5, e6 = st.columns(3)
+                v_pas      = e4.text_input("Nº pasaporte",          value=reg.get("num_pasaporte", ""), key=f"ec_pas_{eid}")
+                v_cadpas   = e5.text_input("Caducidad pasaporte",   value=reg.get("cad_pasaporte", ""), key=f"ec_cadpas_{eid}")
+                v_fent     = e6.text_input("Entrada en España",     value=reg.get("fecha_entrada_espana", ""), key=f"ec_fent_{eid}")
+                e7, e8 = st.columns(2)
+                v_tel      = e7.text_input("Teléfono",              value=reg.get("telefono", ""), key=f"ec_tel_{eid}")
+                v_email    = e8.text_input("Email",                 value=reg.get("email_cliente", ""), key=f"ec_email_{eid}")
+                e9, e10 = st.columns([3, 1])
+                v_dir      = e9.text_input("Dirección",             value=reg.get("direccion", ""), key=f"ec_dir_{eid}")
+                v_ciudad   = e10.text_input("Ciudad",               value=reg.get("ciudad", ""), key=f"ec_ciudad_{eid}")
+                e11, e12, e13 = st.columns(3)
+                v_emp      = e11.text_input("Empleador",            value=reg.get("empleador", ""), key=f"ec_emp_{eid}")
+                v_fcont    = e12.text_input("Fecha contrato",       value=reg.get("fecha_contrato", ""), key=f"ec_fcont_{eid}")
+                v_tcont    = e13.text_input("Tipo contrato",        value=reg.get("tipo_contrato", ""), key=f"ec_tcont_{eid}")
+                v_notas    = st.text_area("Notas",                  value=reg.get("notas", ""), height=70, key=f"ec_notas_{eid}")
+                if st.form_submit_button("💾 Guardar datos del cliente", type="primary"):
+                    nombre_limpio = v_nombre.strip()
+                    historial.actualizar(
+                        eid,
+                        nombre=nombre_limpio,
+                        solicitante=nombre_limpio or reg.get("solicitante", ""),
+                        fecha_nacimiento=v_fnac.strip(),
+                        nacionalidad=v_nac.strip(),
+                        num_pasaporte=v_pas.strip(),
+                        cad_pasaporte=v_cadpas.strip(),
+                        fecha_entrada_espana=v_fent.strip(),
+                        telefono=v_tel.strip(),
+                        email_cliente=v_email.strip(),
+                        direccion=v_dir.strip(),
+                        ciudad=v_ciudad.strip(),
+                        empleador=v_emp.strip(),
+                        fecha_contrato=v_fcont.strip(),
+                        tipo_contrato=v_tcont.strip(),
+                        notas=v_notas.strip(),
+                    )
+                    st.success("Datos del cliente guardados.")
+                    st.rerun()
 
     st.markdown("##### Datos de presentacion")
     c1, c2, c3 = st.columns(3)
