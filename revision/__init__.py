@@ -11,10 +11,12 @@ Modulos:
   - portal:        HTML standalone del estado del expediente para el cliente.
   - formularios:   formularios oficiales EX-01 y EX-03 pre-rellenados.
   - imap_import:   importacion de adjuntos desde bandeja de entrada IMAP.
+  - citas:         agenda de citas previas en oficinas de extranjeria.
 """
 
 from . import (
     analizador,
+    citas,
     comunicacion,
     config,
     ficha,
@@ -28,6 +30,7 @@ from . import (
 
 __all__ = [
     "analizador",
+    "citas",
     "comunicacion",
     "config",
     "ficha",

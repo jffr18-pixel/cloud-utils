@@ -639,3 +639,102 @@ def _lineas_documento_plano(doc):
     if doc.get("resumen"):
         lineas.append(f"Resumen: {doc['resumen']}")
     return lineas
+
+
+# --------------------------------------------------------------------------- #
+#  Lista de documentacion exigida (para entregar al cliente)
+# --------------------------------------------------------------------------- #
+def generar_lista_docs_docx(tramite_id, solicitante="", gestoria=None, estado_docs=None):
+    """Word con la lista de documentos exigidos para el tramite.
+
+    ``estado_docs`` es un dict {tipo_id: estado} con el estado de cada doc
+    en el expediente; si se pasa, se muestra un tick/cruz junto a cada linea.
+    """
+    from docx import Document
+    from docx.shared import Pt, RGBColor, Inches
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    doc = Document()
+    # Margenes mas pequeños
+    for section in doc.sections:
+        section.top_margin = Inches(1)
+        section.bottom_margin = Inches(1)
+        section.left_margin = Inches(1.2)
+        section.right_margin = Inches(1.2)
+
+    # Cabecera gestoria
+    if gestoria:
+        logo = gestoria.get("logo_path", "")
+        if logo and os.path.exists(logo) and logo.lower().endswith(_EXT_LOGO_DOCX):
+            try:
+                doc.add_picture(logo, width=Inches(1.4))
+            except Exception:
+                pass
+        nombre_g = gestoria.get("nombre_gestoria", "")
+        contacto = _contacto(gestoria)
+        if nombre_g:
+            p = doc.add_paragraph(nombre_g)
+            p.runs[0].bold = True
+            p.runs[0].font.size = Pt(11)
+        if contacto:
+            doc.add_paragraph(contacto).runs[0].font.size = Pt(9)
+        doc.add_paragraph("")
+
+    tramite_datos = tramites.TRAMITES.get(tramite_id, {})
+    tramite_nombre = tramite_datos.get("nombre", tramite_id)
+
+    titulo = doc.add_heading(f"Documentacion necesaria: {tramite_nombre}", level=1)
+    titulo.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+    if solicitante:
+        p = doc.add_paragraph(f"Cliente: {solicitante}")
+        p.runs[0].font.size = Pt(10)
+    p = doc.add_paragraph(f"Fecha: {date.today().strftime('%d/%m/%Y')}")
+    p.runs[0].font.size = Pt(10)
+    doc.add_paragraph("")
+
+    docs_obligatorios = [d for d in tramites.documentos_de(tramite_id) if d["obligatorio"]]
+    docs_opcionales   = [d for d in tramites.documentos_de(tramite_id) if not d["obligatorio"]]
+
+    estado_docs = estado_docs or {}
+
+    def _marca(tipo_id):
+        est = estado_docs.get(tipo_id)
+        if est == "correcto":
+            return "✅ "
+        if est in ("caducado", "falta"):
+            return "❌ "
+        if est in ("con_incidencias", "proximo_a_caducar"):
+            return "⚠️ "
+        return "☐ "
+
+    doc.add_heading("Documentos obligatorios", level=2)
+    for d in docs_obligatorios:
+        marca = _marca(d["id"])
+        p = doc.add_paragraph(style="List Bullet")
+        run = p.add_run(f"{marca}{d['nombre']}")
+        run.bold = True
+        if d.get("notas"):
+            p.add_run(f"\n   {d['notas']}").font.size = Pt(9)
+
+    if docs_opcionales:
+        doc.add_paragraph("")
+        doc.add_heading("Documentos opcionales / complementarios", level=2)
+        for d in docs_opcionales:
+            marca = _marca(d["id"])
+            p = doc.add_paragraph(style="List Bullet")
+            p.add_run(f"{marca}{d['nombre']}")
+            if d.get("notas"):
+                p.add_run(f"\n   {d['notas']}").font.size = Pt(9)
+
+    doc.add_paragraph("")
+    nota = doc.add_paragraph(
+        "Nota: los documentos originales deben estar en vigor en la fecha de presentacion. "
+        "Entregue siempre copia junto al original para su cotejo."
+    )
+    nota.runs[0].font.size = Pt(9)
+    nota.runs[0].font.color.rgb = RGBColor(0x66, 0x66, 0x66)
+
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    return buffer.getvalue()

@@ -260,6 +260,35 @@ def marcar_resultado(eid, resultado):
     return actualizar(eid, resultado_final=resultado)
 
 
+# -------------------------------- Honorarios -------------------------------- #
+def guardar_honorarios(eid, importe, cobrado, concepto=""):
+    """Guarda o actualiza los honorarios de un expediente."""
+    return actualizar(eid, honorarios={
+        "importe": round(float(importe or 0), 2),
+        "cobrado": round(float(cobrado or 0), 2),
+        "concepto": (concepto or "").strip(),
+    })
+
+
+def resumen_honorarios():
+    """Totales de honorarios de todos los expedientes (para el dashboard)."""
+    total = cobrado = 0.0
+    for meta in listar():
+        reg = cargar(meta["id"])
+        if not reg:
+            continue
+        h = reg.get("honorarios")
+        if not h:
+            continue
+        total += h.get("importe", 0)
+        cobrado += h.get("cobrado", 0)
+    return {
+        "total": total,
+        "cobrado": cobrado,
+        "pendiente": round(total - cobrado, 2),
+    }
+
+
 # ------------------------------ Estadisticas -------------------------------- #
 def estadisticas():
     """Metricas agregadas del historial para el panel de estadisticas."""

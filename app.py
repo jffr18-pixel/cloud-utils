@@ -17,6 +17,7 @@ from PIL import Image as _PIL_Image
 
 from revision import (
     analizador,
+    citas,
     comunicacion,
     config,
     ficha,
@@ -732,6 +733,7 @@ def barra_lateral():
                 "Historial",
                 "Seguimiento",
                 "Caducidades",
+                "Citas",
                 "Calendario",
                 "Estadisticas",
                 "Asistente IA",
@@ -842,9 +844,21 @@ def _pagina_alta_rapida():
     notas = st.text_area("Notas u observaciones internas", height=80, key="ar_notas")
 
     st.divider()
-    boton_alta = st.button(
+    btn1, btn2 = st.columns([3, 2])
+    boton_alta = btn1.button(
         "✅ Crear expediente", type="primary", use_container_width=True, key="ar_crear",
     )
+    if btn2.button("📋 Descargar lista de docs", use_container_width=True, key="ar_lista"):
+        gestoria_cfg = config.cargar_config()
+        docx_bytes = informe.generar_lista_docs_docx(
+            tramite_id_ar, solicitante=nombre.strip(), gestoria=gestoria_cfg,
+        )
+        st.download_button(
+            "⬇️ Descargar Word (.docx)", data=docx_bytes,
+            file_name=f"lista_docs_{tramite_id_ar}.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            key="ar_lista_dl",
+        )
 
     if boton_alta:
         if not nombre.strip():
@@ -881,6 +895,66 @@ def _pagina_alta_rapida():
                 st.rerun()
         except Exception as exc:  # noqa: BLE001
             st.error(f"Error al crear el expediente: {exc}")
+
+    # ── Importar desde Excel ─────────────────────────────────────────────────── #
+    st.divider()
+    with st.expander("📥 Importar clientes desde Excel"):
+        st.caption(
+            "Sube un Excel con columnas: **Nombre** (obligatorio), Tramite, NIE, Telefono, "
+            "Email, Nacionalidad, Direccion, Ciudad, Empleador, Notas. "
+            "El valor de 'Tramite' debe coincidir con el nombre del tramite en la app."
+        )
+        xl_file = st.file_uploader(
+            "Archivo Excel (.xlsx / .xls)", type=["xlsx", "xls"], key="xl_upload"
+        )
+        if xl_file:
+            try:
+                df_xl = pd.read_excel(xl_file)
+                df_xl.columns = [c.strip() for c in df_xl.columns]
+                if "Nombre" not in df_xl.columns:
+                    st.error("El Excel debe tener al menos una columna 'Nombre'.")
+                else:
+                    st.dataframe(df_xl.head(10), hide_index=True, use_container_width=True)
+                    st.caption(f"{len(df_xl)} fila(s) detectadas.")
+                    # Mapear nombres de trámite → id
+                    nombre_a_id = {v["nombre"].lower(): k for k, v in tramites.TRAMITES.items()}
+                    opciones_tr = tramites.lista_tramites_con_icono()
+                    # Tramite por defecto = primero disponible
+                    tramite_def = opciones_tr[0][0] if opciones_tr else ""
+                    if st.button("✅ Importar todos", type="primary", key="xl_importar"):
+                        ok_n = 0
+                        err_n = 0
+                        for _, fila in df_xl.iterrows():
+                            nombre_xl = str(fila.get("Nombre", "") or "").strip()
+                            if not nombre_xl:
+                                err_n += 1
+                                continue
+                            tr_nombre = str(fila.get("Tramite", "") or "").strip().lower()
+                            tr_id = nombre_a_id.get(tr_nombre, tramite_def)
+                            def _sv(v):
+                                return "" if pd.isna(v) else str(v).strip()
+                            datos_xl = {
+                                "nombre":       nombre_xl,
+                                "nie":          _sv(fila.get("NIE")),
+                                "telefono":     _sv(fila.get("Telefono")),
+                                "email_cliente":_sv(fila.get("Email")),
+                                "nacionalidad": _sv(fila.get("Nacionalidad")),
+                                "direccion":    _sv(fila.get("Direccion")),
+                                "ciudad":       _sv(fila.get("Ciudad")),
+                                "empleador":    _sv(fila.get("Empleador")),
+                                "notas":        _sv(fila.get("Notas")),
+                            }
+                            try:
+                                historial.alta_rapida(tr_id, datos_xl)
+                                ok_n += 1
+                            except Exception:  # noqa: BLE001
+                                err_n += 1
+                        st.success(f"Importados: {ok_n} expedientes correctamente.")
+                        if err_n:
+                            st.warning(f"{err_n} fila(s) omitidas (sin nombre o error).")
+                        st.rerun()
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"Error al leer el Excel: {exc}")
 
 
 def _pagina_analizar_docs(api_key, modelo, dias_aviso):
@@ -1106,12 +1180,26 @@ def pagina_tablero():
             for meta in elementos:
                 tramite_n = nombres_tramite.get(meta["tramite_id"], meta["tramite_id"])
                 icono_t = tramites.icono_tramite(meta["tramite_id"])
+                # Progreso documental
+                docs_ob = [d for d in tramites.documentos_de(meta["tramite_id"]) if d["obligatorio"]]
+                total_ob = len(docs_ob)
+                faltan = (meta.get("faltan") or 0) + (meta.get("caducados") or 0)
+                ok = max(0, total_ob - faltan)
+                pct = round(ok / total_ob * 100) if total_ob else 100
+                color_p = "#43A047" if pct == 100 else ("#FB8C00" if pct >= 50 else "#E53935")
+                barra_html = (
+                    f"<div class='bz-cad-bar-track' style='margin-top:6px;'>"
+                    f"<div class='bz-cad-bar-fill' style='width:{pct}%;background:{color_p};'>"
+                    f"</div></div>"
+                    f"<div style='font-size:0.72rem;color:#6B5F82;margin-top:2px;'>"
+                    f"{ok}/{total_ob} docs · {pct}%</div>"
+                )
                 st.markdown(
                     f"<div class='bz-ficha-dato'>"
                     f"<span class='bz-ficha-etiqueta'>{icono_t} {tramite_n}</span>"
                     f"<span class='bz-ficha-valor'>{meta.get('solicitante') or 'sin nombre'}</span>"
                     f"<span style='color:#6B5F82;font-size:0.78rem;'>{meta['fecha'][:10]}</span>"
-                    f"</div>",
+                    f"{barra_html}</div>",
                     unsafe_allow_html=True,
                 )
                 if st.button("Ver seguimiento", key=f"tab_{clave}_{meta['id']}", use_container_width=True):
@@ -1193,19 +1281,33 @@ def pagina_historial():
 
 
 def _tabla_historial(registros, nombres_tramite):
-    tabla = pd.DataFrame(
-        [
-            {
-                "Fecha": r["fecha"].replace("T", " "),
-                "Solicitante": r["solicitante"] or "-",
-                "Tramite": nombres_tramite.get(r["tramite_id"], r["tramite_id"]),
-                "Resultado": "✅ Listo" if r["listo"] else "⛔ Incompleto",
-                "Faltan": r["faltan"], "Caducados": r["caducados"], "Avisos": r["avisos"],
-            }
-            for r in registros
-        ]
+    filas = []
+    for r in registros:
+        docs_ob = [d for d in tramites.documentos_de(r["tramite_id"]) if d["obligatorio"]]
+        total_ob = len(docs_ob)
+        faltan = (r.get("faltan") or 0) + (r.get("caducados") or 0)
+        ok = max(0, total_ob - faltan)
+        pct = round(ok / total_ob * 100) if total_ob else 100
+        filas.append({
+            "Fecha": r["fecha"].replace("T", " "),
+            "Solicitante": r["solicitante"] or "-",
+            "Tramite": nombres_tramite.get(r["tramite_id"], r["tramite_id"]),
+            "Progreso": pct,
+            "Estado": "✅ Listo" if r["listo"] else "⛔ Incompleto",
+            "Faltan": r.get("faltan", 0),
+            "Caducados": r.get("caducados", 0),
+        })
+    tabla = pd.DataFrame(filas)
+    st.dataframe(
+        tabla,
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "Progreso": st.column_config.ProgressColumn(
+                "Progreso", min_value=0, max_value=100, format="%d%%"
+            )
+        },
     )
-    st.dataframe(tabla, hide_index=True, use_container_width=True)
 
 
 # --------------------------------------------------------------------------- #
@@ -1495,6 +1597,66 @@ def pagina_plantillas():
         config.restablecer_plantillas()
         st.success("Plantillas restablecidas a los valores por defecto.")
         st.rerun()
+
+    # ── Envío masivo ──────────────────────────────────────────────────────── #
+    st.divider()
+    st.subheader("📤 Envío masivo a clientes")
+    st.caption(
+        "Selecciona una plantilla y los expedientes destinatarios. "
+        "Se genera un enlace de WhatsApp para cada uno, listo para enviar."
+    )
+    plantillas_act = config.cargar_plantillas()
+    if not plantillas_act:
+        st.info("No hay plantillas disponibles.")
+    else:
+        registros_em = historial.listar()
+        if not registros_em:
+            st.info("No hay expedientes en el historial.")
+        else:
+            gestoria_em = config.cargar_config()
+            p_ids = list(plantillas_act)
+            sel_p = st.selectbox(
+                "Plantilla", p_ids,
+                format_func=lambda pid: plantillas_act[pid]["nombre"],
+                key="masivo_plant",
+            )
+            opciones_em = {
+                r["id"]: f"{r['solicitante'] or 'sin nombre'} — {r['fecha'][:10]}"
+                for r in registros_em
+            }
+            seleccionados = st.multiselect(
+                "Expedientes destinatarios",
+                list(opciones_em),
+                format_func=lambda i: opciones_em[i],
+                key="masivo_eids",
+            )
+            if seleccionados:
+                if st.button("🔗 Generar enlaces de WhatsApp", key="masivo_gen"):
+                    st.session_state["masivo_links"] = []
+                    for eid_m in seleccionados:
+                        reg_m = historial.cargar(eid_m)
+                        if not reg_m:
+                            continue
+                        ctx = {
+                            "solicitante": reg_m.get("solicitante") or "cliente",
+                            "tramite": tramites.TRAMITES.get(reg_m["tramite_id"], {}).get("nombre", ""),
+                            "numero_expediente": reg_m.get("numero_expediente") or "(sin asignar)",
+                            "gestoria": gestoria_em.get("nombre_gestoria", ""),
+                        }
+                        texto_m = _rellenar_plantilla(plantillas_act[sel_p]["texto"], ctx)
+                        tel_m = reg_m.get("telefono", "")
+                        enlace_m = comunicacion.enlace_whatsapp(texto_m, tel_m)
+                        st.session_state["masivo_links"].append({
+                            "nombre": reg_m.get("solicitante") or eid_m,
+                            "texto": texto_m,
+                            "enlace": enlace_m,
+                        })
+
+                for link in st.session_state.get("masivo_links", []):
+                    with st.expander(f"📲 {link['nombre']}"):
+                        st.text_area("Mensaje", value=link["texto"], height=80,
+                                     key=f"masivo_txt_{link['nombre']}", disabled=True)
+                        st.markdown(f"[Abrir en WhatsApp]({link['enlace']})")
 
 
 # --------------------------------------------------------------------------- #
@@ -2060,6 +2222,25 @@ def pagina_seguimiento(api_key, modelo, dias_aviso):
             st.success("Firma guardada. Se incluira en la proxima carta generada.")
             st.rerun()
 
+    # ── Honorarios ─────────────────────────────────────────────────────────── #
+    st.markdown("##### 💶 Honorarios")
+    hon = reg.get("honorarios") or {}
+    h1, h2, h3 = st.columns(3)
+    imp_v  = h1.number_input("Importe acordado (€)", min_value=0.0, step=50.0,
+                              value=float(hon.get("importe", 0)), key=f"hon_imp_{eid}")
+    cob_v  = h2.number_input("Cobrado (€)",           min_value=0.0, step=50.0,
+                              value=float(hon.get("cobrado", 0)), key=f"hon_cob_{eid}")
+    conc_v = h3.text_input("Concepto / notas",        value=hon.get("concepto", ""), key=f"hon_conc_{eid}")
+    pendiente_hon = round(imp_v - cob_v, 2)
+    if pendiente_hon > 0:
+        st.warning(f"Pendiente de cobro: **{pendiente_hon:.2f} €**")
+    elif imp_v > 0:
+        st.success("Honorarios completamente cobrados.")
+    if st.button("💾 Guardar honorarios", key=f"hon_save_{eid}"):
+        historial.guardar_honorarios(eid, imp_v, cob_v, conc_v)
+        st.success("Honorarios guardados.")
+        st.rerun()
+
     st.markdown("##### Linea de tiempo del expediente")
     seguimiento = reg.get("seguimiento", [])
     if seguimiento:
@@ -2130,6 +2311,98 @@ def pagina_seguimiento(api_key, modelo, dias_aviso):
 # --------------------------------------------------------------------------- #
 #  Pagina: Calendario de tareas
 # --------------------------------------------------------------------------- #
+def pagina_citas():
+    st.title("Agenda de citas previas")
+    st.markdown(
+        '<p class="bz-page-subtitle">Citas en oficinas de extranjeria, SEPE, '
+        "comisarias y notarias. El dashboard te avisa cuando se acerca la fecha.</p>",
+        unsafe_allow_html=True,
+    )
+
+    registros_citas = historial.listar()
+    opciones_exp = {"": "— Sin expediente asociado —"}
+    opciones_exp.update({
+        r["id"]: f"{r['solicitante'] or 'sin nombre'} · {r['fecha'][:10]}"
+        for r in registros_citas
+    })
+
+    with st.expander("➕ Nueva cita", expanded=not citas.listar()):
+        with st.form("nueva_cita"):
+            nc1, nc2, nc3 = st.columns(3)
+            fecha_c  = nc1.date_input("Fecha *", key="nc_fecha")
+            hora_c   = nc2.text_input("Hora (HH:MM)", placeholder="10:30", key="nc_hora")
+            tipo_c   = nc3.selectbox("Tipo de oficina", citas.TIPOS_OFICINA, key="nc_tipo")
+            nc4, nc5 = st.columns(2)
+            oficina_c = nc4.text_input("Nombre / dirección de la oficina", key="nc_oficina")
+            reserva_c = nc5.text_input("Nº de reserva / referencia", key="nc_reserva")
+            exp_c = st.selectbox(
+                "Expediente asociado (opcional)", list(opciones_exp),
+                format_func=lambda i: opciones_exp[i], key="nc_exp",
+            )
+            notas_c = st.text_input("Notas", key="nc_notas")
+            if st.form_submit_button("✅ Guardar cita", type="primary"):
+                citas.guardar_cita(
+                    exp_c or "", fecha_c.isoformat(), hora_c.strip(),
+                    tipo_c, oficina_c.strip(), reserva_c.strip(), notas_c.strip(),
+                )
+                st.success("Cita guardada.")
+                st.rerun()
+
+    todas = citas.listar()
+    if not todas:
+        st.info("No hay citas registradas. Usa el formulario de arriba para añadir una.")
+        return
+
+    hoy_s = date.today().isoformat()
+    pendientes = [c for c in todas if not c.get("hecha") and c.get("fecha", "") >= hoy_s]
+    pasadas    = [c for c in todas if c.get("hecha") or c.get("fecha", "") < hoy_s]
+
+    nombres_tramite_c = {tid: t["nombre"] for tid, t in tramites.TRAMITES.items()}
+
+    def _tarjeta_cita(c, mostrar_botones=True):
+        fecha_str = c.get("fecha", "")
+        hora_str  = c.get("hora", "")
+        dias_rest = (date.fromisoformat(fecha_str) - date.today()).days if fecha_str else 0
+        urgente = 0 <= dias_rest <= 3
+        clase = "bz-card-urgente" if urgente else ("bz-card-info" if dias_rest >= 0 else "bz-card-ok")
+        icono = "🔴" if urgente else ("🗓️" if dias_rest >= 0 else "✅")
+        sub_exp = ""
+        if c.get("expediente_id") and c["expediente_id"] in opciones_exp:
+            sub_exp = f" · {opciones_exp[c['expediente_id']]}"
+        sub = f"{c.get('tipo','')} · {hora_str}{sub_exp}"
+        if c.get("reserva"):
+            sub += f" · Ref: {c['reserva']}"
+        col_card, col_btn = st.columns([5, 1])
+        col_card.markdown(
+            f"<div class='bz-list-card {clase}'>"
+            f"<span class='bz-card-icono'>{icono}</span>"
+            "<div class='bz-card-texto'>"
+            f"<div class='bz-card-titulo'>{c.get('oficina') or c.get('tipo','')} — {fecha_str}</div>"
+            f"<div class='bz-card-sub'>{sub}</div>"
+            + (f"<div class='bz-card-sub'>{c['notas']}</div>" if c.get("notas") else "")
+            + "</div></div>",
+            unsafe_allow_html=True,
+        )
+        if mostrar_botones:
+            with col_btn:
+                if not c.get("hecha") and st.button("✓", key=f"cita_ok_{c['id']}"):
+                    citas.actualizar_cita(c["id"], hecha=True)
+                    st.rerun()
+                if st.button("🗑️", key=f"cita_del_{c['id']}"):
+                    citas.eliminar_cita(c["id"])
+                    st.rerun()
+
+    if pendientes:
+        st.subheader(f"📅 Próximas citas ({len(pendientes)})")
+        for c in pendientes:
+            _tarjeta_cita(c)
+
+    if pasadas:
+        with st.expander(f"Citas pasadas / completadas ({len(pasadas)})"):
+            for c in pasadas:
+                _tarjeta_cita(c, mostrar_botones=True)
+
+
 def pagina_calendario():
     st.title("Calendario de tareas")
     st.markdown(
@@ -2342,6 +2615,8 @@ def pagina_dashboard():
     cad7 = historial.proximas_caducidades(7)
     cad30 = historial.proximas_caducidades(30)
     registros = historial.listar()
+    citas7 = citas.proximas_citas(7)
+    hon = historial.resumen_honorarios()
 
     urgentes_vencidas = sum(1 for t in tareas_hoy if t["fecha"] < hoy)
     urgentes_cad = sum(1 for av in cad7 if av["vencido"])
@@ -2367,6 +2642,17 @@ def pagina_dashboard():
             f"<div><div class='bz-hero-num'>{urgentes_cad}</div>"
             f"<div class='bz-hero-label'>Ya vencidas</div></div></div>"
         )
+    chips += (
+        f"<div class='bz-hero-chip'><span class='bz-hero-icono'>🗓️</span>"
+        f"<div><div class='bz-hero-num'>{len(citas7)}</div>"
+        f"<div class='bz-hero-label'>Citas en 7 dias</div></div></div>"
+    )
+    if hon["pendiente"] > 0:
+        chips += (
+            f"<div class='bz-hero-chip'><span class='bz-hero-icono'>💶</span>"
+            f"<div><div class='bz-hero-num'>{hon['pendiente']:.0f}€</div>"
+            f"<div class='bz-hero-label'>Pendiente de cobro</div></div></div>"
+        )
     st.markdown(
         "<div class='bz-hero-hoy'>"
         "<div><div class='bz-hero-titulo'>👋 Resumen de hoy</div>"
@@ -2378,9 +2664,9 @@ def pagina_dashboard():
     # ── Acciones rápidas ──────────────────────────────────────────────────── #
     _QA = [
         ("➕", "Nuevo expediente", "Revisar documentos de un cliente", "Revisar expediente"),
-        ("📂", "Ver historial", "Todos los expedientes revisados",    "Historial"),
-        ("📊", "Tablero Kanban",  "Estado visual de todos los casos",  "Tablero"),
-        ("⏰", "Caducidades",     "Documentos que vencen pronto",      "Caducidades"),
+        ("📂", "Ver historial",    "Todos los expedientes revisados",   "Historial"),
+        ("📊", "Tablero Kanban",   "Estado visual de todos los casos",  "Tablero"),
+        ("🗓️", "Citas",           "Agenda de citas previas",           "Citas"),
     ]
     qa_cols = st.columns(4)
     for col, (ico, titulo, sub, destino) in zip(qa_cols, _QA):
@@ -2622,6 +2908,8 @@ def main():
         pagina_seguimiento(api_key, modelo, dias_aviso)
     elif pagina == "Caducidades":
         pagina_caducidades()
+    elif pagina == "Citas":
+        pagina_citas()
     elif pagina == "Calendario":
         pagina_calendario()
     elif pagina == "Estadisticas":
