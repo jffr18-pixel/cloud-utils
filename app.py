@@ -1159,9 +1159,22 @@ def _pagina_analizar_docs(api_key, modelo, dias_aviso):
         barra.empty()
 
         nuevo_eid = None
+        datos_cliente_auto = {}
         try:
             nuevo_eid = historial.guardar(tramite_id, solicitante, resultados)
             historial.generar_tareas_automaticas(nuevo_eid, hoy=hoy)
+            # Extraer y guardar datos personales detectados en los documentos
+            datos_cliente_auto = analizador.extraer_datos_cliente(resultados)
+            if datos_cliente_auto:
+                # Si el usuario ya tecleo un nombre, respetarlo
+                if solicitante and "nombre" not in datos_cliente_auto:
+                    datos_cliente_auto["nombre"] = solicitante
+                elif solicitante:
+                    pass  # el nombre del form tiene prioridad
+                historial.actualizar(nuevo_eid, **datos_cliente_auto)
+                # Actualizar solicitante con el nombre detectado si no habia uno
+                if not solicitante and datos_cliente_auto.get("nombre"):
+                    historial.actualizar(nuevo_eid, solicitante=datos_cliente_auto["nombre"])
         except Exception:  # noqa: BLE001
             pass
 
@@ -1171,8 +1184,38 @@ def _pagina_analizar_docs(api_key, modelo, dias_aviso):
         st.session_state["solicitante"] = solicitante
         st.session_state["hoy"] = hoy
         st.session_state["eid_actual"] = nuevo_eid
+        st.session_state["datos_cliente_auto"] = datos_cliente_auto
 
     if "resultados" in st.session_state:
+        # Banner de datos auto-detectados
+        dca = st.session_state.get("datos_cliente_auto", {})
+        if dca:
+            _LABELS_DCA = {
+                "nombre": ("👤", "Nombre"),
+                "nacionalidad": ("🌍", "Nacionalidad"),
+                "fecha_nacimiento": ("🎂", "F. nacimiento"),
+                "num_pasaporte": ("🛂", "Pasaporte"),
+                "cad_pasaporte": ("⏳", "Cad. pasaporte"),
+                "nie": ("🪪", "NIE"),
+                "fecha_entrada_espana": ("✈️", "Entrada en España"),
+            }
+            chips_dca = "".join(
+                f"<span style='display:inline-block;background:#2A1D3E;border:1px solid #4A3870;"
+                f"border-radius:20px;padding:3px 10px;margin:3px;font-size:0.82rem;color:#C4BAD8;'>"
+                f"{ico} <b style='color:#9373B2;'>{lab}:</b> {dca[k]}</span>"
+                for k, (ico, lab) in _LABELS_DCA.items() if k in dca
+            )
+            st.markdown(
+                f"<div style='background:#150F23;border:1px solid #4A3870;border-radius:10px;"
+                f"padding:10px 14px;margin-bottom:12px;'>"
+                f"<div style='font-size:0.85rem;color:#9373B2;font-weight:600;margin-bottom:6px;'>"
+                f"✨ Datos detectados automaticamente en los documentos</div>"
+                f"{chips_dca}"
+                f"<div style='font-size:0.75rem;color:#6B5F82;margin-top:6px;'>"
+                f"Guardados en el expediente. Puedes editarlos en Seguimiento → Datos del cliente.</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
         mostrar_resultados(
             st.session_state["resultados"], st.session_state["tramite_id"],
             st.session_state["solicitante"], st.session_state["hoy"],
@@ -2484,7 +2527,26 @@ def pagina_seguimiento(api_key, modelo, dias_aviso):
             resultados_nuevos.append(datos)
         barra.empty()
         historial.anadir_documentos(eid, resultados_nuevos)
-        st.success("Documentos anadidos. Las versiones anteriores se han archivado.")
+        # Auto-completar datos del cliente con lo detectado en los nuevos docs
+        datos_nuevos = analizador.extraer_datos_cliente(resultados_nuevos)
+        reg_actualizado = historial.cargar(eid)
+        if datos_nuevos and reg_actualizado:
+            # Solo rellenar campos vacíos (no sobrescribir los ya introducidos)
+            a_rellenar = {
+                k: v for k, v in datos_nuevos.items()
+                if not reg_actualizado.get(k)
+            }
+            if a_rellenar:
+                historial.actualizar(eid, **a_rellenar)
+                campos_txt = ", ".join(a_rellenar.keys())
+                st.success(
+                    f"Documentos anadidos y datos del cliente actualizados automaticamente: "
+                    f"{campos_txt}."
+                )
+            else:
+                st.success("Documentos anadidos. Las versiones anteriores se han archivado.")
+        else:
+            st.success("Documentos anadidos. Las versiones anteriores se han archivado.")
         st.rerun()
 
 

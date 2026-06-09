@@ -143,9 +143,12 @@ def _instruccion(tramite_id, hoy):
         '  "titular": string|null,       // nombre completo de la persona del documento\n'
         '  "numero": string|null,        // nº de pasaporte, NIE, NIF u otro identificador\n'
         '  "pais_emision": string|null,  // pais o autoridad emisora\n'
+        '  "nacionalidad_doc": string|null, // nacionalidad indicada en el documento (p.ej. "MARROQUI", "RUMANA"); null si no aparece\n'
+        '  "fecha_nacimiento": string|null, // fecha de nacimiento en AAAA-MM-DD si es legible; null si no aparece\n'
+        '  "sexo": string|null,          // "H" o "M" si aparece; null si no\n'
         '  "fecha_emision": string|null, // formato AAAA-MM-DD si es legible\n'
         '  "fecha_caducidad": string|null, // formato AAAA-MM-DD si tiene y es legible\n'
-        '  "fecha_acredita_desde": string|null, // si el documento prueba presencia/permanencia en Espana desde una fecha (p.ej. fecha de alta en el padron historico), en AAAA-MM-DD; si no, null\n'
+        '  "fecha_acredita_desde": string|null, // si el documento prueba presencia/permanencia en Espana desde una fecha (p.ej. fecha de alta en el padron historico o primer sello de entrada), en AAAA-MM-DD; si no, null\n'
         '  "estado": string,             // vigente | caducado | proximo_a_caducar | sin_caducidad | ilegible | desconocido\n'
         '  "legibilidad": string,        // buena | regular | mala\n'
         '  "incidencias": [string],      // lista de problemas detectados (vacia si no hay)\n'
@@ -211,6 +214,9 @@ def _normalizar(datos):
         "titular": None,
         "numero": None,
         "pais_emision": None,
+        "nacionalidad_doc": None,
+        "fecha_nacimiento": None,
+        "sexo": None,
         "fecha_emision": None,
         "fecha_caducidad": None,
         "fecha_acredita_desde": None,
@@ -223,6 +229,95 @@ def _normalizar(datos):
     if not isinstance(base["incidencias"], list):
         base["incidencias"] = [str(base["incidencias"])]
     return base
+
+
+# --------------------------------------------------------------------------- #
+#  Extraccion automatica de datos personales del cliente
+# --------------------------------------------------------------------------- #
+
+# Prioridad de los documentos como fuente de datos personales.
+# El pasaporte es el mas fiable para nombre y nacionalidad.
+_PRIORIDAD_DATOS = (
+    "pasaporte",
+    "nie",
+    "tie",
+    "tarjeta_residencia",
+    "tarjeta_comunitaria",
+    "dni",
+    "permiso_trabajo",
+)
+
+
+def _mejor_doc(resultados, tipos_preferidos):
+    """Devuelve el primer documento de la lista cuyo tipo_id este en tipos_preferidos."""
+    for tipo in tipos_preferidos:
+        for doc in resultados:
+            if doc.get("tipo_id") == tipo and doc.get("legibilidad") != "mala":
+                return doc
+    # fallback: cualquier doc con titular
+    for doc in resultados:
+        if doc.get("titular") and doc.get("legibilidad") != "mala":
+            return doc
+    return None
+
+
+def extraer_datos_cliente(resultados):
+    """Consolida los datos personales extraidos de todos los documentos analizados.
+
+    Devuelve un dict con los campos que se pueden rellenar automaticamente en
+    la ficha del cliente. Solo incluye campos no vacios para no sobrescribir
+    datos ya registrados.
+
+    Mapeo:
+      titular        → nombre
+      numero         → num_pasaporte (pasaporte) / nie (NIE/TIE)
+      pais_emision   → nacionalidad (para pasaportes)
+      nacionalidad_doc → nacionalidad (fallback)
+      fecha_nacimiento → fecha_nacimiento
+      fecha_caducidad → cad_pasaporte (pasaporte)
+      fecha_acredita_desde (min) → fecha_entrada_espana
+    """
+    if not resultados:
+        return {}
+
+    datos = {}
+
+    # Documento principal para nombre, nacionalidad y DOB
+    doc_id = _mejor_doc(resultados, _PRIORIDAD_DATOS)
+    if doc_id:
+        if doc_id.get("titular"):
+            datos["nombre"] = doc_id["titular"].strip().title()
+        nac = doc_id.get("nacionalidad_doc") or doc_id.get("pais_emision")
+        if nac and doc_id.get("tipo_id") in ("pasaporte", "nie", "tie", "tarjeta_residencia",
+                                              "tarjeta_comunitaria"):
+            datos["nacionalidad"] = nac.strip().capitalize()
+        if doc_id.get("fecha_nacimiento"):
+            datos["fecha_nacimiento"] = doc_id["fecha_nacimiento"]
+
+    # Numero de pasaporte
+    for doc in resultados:
+        if doc.get("tipo_id") == "pasaporte" and doc.get("numero"):
+            datos["num_pasaporte"] = doc["numero"].strip().upper()
+            if doc.get("fecha_caducidad"):
+                datos["cad_pasaporte"] = doc["fecha_caducidad"]
+            break
+
+    # NIE / TIE
+    for doc in resultados:
+        if doc.get("tipo_id") in ("nie", "tie", "tarjeta_residencia") and doc.get("numero"):
+            datos["nie"] = doc["numero"].strip().upper()
+            break
+
+    # Fecha de entrada en España (la mas antigua entre todos los docs)
+    fechas_entrada = []
+    for doc in resultados:
+        f = _parse_fecha(doc.get("fecha_acredita_desde"))
+        if f:
+            fechas_entrada.append(f)
+    if fechas_entrada:
+        datos["fecha_entrada_espana"] = min(fechas_entrada).isoformat()
+
+    return {k: v for k, v in datos.items() if v}
 
 
 def _una_pasada(cliente, bloques, instruccion, modelo, hoy, dias_aviso):
