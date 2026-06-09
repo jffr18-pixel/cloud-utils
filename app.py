@@ -8,10 +8,12 @@ import base64
 import os
 import re
 from datetime import date
+from pathlib import Path
 
 import anthropic
 import pandas as pd
 import streamlit as st
+from PIL import Image as _PIL_Image
 
 from revision import (
     analizador,
@@ -26,9 +28,12 @@ from revision import (
     tramites,
 )
 
+_FAVICON_PATH = Path(__file__).parent / "assets" / "bz_favicon.png"
+_favicon = _PIL_Image.open(_FAVICON_PATH) if _FAVICON_PATH.exists() else "⚖️"
+
 st.set_page_config(
     page_title="Burocracia Zero · Extranjeria",
-    page_icon="⚖️",
+    page_icon=_favicon,
     layout="wide",
 )
 
@@ -470,6 +475,36 @@ hr {
     margin-top: 8px;
 }
 .bz-cad-bar-fill { height: 100%; border-radius: 6px; }
+
+/* ── ACCIONES RÁPIDAS (tarjetas de inicio del dashboard) ──── */
+.bz-accion-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    background: #FFFFFF;
+    border: 2px solid #E4DCEF;
+    border-radius: 16px;
+    padding: 1.3rem 1rem 0.8rem 1rem;
+    box-shadow: 0 2px 8px rgba(60, 40, 90, 0.07);
+    gap: 6px;
+    margin-bottom: 0;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.bz-accion-card .bz-ac-icono {
+    font-size: 2.2rem;
+    line-height: 1;
+}
+.bz-accion-card .bz-ac-titulo {
+    font-weight: 700;
+    color: #2B2440;
+    font-size: 0.88rem;
+}
+.bz-accion-card .bz-ac-sub {
+    color: #6B5F82;
+    font-size: 0.74rem;
+}
 </style>
 """
 
@@ -541,6 +576,9 @@ h2, h3, h4 { color: #E4DEF0 !important; }
 .bz-list-card.bz-card-ok      { background: #1A2A1E !important; }
 .bz-list-card.bz-card-info    { background: #241D38 !important; }
 .bz-cad-bar-track { background: #3A2F56 !important; }
+.bz-accion-card { background: #1F1A2C !important; border-color: #3A2F56 !important; }
+.bz-accion-card .bz-ac-titulo { color: #EFEAF7 !important; }
+.bz-accion-card .bz-ac-sub { color: #A99CC4 !important; }
 
 [data-testid="stAlert"][data-baseweb*="positive"], div[class*="stSuccess"] {
     background-color: #1B2E1D !important; border-left-color: #4CAF50 !important;
@@ -2146,6 +2184,29 @@ def pagina_dashboard():
         unsafe_allow_html=True,
     )
 
+    # ── Acciones rápidas ──────────────────────────────────────────────────── #
+    _QA = [
+        ("➕", "Nuevo expediente", "Revisar documentos de un cliente", "Revisar expediente"),
+        ("📂", "Ver historial", "Todos los expedientes revisados",    "Historial"),
+        ("📊", "Tablero Kanban",  "Estado visual de todos los casos",  "Tablero"),
+        ("⏰", "Caducidades",     "Documentos que vencen pronto",      "Caducidades"),
+    ]
+    qa_cols = st.columns(4)
+    for col, (ico, titulo, sub, destino) in zip(qa_cols, _QA):
+        with col:
+            st.markdown(
+                f"<div class='bz-accion-card'>"
+                f"<span class='bz-ac-icono'>{ico}</span>"
+                f"<div class='bz-ac-titulo'>{titulo}</div>"
+                f"<div class='bz-ac-sub'>{sub}</div>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+            if st.button(titulo, key=f"qa_{destino}", use_container_width=True):
+                st.session_state["menu_radio"] = destino
+                st.rerun()
+
+    st.divider()
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Expedientes totales", len(registros))
     m2.metric("Tareas vencidas / hoy", len(tareas_hoy))
