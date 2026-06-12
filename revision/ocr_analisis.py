@@ -172,6 +172,48 @@ def _corregir(texto):
 # ─────────────────────────────────────────────────────────────────────────────
 
 _LANG = "spa+eng"   # las mas utiles para docs de extranjeria en España
+_lang_cache = None
+
+
+def verificar_disponible():
+    """Comprueba que Tesseract esta instalado y operativo.
+
+    Devuelve (True, "") si todo esta bien, o (False, mensaje) con
+    instrucciones claras si falta algo.
+    """
+    try:
+        import pytesseract
+    except ImportError:
+        return False, (
+            "Falta la libreria pytesseract. Anade `pytesseract` a "
+            "requirements.txt y reinicia la app."
+        )
+    try:
+        pytesseract.get_tesseract_version()
+    except Exception:
+        return False, (
+            "El motor Tesseract OCR no esta instalado en el servidor. "
+            "Si la app esta en Streamlit Cloud, crea un archivo `packages.txt` "
+            "en la raiz del repositorio con estas lineas:\n\n"
+            "```\ntesseract-ocr\ntesseract-ocr-spa\ntesseract-ocr-eng\npoppler-utils\n```\n\n"
+            "En un servidor propio (Debian/Ubuntu): "
+            "`sudo apt install tesseract-ocr tesseract-ocr-spa poppler-utils`."
+        )
+    return True, ""
+
+
+def _idiomas():
+    """Idiomas a usar: interseccion entre los deseados y los instalados."""
+    global _lang_cache
+    if _lang_cache is None:
+        try:
+            import pytesseract
+            instalados = set(pytesseract.get_languages(config=""))
+            usar = [l for l in ("spa", "eng") if l in instalados]
+            _lang_cache = "+".join(usar) if usar else "eng"
+        except Exception:
+            _lang_cache = _LANG
+    return _lang_cache
 
 
 def _puntuacion_texto(texto):
@@ -182,18 +224,28 @@ def _puntuacion_texto(texto):
     return len(palabras) * 4 + len(texto)  # penaliza textos muy cortos
 
 
-def _ocr_imagen_pil(pil_img, psm, lang=_LANG):
-    """Una pasada Tesseract sobre una imagen PIL."""
+def _ocr_imagen_pil(pil_img, psm, lang=None):
+    """Una pasada Tesseract sobre una imagen PIL.
+
+    Los errores de configuracion (Tesseract no instalado) se propagan para
+    que la interfaz pueda mostrarlos; solo se silencian fallos de pasada.
+    """
+    import pytesseract
+    cfg = f"--oem 1 --psm {psm} -l {lang or _idiomas()}"
     try:
-        import pytesseract
-        cfg = f"--oem 1 --psm {psm} -l {lang}"
         return pytesseract.image_to_string(pil_img, config=cfg)
+    except pytesseract.TesseractNotFoundError:
+        raise
     except Exception:
         return ""
 
 
 def _ocr_multipasada(img_bgr):
-    """Prueba varios modos de preprocesado y PSM; devuelve el mejor texto."""
+    """Prueba varios modos de preprocesado y PSM; devuelve el mejor texto.
+
+    Si una pasada ya da un texto de buena calidad, termina antes para no
+    multiplicar el tiempo de proceso innecesariamente.
+    """
     candidatos = []
 
     for modo_pre, psms in [
@@ -203,8 +255,9 @@ def _ocr_multipasada(img_bgr):
         pre = _preprocesar(img_bgr, modo=modo_pre)
         pil = _cv2_a_pil(pre)
         for psm in psms:
-            texto = _ocr_imagen_pil(pil, psm)
-            texto = _corregir(texto)
+            texto = _corregir(_ocr_imagen_pil(pil, psm))
+            if _evaluar_legibilidad(texto) == "buena":
+                return texto
             candidatos.append(texto)
 
     # Devolver el candidato con mayor puntuacion
@@ -251,16 +304,16 @@ def _texto_pdf_escaneado(datos_bytes):
     try:
         from pdf2image import convert_from_bytes
         imagenes = convert_from_bytes(datos_bytes, dpi=300, fmt="png")
-        textos = []
-        for pil_img in imagenes[:8]:
-            buf = io.BytesIO()
-            pil_img.save(buf, format="PNG")
-            img_bgr = _cargar_cv2(buf.getvalue())
-            texto = _ocr_multipasada(img_bgr)
-            textos.append(texto)
-        return "\n".join(textos)
     except Exception:
+        # Poppler no instalado o PDF corrupto: sin imagenes no hay OCR posible
         return ""
+    textos = []
+    for pil_img in imagenes[:8]:
+        buf = io.BytesIO()
+        pil_img.save(buf, format="PNG")
+        img_bgr = _cargar_cv2(buf.getvalue())
+        textos.append(_ocr_multipasada(img_bgr))
+    return "\n".join(textos)
 
 
 def _imagen_y_mrz(datos_bytes):
@@ -280,11 +333,16 @@ def extraer_texto(nombre_archivo, datos_bytes):
             return nativo, ""      # PDF digital: excelente calidad
         escaneado = _texto_pdf_escaneado(datos_bytes)
         return escaneado, ""
-    # Imagen
+    # Imagen — TesseractNotFoundError se propaga para mostrarse en la interfaz
     try:
-        texto, mrz = _imagen_y_mrz(datos_bytes)
-        return texto, mrz
-    except Exception:
+        import pytesseract
+        try:
+            return _imagen_y_mrz(datos_bytes)
+        except pytesseract.TesseractNotFoundError:
+            raise
+        except Exception:
+            return "", ""
+    except ImportError:
         return "", ""
 
 
@@ -325,8 +383,10 @@ def _mrz_fecha(yymmdd, es_caducidad=False):
 
 
 def _mrz_nombre(raw):
-    partes = re.split(r"<<+", raw.replace("<", " ").strip())
-    partes = [p.strip().title() for p in partes if p.strip()]
+    # Formato MRZ: APELLIDOS<<NOMBRE1<NOMBRE2<<<... — dividir antes de limpiar
+    trozos = raw.split("<<")
+    partes = [" ".join(t.replace("<", " ").split()).title() for t in trozos]
+    partes = [p for p in partes if p]
     if not partes:
         return None
     apellidos = partes[0]
@@ -341,35 +401,41 @@ def _limpiar_mrz_linea(linea):
 
 
 def parsear_mrz(texto):
-    """Busca y parsea la MRZ en el texto. Devuelve dict o None."""
+    """Busca y parsea la MRZ en el texto. Devuelve dict o None.
+
+    Tolera que Tesseract recorte los '<' de relleno al final de la linea 1
+    (rellenamos hasta 44) y que cuele algun caracter espurio.
+    """
     lineas_raw = [l for l in texto.splitlines() if l.strip()]
     lineas = [_limpiar_mrz_linea(l) for l in lineas_raw]
 
     for idx, linea in enumerate(lineas):
-        # Para L1 NO aplicar O→0 en el campo nombre
-        linea_orig = re.sub(r"[^A-Z0-9<]", "<", re.sub(r"\s+", "", lineas_raw[idx]).upper())
-        if len(linea_orig) >= 44 and linea_orig[0] == "P" and _RE_MRZ_L1.match(linea_orig[:44]):
-            l1 = linea_orig[:44]
-            for linea2_raw in lineas_raw[idx + 1: idx + 3]:
-                l2_cand = _limpiar_mrz_linea(linea2_raw)
-                if len(l2_cand) >= 44 and _RE_MRZ_L2.match(l2_cand[:44]):
-                    l2 = l2_cand[:44]
-                    pais = l1[2:5].replace("<", "")
-                    nac = l2[10:13].replace("<", "")
-                    return {
-                        "tipo_id": "pasaporte",
-                        "tipo_nombre": "Pasaporte",
-                        "titular": _mrz_nombre(l1[5:44]),
-                        "numero": l2[0:9].replace("<", ""),
-                        "pais_emision": _PAISES_ES.get(pais, pais),
-                        "nacionalidad_doc": _PAISES_ES.get(nac, nac),
-                        "fecha_nacimiento": _mrz_fecha(l2[13:19]),
-                        "sexo": l2[20] if l2[20] in ("M", "F") else None,
-                        "fecha_emision": None,
-                        "fecha_caducidad": _mrz_fecha(l2[21:27], es_caducidad=True),
-                        "fecha_acredita_desde": None,
-                        "fuente_mrz": True,
-                    }
+        # L1: empieza por P, contiene el separador '<<' de apellidos/nombre.
+        # Tesseract suele comerse los '<' finales: rellenar hasta 44.
+        if len(linea) < 12 or not linea.startswith("P") or "<<" not in linea:
+            continue
+        l1 = (linea + "<" * 44)[:44]
+        if not _RE_MRZ_L1.match(l1):
+            continue
+        for l2_cand in lineas[idx + 1: idx + 3]:
+            if len(l2_cand) >= 44 and _RE_MRZ_L2.match(l2_cand[:44]):
+                l2 = l2_cand[:44]
+                pais = l1[2:5].replace("<", "")
+                nac = l2[10:13].replace("<", "")
+                return {
+                    "tipo_id": "pasaporte",
+                    "tipo_nombre": "Pasaporte",
+                    "titular": _mrz_nombre(l1[5:44]),
+                    "numero": l2[0:9].replace("<", ""),
+                    "pais_emision": _PAISES_ES.get(pais, pais),
+                    "nacionalidad_doc": _PAISES_ES.get(nac, nac),
+                    "fecha_nacimiento": _mrz_fecha(l2[13:19]),
+                    "sexo": l2[20] if l2[20] in ("M", "F") else None,
+                    "fecha_emision": None,
+                    "fecha_caducidad": _mrz_fecha(l2[21:27], es_caducidad=True),
+                    "fecha_acredita_desde": None,
+                    "fuente_mrz": True,
+                }
     return None
 
 
@@ -521,9 +587,10 @@ def _patron_campo(etiquetas, fecha=False):
     if fecha:
         valor = (r"(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{4}"
                  r"|\d{4}[/\- ]\d{2}[/\- ]\d{2}"
-                 r"|\d{1,2}\s+de\s+\w+\s+(?:de\s+)?\d{4})")
+                 r"|\d{1,2}[ \t]+de[ \t]+\w+[ \t]+(?:de[ \t]+)?\d{4})")
     else:
-        valor = r"([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüña-z\s,\.\-]{3,60})"
+        # Solo dentro de la misma linea: sin \n para no arrastrar texto contiguo
+        valor = r"([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüña-z \t,\.\-]{3,60})"
     return re.compile(
         rf"(?:{eti_re})\s*[:\-]?\s*{valor}",
         re.IGNORECASE | re.UNICODE,
@@ -532,7 +599,9 @@ def _patron_campo(etiquetas, fecha=False):
 
 _RE_NOMBRE = _patron_campo([
     "NOMBRE Y APELLIDOS", "APELLIDOS Y NOMBRE", "NOMBRE COMPLETO",
-    "NOMBRE", "TITULAR", "D.", "D./", "Dña.", "DON", "DOÑA",
+    "NOMBRE", "TITULAR", "TRABAJADOR/A", "TRABAJADOR", "EMPLEADO/A",
+    "EMPLEADO", "SOLICITANTE", "INTERESADO/A", "INTERESADO",
+    "D.", "D./", "Dña.", "DON", "DOÑA",
 ])
 _RE_NACIONALIDAD = _patron_campo([
     "NACIONALIDAD", "NATIONALITY", "PAIS DE NACIMIENTO",
@@ -706,13 +775,17 @@ _DIAS_AVISO = 90
 
 
 def _evaluar_legibilidad(texto):
+    """Califica la calidad del texto OCR segun la proporcion de letras que
+    forman palabras reconocibles frente al total de caracteres visibles."""
     if not texto or len(texto.strip()) < 60:
         return "mala"
     palabras = re.findall(r"[A-Za-záéíóúüñÁÉÍÓÚÜÑ]{3,}", texto)
-    ratio = len(palabras) * 5 / max(len(texto), 1)
-    if ratio > 0.5 and len(texto) > 300:
+    letras_en_palabras = sum(len(p) for p in palabras)
+    visibles = len(re.findall(r"\S", texto))
+    ratio = letras_en_palabras / max(visibles, 1)
+    if len(palabras) >= 12 and ratio >= 0.55:
         return "buena"
-    if ratio > 0.3:
+    if len(palabras) >= 5 and ratio >= 0.35:
         return "regular"
     return "mala"
 
@@ -801,6 +874,8 @@ def analizar_con_ocr(nombre_archivo, datos_bytes):
         "fecha_emision": campos.get("fecha_emision"),
         "fecha_caducidad": campos.get("fecha_caducidad"),
         "fecha_acredita_desde": campos.get("fecha_acredita_desde"),
+        "empleador": campos.get("empleador"),
+        "tipo_contrato": campos.get("tipo_contrato"),
         "estado": estado,
         "legibilidad": legibilidad,
         "incidencias": inc,

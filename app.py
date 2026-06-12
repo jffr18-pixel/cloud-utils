@@ -1244,6 +1244,11 @@ def _pagina_ocr():
         "Para documentos borrosos o complejos, usa la pestaña **Analizar con IA**.",
     )
 
+    ocr_ok, ocr_msg = ocr_analisis.verificar_disponible()
+    if not ocr_ok:
+        st.error(f"⚠️ El OCR no esta disponible en este servidor.\n\n{ocr_msg}")
+        return
+
     opciones = tramites.lista_tramites_con_icono()
     etiquetas = [n for _, n in opciones]
     idx_def_ocr = 0
