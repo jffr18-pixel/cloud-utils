@@ -14,8 +14,16 @@ import io
 import re
 from datetime import date
 
-import cv2
-import numpy as np
+# OpenCV y NumPy son dependencias pesadas y opcionales: si no estan instaladas,
+# la app debe arrancar igualmente y solo la pestaña OCR avisara de que faltan.
+try:
+    import cv2
+    import numpy as np
+    _CV2_OK = True
+except ImportError:
+    cv2 = None
+    np = None
+    _CV2_OK = False
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Preprocesado de imagen con OpenCV
@@ -176,17 +184,25 @@ _lang_cache = None
 
 
 def verificar_disponible():
-    """Comprueba que Tesseract esta instalado y operativo.
+    """Comprueba que las dependencias de OCR estan instaladas y operativas.
 
     Devuelve (True, "") si todo esta bien, o (False, mensaje) con
     instrucciones claras si falta algo.
     """
+    if not _CV2_OK:
+        return False, (
+            "Faltan las librerias de procesamiento de imagen (OpenCV y NumPy). "
+            "Instalalas con:\n\n"
+            "```\npip install opencv-python-headless numpy\n```\n\n"
+            "O instala todas las dependencias del proyecto: "
+            "`pip install -r requirements.txt`."
+        )
     try:
         import pytesseract
     except ImportError:
         return False, (
-            "Falta la libreria pytesseract. Anade `pytesseract` a "
-            "requirements.txt y reinicia la app."
+            "Falta la libreria pytesseract. Instalala con "
+            "`pip install pytesseract` o `pip install -r requirements.txt`."
         )
     try:
         pytesseract.get_tesseract_version()
