@@ -167,10 +167,49 @@ _CORRECCIONES = [
     (re.compile(r"\bNIE[:\s]*([XYZ]\d)"), r"NIE: \1"),
     # Doble espacio → simple
     (re.compile(r" {2,}"), " "),
+    # Separar etiquetas pegadas al valor sin espacio: "NOMBRE:JUAN" → "NOMBRE: JUAN"
+    (re.compile(r"([A-ZÁÉÍÓÚÜÑ]{3,}):([A-ZÁÉÍÓÚÜÑA-Za-záéíóúüñ])"), r"\1: \2"),
 ]
+
+# Lista de terminos clave (SIN espacios) para separar palabras ALL-CAPS fusionadas.
+# RapidOCR a veces devuelve "VIDALABORAL" en vez de "VIDA LABORAL".
+_TERMINOS_SEPARAR = [
+    "INFORME", "VIDA", "LABORAL", "TESORERIA", "GENERAL", "SEGURIDAD", "SOCIAL",
+    "CONTRATO", "TRABAJO", "TRABAJADOR", "EMPRESA", "JORNADA", "SEMANAL",
+    "EMPADRONAMIENTO", "PADRON", "MUNICIPAL", "AYUNTAMIENTO", "DOMICILIO",
+    "CERTIFICADO", "NACIMIENTO", "ANTECEDENTES", "PENALES", "REGISTRO",
+    "PASAPORTE", "NOMBRE", "APELLIDOS", "FECHA", "NACIONALIDAD",
+    "RESIDENCIA", "AUTORIZACION", "EXTRANJERO", "IDENTIDAD", "DOCUMENTO",
+    "NOMINA", "SALARIO", "DEVENGOS", "DEDUCCIONES", "NETO", "BRUTO",
+    "ARRAIGO", "INTEGRACION", "SERVICIOS",
+]
+# Patron para separar palabras clave ALL-CAPS fusionadas
+_RE_SEPARAR_CAPS = re.compile(
+    r"(?<=[A-Z])(?=" + "|".join(_TERMINOS_SEPARAR) + r")"
+)
+
+
+def _separar_palabras_caps(texto):
+    """Inserta espacios en runs ALL-CAPS donde RapidOCR ha fusionado palabras."""
+    resultado = []
+    for linea in texto.splitlines():
+        # Solo actuar en lineas que son mayoritariamente mayusculas y sin espacios
+        palabras_linea = linea.split()
+        nueva_linea = []
+        for palabra in palabras_linea:
+            sin_puntuacion = re.sub(r"[^A-Z]", "", palabra.upper())
+            if len(sin_puntuacion) >= 8 and sin_puntuacion == palabra.upper():
+                # ALL-CAPS larga sin espacios: intentar separar por terminos clave
+                sep = _RE_SEPARAR_CAPS.sub(" ", palabra)
+                nueva_linea.append(sep)
+            else:
+                nueva_linea.append(palabra)
+        resultado.append(" ".join(nueva_linea))
+    return "\n".join(resultado)
 
 
 def _corregir(texto):
+    texto = _separar_palabras_caps(texto)
     for patron, sustitucion in _CORRECCIONES:
         if callable(sustitucion):
             texto = patron.sub(sustitucion, texto)
@@ -485,13 +524,49 @@ def _ocr_zona_mrz(img_bgr):
 #  Extraccion de texto segun tipo de archivo
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _pdf_a_imagenes_bgr(datos_bytes, dpi=300):
+    """Convierte paginas de un PDF a lista de arrays BGR.
+
+    Intenta primero pymupdf (puro Python, sin poppler) y luego pdf2image
+    (requiere poppler instalado). Devuelve lista vacia si ninguno funciona.
+    """
+    # 1. PyMuPDF — sin dependencias del sistema, funciona en Windows
+    try:
+        import fitz  # pymupdf
+        doc = fitz.open(stream=datos_bytes, filetype="pdf")
+        zoom = dpi / 72.0
+        mat = fitz.Matrix(zoom, zoom)
+        imagenes = []
+        for pag in doc:
+            pix = pag.get_pixmap(matrix=mat, colorspace=fitz.csRGB)
+            arr = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, 3)
+            imagenes.append(cv2.cvtColor(arr, cv2.COLOR_RGB2BGR))
+        doc.close()
+        return imagenes[:8]
+    except Exception:
+        pass
+
+    # 2. pdf2image / poppler — alternativa en servidores Linux con poppler
+    try:
+        from pdf2image import convert_from_bytes
+        pil_imagenes = convert_from_bytes(datos_bytes, dpi=dpi, fmt="png")
+        resultados = []
+        for pil_img in pil_imagenes[:8]:
+            buf = io.BytesIO()
+            pil_img.save(buf, format="PNG")
+            resultados.append(_cargar_cv2(buf.getvalue()))
+        return resultados
+    except Exception:
+        return []
+
+
 def _texto_pdf_nativo(datos_bytes):
+    """Extrae texto de un PDF digital con pdfplumber."""
     try:
         import pdfplumber
         textos = []
         with pdfplumber.open(io.BytesIO(datos_bytes)) as pdf:
             for pag in pdf.pages:
-                # extract_text con layout preserva mejor el espaciado
                 t = pag.extract_text(x_tolerance=2, y_tolerance=3) or ""
                 textos.append(t)
         return "\n".join(textos)
@@ -500,19 +575,9 @@ def _texto_pdf_nativo(datos_bytes):
 
 
 def _texto_pdf_escaneado(datos_bytes):
-    try:
-        from pdf2image import convert_from_bytes
-        imagenes = convert_from_bytes(datos_bytes, dpi=300, fmt="png")
-    except Exception:
-        # Poppler no instalado o PDF corrupto: sin imagenes no hay OCR posible
-        return ""
-    textos = []
-    for pil_img in imagenes[:8]:
-        buf = io.BytesIO()
-        pil_img.save(buf, format="PNG")
-        img_bgr = _cargar_cv2(buf.getvalue())
-        textos.append(_ocr_multipasada(img_bgr))
-    return "\n".join(textos)
+    """Convierte un PDF escaneado a imagenes y aplica OCR."""
+    imagenes = _pdf_a_imagenes_bgr(datos_bytes)
+    return "\n".join(_ocr_multipasada(img) for img in imagenes)
 
 
 def _imagen_y_mrz(datos_bytes):
@@ -529,19 +594,16 @@ def extraer_texto(nombre_archivo, datos_bytes):
     if ext == "pdf":
         nativo = _texto_pdf_nativo(datos_bytes)
         if len(nativo.strip()) >= 80:
-            return nativo, ""      # PDF digital: excelente calidad
+            return nativo, ""      # PDF digital: excelente calidad, sin OCR
+        # PDF escaneado o sin texto embebido: convertir a imagenes y hacer OCR
         escaneado = _texto_pdf_escaneado(datos_bytes)
-        return escaneado, ""
-    # Imagen — TesseractNotFoundError se propaga para mostrarse en la interfaz
+        # Si el nativo tenia algo de texto, combinarlo con el OCR
+        combinado = "\n".join(t for t in (nativo, escaneado) if t.strip())
+        return combinado, ""
+    # Imagen: no requiere ningun motor especifico en el import
     try:
-        import pytesseract
-        try:
-            return _imagen_y_mrz(datos_bytes)
-        except pytesseract.TesseractNotFoundError:
-            raise
-        except Exception:
-            return "", ""
-    except ImportError:
+        return _imagen_y_mrz(datos_bytes)
+    except Exception:
         return "", ""
 
 
@@ -723,9 +785,12 @@ _PALABRAS_CLAVE_TIPO = [
 
 def _clasificar_tipo(texto):
     texto_up = texto.upper()
+    # Tambien buscar sin espacios: RapidOCR puede fusionar palabras ALL-CAPS
+    texto_sin_sp = re.sub(r"\s+", "", texto_up)
     for tipo_id, palabras in _PALABRAS_CLAVE_TIPO:
-        if any(p in texto_up for p in palabras):
-            return tipo_id
+        for p in palabras:
+            if p in texto_up or p.replace(" ", "") in texto_sin_sp:
+                return tipo_id
     return "no_identificado"
 
 
