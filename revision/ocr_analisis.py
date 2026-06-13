@@ -366,13 +366,20 @@ def _motor_rapidocr():
     """
     global _rapidocr_engine, _rapidocr_estado
     if _rapidocr_estado is None:
-        try:
-            from rapidocr_onnxruntime import RapidOCR
-            _rapidocr_engine = RapidOCR()
-            _rapidocr_estado = True
-        except Exception:
-            _rapidocr_engine = None
-            _rapidocr_estado = False
+        _rapidocr_engine = None
+        # Probar las distintas distribuciones de RapidOCR por orden de preferencia
+        for importar in (
+            lambda: __import__("rapidocr_onnxruntime", fromlist=["RapidOCR"]).RapidOCR,
+            lambda: __import__("rapidocr", fromlist=["RapidOCR"]).RapidOCR,
+            lambda: __import__("rapidocr_openvino", fromlist=["RapidOCR"]).RapidOCR,
+        ):
+            try:
+                RapidOCR = importar()
+                _rapidocr_engine = RapidOCR()
+                break
+            except Exception:
+                continue
+        _rapidocr_estado = _rapidocr_engine is not None
     return _rapidocr_engine
 
 
@@ -413,15 +420,30 @@ def _reconstruir_lineas(resultado):
 
 
 def _ocr_rapidocr(img_bgr):
-    """Ejecuta RapidOCR sobre una imagen BGR y devuelve el texto reconstruido."""
+    """Ejecuta RapidOCR sobre una imagen BGR y devuelve el texto reconstruido.
+
+    Tolera el formato de las dos familias del paquete:
+      - rapidocr-onnxruntime (v1): devuelve una tupla (resultado, tiempos)
+      - rapidocr (v2): devuelve un objeto con atributos boxes/txts/scores
+    """
     engine = _motor_rapidocr()
     if engine is None:
         return ""
     try:
-        resultado, _elapse = engine(img_bgr)
+        salida = engine(img_bgr)
     except Exception:
         return ""
-    return _reconstruir_lineas(resultado) if resultado else ""
+    # Formato v1: tupla (lista de [caja, texto, score], tiempos)
+    if isinstance(salida, tuple):
+        resultado = salida[0]
+        return _reconstruir_lineas(resultado) if resultado else ""
+    # Formato v2: objeto con boxes y txts
+    boxes = getattr(salida, "boxes", None)
+    txts = getattr(salida, "txts", None)
+    if boxes is not None and txts is not None and len(boxes):
+        resultado = [[box, txt, 1.0] for box, txt in zip(boxes, txts)]
+        return _reconstruir_lineas(resultado)
+    return ""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
