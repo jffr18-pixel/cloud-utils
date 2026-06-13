@@ -103,6 +103,19 @@ def _deskew(gray):
 def _preprocesar(img_bgr, modo="normal"):
     """Pipeline OpenCV completo. Devuelve imagen en escala de grises procesada."""
     img_bgr = _escalar(img_bgr)
+
+    if modo == "color_doc":
+        # Pasaportes y TIE tienen fondos de colores complejos.  El canal L del
+        # espacio perceptual LAB representa la luminosidad independientemente del
+        # color, lo que separa mejor el texto negro del fondo coloreado.
+        lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB)
+        gray = lab[:, :, 0]
+        gray = _deskew(gray)
+        clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(4, 4))
+        enhanced = clahe.apply(gray)
+        _, result = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        return result
+
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
     gray = _deskew(gray)
 
@@ -208,8 +221,46 @@ def _separar_palabras_caps(texto):
     return "\n".join(resultado)
 
 
+def _limpiar_ruido_ocr(texto):
+    """Elimina lineas dominadas por simbolos que son ruido OCR.
+
+    Los documentos con fondos de seguridad (pasaportes, TIE) generan multiples
+    lineas de artefactos como '=', '@', '[', ']', '|' cuando el OCR procesa el
+    fondo del documento en lugar del texto. Este filtro las descarta mientras
+    preserva las lineas con contenido real, incluidas las lineas MRZ.
+    """
+    lineas_limpias = []
+    for linea in texto.splitlines():
+        stripped = linea.strip()
+        if not stripped:
+            lineas_limpias.append(linea)
+            continue
+        # Preservar lineas MRZ (muchos '<' + solo mayusculas/digitos, longitud >= 30)
+        if (len(stripped) >= 25
+                and stripped.replace("<", "").replace(" ", "").isupper()
+                and stripped.count("<") >= 4):
+            lineas_limpias.append(linea)
+            continue
+        alfanum = sum(1 for c in stripped
+                      if c.isalnum() or c in "áéíóúüñÁÉÍÓÚÜÑ")
+        total = len(stripped)
+        ratio = alfanum / total if total > 0 else 0
+        # Filtrar lineas cortas sin ninguna palabra real (3+ letras seguidas)
+        palabras_reales = re.findall(r"[A-Za-záéíóúüñÁÉÍÓÚÜÑ]{3,}", stripped)
+        if total < 20 and not palabras_reales:
+            continue
+        # Filtrar lineas muy cortas con bajo ratio alfanumerico
+        if total < 8 and ratio < 0.75:
+            continue
+        # Mantener si tiene buen ratio alfanumerico, o si es una linea larga con algo de texto
+        if ratio >= 0.45 or (total >= 30 and ratio >= 0.30):
+            lineas_limpias.append(linea)
+    return "\n".join(lineas_limpias)
+
+
 def _corregir(texto):
     texto = _separar_palabras_caps(texto)
+    texto = _limpiar_ruido_ocr(texto)
     for patron, sustitucion in _CORRECCIONES:
         if callable(sustitucion):
             texto = patron.sub(sustitucion, texto)
@@ -343,11 +394,17 @@ def _idiomas():
 
 
 def _puntuacion_texto(texto):
-    """Heuristica de calidad: palabras completas / longitud total."""
+    """Heuristica de calidad: palabras completas vs longitud total, penalizando ruido."""
     if not texto:
         return 0
     palabras = re.findall(r"[A-Za-záéíóúüñÁÉÍÓÚÜÑ]{3,}", texto)
-    return len(palabras) * 4 + len(texto)  # penaliza textos muy cortos
+    # Penalizar lineas ruidosas (muchos simbolos, caracteres no alfanumericos)
+    lineas = [l for l in texto.splitlines() if l.strip()]
+    ruido = sum(
+        1 for l in lineas
+        if l.strip() and sum(1 for c in l if c.isalnum()) / max(len(l.strip()), 1) < 0.35
+    )
+    return len(palabras) * 4 + len(texto) - ruido * 15
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -505,7 +562,8 @@ def _ocr_multipasada(img_bgr):
         for modo_pre, psms in [
             ("normal",    [3, 4, 6]),
             ("documento", [3, 6]),
-            ("normal",    [11]),   # texto disperso (logos, sellos, marcas de agua)
+            ("color_doc", [3, 6]),  # Canal LAB/L: pasaportes y TIE con fondo de color
+            ("normal",    [11]),    # texto disperso (logos, sellos, marcas de agua)
         ]:
             pre = _preprocesar(img_bgr, modo=modo_pre)
             pil = _cv2_a_pil(pre)
