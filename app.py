@@ -1207,6 +1207,11 @@ def _pagina_analizar_docs(api_key, modelo, dias_aviso):
                 "cad_pasaporte": ("⏳", "Cad. pasaporte"),
                 "nie": ("🪪", "NIE"),
                 "fecha_entrada_espana": ("✈️", "Entrada en España"),
+                "direccion": ("🏠", "Domicilio"),
+                "telefono": ("📞", "Teléfono"),
+                "email_cliente": ("✉️", "Email"),
+                "empleador": ("🏢", "Empleador"),
+                "tipo_contrato": ("📄", "Tipo contrato"),
             }
             chips_dca = "".join(
                 f"<span style='display:inline-block;background:#2A1D3E;border:1px solid #4A3870;"
@@ -1334,6 +1339,11 @@ def _pagina_ocr():
             "cad_pasaporte": ("⏳", "Cad. pasaporte"),
             "nie": ("🪪", "NIE"),
             "fecha_entrada_espana": ("✈️", "Entrada en España"),
+            "direccion": ("🏠", "Domicilio"),
+            "telefono": ("📞", "Teléfono"),
+            "email_cliente": ("✉️", "Email"),
+            "empleador": ("🏢", "Empleador"),
+            "tipo_contrato": ("📄", "Tipo contrato"),
         }
         chips_ocr = "".join(
             f"<span style='display:inline-block;background:#1A2A1A;border:1px solid #4A7A4A;"

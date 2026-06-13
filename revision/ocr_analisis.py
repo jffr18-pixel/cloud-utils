@@ -845,9 +845,18 @@ _MESES = {
 }
 
 # Patrones de campos con etiqueta (acepta variaciones por OCR)
+def _eti_a_regex(etiqueta):
+    """Convierte una etiqueta en patron tolerante a espacios ausentes.
+
+    RapidOCR suele pegar las palabras ('FECHA DE NACIMIENTO' -> 'FECHADENACIMIENTO'),
+    asi que entre cada palabra de la etiqueta permitimos cero o mas espacios.
+    """
+    return r"\s*".join(re.escape(parte) for parte in etiqueta.split())
+
+
 def _patron_campo(etiquetas, fecha=False):
     """Construye regex que busca un valor despues de alguna de las etiquetas dadas."""
-    eti_re = "|".join(re.escape(e) for e in sorted(etiquetas, key=len, reverse=True))
+    eti_re = "|".join(_eti_a_regex(e) for e in sorted(etiquetas, key=len, reverse=True))
     if fecha:
         valor = (r"(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{4}"
                  r"|\d{4}[/\- ]\d{2}[/\- ]\d{2}"
@@ -895,10 +904,24 @@ _RE_EMPLEADOR = _patron_campo([
     "EMPRESA:", "EMPLEADOR/A",
 ])
 _RE_TIPO_CONTRATO = re.compile(
-    r"(?:TIPO\s+(?:DE\s+)?CONTRATO|MODALIDAD)\s*[:\-]?\s*"
-    r"(INDEFINIDO|TEMPORAL|TIEMPO PARCIAL|FIJO DISCONTINUO|"
-    r"PRACTICAS|OBRA Y SERVICIO|EVENTUAL[^\n]{0,40})",
+    r"(?:TIPO\s*(?:DE)?\s*CONTRATO|MODALIDAD)\s*[:\-]?\s*"
+    r"(INDEFINIDO|TEMPORAL|TIEMPO\s*PARCIAL|FIJO\s*DISCONTINUO|"
+    r"PRACTICAS|OBRA\s*Y\s*SERVICIO|EVENTUAL[^\n]{0,40})",
     re.I,
+)
+
+# Domicilio: el valor incluye numeros (calle, piso), asi que no usa _patron_campo
+_RE_DOMICILIO = re.compile(
+    r"(?:DOMICILIO\s*(?:EN|ACTUAL)?|DIRECCI[OÓ]N|RESIDENCIA\s*EN|"
+    r"CON\s*DOMICILIO\s*EN)\s*[:\.\-]?\s*"
+    r"([A-ZÁÉÍÓÚÜÑ0-9][A-ZÁÉÍÓÚÜÑa-záéíóúüñ0-9 ,\.\-/º°ªºnNoO]{5,70})",
+    re.IGNORECASE,
+)
+_RE_EMAIL = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
+_RE_TELEFONO = re.compile(
+    r"(?:TEL[EÉ]FONO|TLF\.?|TEL\.?|M[OÓ]VIL|MOVIL|CONTACTO)\s*[:\.\-]?\s*"
+    r"((?:\+?\d[\s\-]?){9,13})",
+    re.IGNORECASE,
 )
 
 
@@ -982,6 +1005,9 @@ def _extraer_campos(texto, tipo_id):
         "fecha_acredita_desde": None,
         "empleador": None,
         "tipo_contrato": None,
+        "direccion": None,
+        "telefono": None,
+        "email": None,
     }
 
     # Numero de documento
@@ -1023,6 +1049,23 @@ def _extraer_campos(texto, tipo_id):
         m_tc = _RE_TIPO_CONTRATO.search(texto)
         if m_tc:
             campos["tipo_contrato"] = m_tc.group(1).strip().capitalize()
+
+    # Domicilio (sobre todo en empadronamiento, pero puede aparecer en otros)
+    m_dir = _RE_DOMICILIO.search(texto)
+    if m_dir:
+        direccion = re.split(r"\s{2,}|\n", m_dir.group(1).strip())[0].strip(" .,-")
+        if len(direccion) >= 5:
+            campos["direccion"] = direccion
+
+    # Email y telefono (frecuentes en contratos, solicitudes, etc.)
+    m_email = _RE_EMAIL.search(texto)
+    if m_email:
+        campos["email"] = m_email.group(0).lower()
+    m_tel = _RE_TELEFONO.search(texto)
+    if m_tel:
+        tel = re.sub(r"[\s\-]", "", m_tel.group(1))
+        if 9 <= len(tel) <= 13:
+            campos["telefono"] = tel
 
     return campos
 
@@ -1109,7 +1152,8 @@ def analizar_con_ocr(nombre_archivo, datos_bytes):
             "fecha_nacimiento", "sexo", "fecha_caducidad",
         )}
         campos.update({"fecha_emision": None, "fecha_acredita_desde": None,
-                       "empleador": None, "tipo_contrato": None})
+                       "empleador": None, "tipo_contrato": None,
+                       "direccion": None, "telefono": None, "email": None})
         legibilidad = "buena"
     else:
         tipo_id = _clasificar_tipo(texto) if legibilidad != "mala" else "no_identificado"
@@ -1140,6 +1184,9 @@ def analizar_con_ocr(nombre_archivo, datos_bytes):
         "fecha_acredita_desde": campos.get("fecha_acredita_desde"),
         "empleador": campos.get("empleador"),
         "tipo_contrato": campos.get("tipo_contrato"),
+        "direccion": campos.get("direccion"),
+        "telefono": campos.get("telefono"),
+        "email": campos.get("email"),
         "estado": estado,
         "legibilidad": legibilidad,
         "incidencias": inc,
@@ -1161,7 +1208,9 @@ def analizar_multiples_con_ocr(paginas, tramite_id=None):
     for r in resultados:
         for campo in ("titular", "numero", "pais_emision", "nacionalidad_doc",
                       "fecha_nacimiento", "sexo", "fecha_emision",
-                      "fecha_caducidad", "fecha_acredita_desde"):
+                      "fecha_caducidad", "fecha_acredita_desde",
+                      "empleador", "tipo_contrato", "direccion",
+                      "telefono", "email"):
             if not base.get(campo) and r.get(campo):
                 base[campo] = r[campo]
     if base["tipo_id"] == "no_identificado":

@@ -294,6 +294,15 @@ def extraer_datos_cliente(resultados):
         if doc_id.get("fecha_nacimiento"):
             datos["fecha_nacimiento"] = doc_id["fecha_nacimiento"]
 
+    # Nacionalidad: si el doc de identidad no la tenia, buscarla en cualquier
+    # otro documento que la mencione (p. ej. empadronamiento, contrato).
+    if not datos.get("nacionalidad"):
+        for doc in resultados:
+            nac = doc.get("nacionalidad_doc")
+            if nac and len(nac.strip()) >= 4:
+                datos["nacionalidad"] = nac.strip().capitalize()
+                break
+
     # Numero de pasaporte
     for doc in resultados:
         if doc.get("tipo_id") == "pasaporte" and doc.get("numero"):
@@ -307,6 +316,13 @@ def extraer_datos_cliente(resultados):
         if doc.get("tipo_id") in ("nie", "tie", "tarjeta_residencia") and doc.get("numero"):
             datos["nie"] = doc["numero"].strip().upper()
             break
+    # Si no hubo doc NIE/TIE, aceptar un NIE detectado en cualquier otro documento
+    if not datos.get("nie"):
+        for doc in resultados:
+            num = (doc.get("numero") or "").strip().upper()
+            if re.fullmatch(r"[XYZ]\d{7}[A-Z]", num):
+                datos["nie"] = num
+                break
 
     # Fecha de entrada en España (la mas antigua entre todos los docs)
     fechas_entrada = []
@@ -316,6 +332,26 @@ def extraer_datos_cliente(resultados):
             fechas_entrada.append(f)
     if fechas_entrada:
         datos["fecha_entrada_espana"] = min(fechas_entrada).isoformat()
+
+    # Datos laborales (del contrato de trabajo)
+    for doc in resultados:
+        if doc.get("tipo_id") == "contrato_trabajo":
+            if doc.get("empleador") and not datos.get("empleador"):
+                datos["empleador"] = doc["empleador"].strip()
+            if doc.get("tipo_contrato") and not datos.get("tipo_contrato"):
+                datos["tipo_contrato"] = doc["tipo_contrato"].strip()
+
+    # Domicilio, telefono y email: tomar el primer valor no vacio disponible
+    for campo_origen, campo_destino in (
+        ("direccion", "direccion"),
+        ("telefono", "telefono"),
+        ("email", "email_cliente"),
+    ):
+        for doc in resultados:
+            valor = (doc.get(campo_origen) or "").strip()
+            if valor:
+                datos[campo_destino] = valor
+                break
 
     return {k: v for k, v in datos.items() if v}
 
