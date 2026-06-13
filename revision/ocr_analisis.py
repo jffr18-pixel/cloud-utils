@@ -839,7 +839,14 @@ _PALABRAS_CLAVE_TIPO = [
                              "VOLANTE DE EMPADRONAMIENTO", "CERTIFICADO DE EMPADRONAMIENTO",
                              "DOMICILIO EN", "ALTA EN EL PADRON",
                              "CERTIFICADO DE CONVIVENCIA", "CONVIVENCIA EN EL PADRON",
-                             "INSCRITO EN EL PADRON", "INSCRITA EN EL PADRON"]),
+                             "INSCRITO EN EL PADRON", "INSCRITA EN EL PADRON",
+                             # Empadronamiento historico / certificado de residencia
+                             "HISTORICO DE EMPADRONAMIENTO", "PADRON HISTORICO",
+                             "INSCRIPCION CENSAL", "PADRON DE HABITANTES",
+                             "PADRON MUNICIPAL DE HABITANTES",
+                             "CERTIFICADO DE RESIDENCIA EN",
+                             "TIEMPO DE RESIDENCIA", "ANOS DE RESIDENCIA",
+                             "MESES DE RESIDENCIA", "FECHA DE ALTA PADRONAL"]),
     # Documentacion laboral
     ("vida_laboral",        ["VIDA LABORAL", "INFORME DE VIDA LABORAL",
                              "TESORERIA GENERAL", "TGSS", "PERIODOS COTIZADOS",
@@ -861,18 +868,39 @@ _PALABRAS_CLAVE_TIPO = [
                              "LICENCIA DE ACTIVIDAD", "DECLARACION CENSAL",
                              "DECLARACION DE ALTA", "IMPUESTO DE ACTIVIDADES ECONOMICAS",
                              "IAE", "TRABAJADOR AUTONOMO"]),
-    # Informes sociales
+    # Informes sociales e informe de vulnerabilidad social
     ("informe_arraigo",     ["INFORME DE ARRAIGO", "INFORME SOCIAL",
                              "INFORME DE INTEGRACION", "TRABAJADOR SOCIAL",
                              "INTEGRACION SOCIAL", "SERVICIOS SOCIALES",
                              "GRADO DE INTEGRACION", "ARRAIGO SOCIAL",
-                             "VINCULACION CON ESPANA", "INSERCION SOCIAL"]),
-    # Antecedentes penales
+                             "VINCULACION CON ESPANA", "INSERCION SOCIAL",
+                             # Informe/certificado de vulnerabilidad social
+                             "VULNERABILIDAD SOCIAL", "INFORME DE VULNERABILIDAD",
+                             "SITUACION DE VULNERABILIDAD", "RIESGO DE EXCLUSION SOCIAL",
+                             "CERTIFICADO DE VULNERABILIDAD", "EXCLUSION SOCIAL",
+                             "INFORME SOCIAL DE VULNERABILIDAD"]),
+    # Antecedentes penales (España e internacionales)
     ("certificado_penal",   ["ANTECEDENTES PENALES", "REGISTRO CENTRAL DE PENADOS",
                              "CERTIFICADO DE PENALES", "CERTIFICADO DE CONDUCTA",
                              "NO CONSTA ANTECEDENTE", "POLICIA JUDICIAL",
                              "AUSENCIA DE ANTECEDENTES", "SIN ANTECEDENTES PENALES",
-                             "MINISTERIO DE JUSTICIA", "ANTECEDENTES EN ESPANA"]),
+                             "MINISTERIO DE JUSTICIA", "ANTECEDENTES EN ESPANA",
+                             # Colombia
+                             "ANTECEDENTES JUDICIALES", "POLICIA NACIONAL DE COLOMBIA",
+                             "REGISTRO NACIONAL DE MEDIDAS CAUTELARES", "REGNAL",
+                             "CERTIFICADO JUDICIAL",
+                             # Mexico
+                             "CONSTANCIA DE NO ANTECEDENTES", "SECRETARIA DE SEGURIDAD",
+                             "REGISTRO PUBLICO DE DERECHOS DEL ACREEDOR",
+                             # Republica Dominicana
+                             "POLICIA NACIONAL DOMINICANA", "CERTIFICADO DE NO DELINCUENCIA",
+                             # Marruecos
+                             "CASIER JUDICIAIRE", "EXTRAIT DU CASIER",
+                             # General
+                             "CERTIFICADO DE BUENA CONDUCTA", "BUEN COMPORTAMIENTO",
+                             "CARENCIA DE ANTECEDENTES", "PRONTUARIO POLICIAL",
+                             "HISTORIAL DELICTIVO", "REGISTRO CRIMINAL",
+                             "CRIMINAL RECORD", "NO CRIMINAL RECORD"]),
     # Certificados civiles
     ("acta_nacimiento",     ["ACTA DE NACIMIENTO", "CERTIFICADO DE NACIMIENTO",
                              "PARTIDA DE NACIMIENTO", "REGISTRO CIVIL",
