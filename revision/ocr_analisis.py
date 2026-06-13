@@ -266,40 +266,26 @@ def verificar_disponible():
             "O instala todas las dependencias del proyecto: "
             "`pip install -r requirements.txt`."
         )
-    try:
-        import pytesseract
-    except ImportError:
-        return False, (
-            "Falta la libreria pytesseract. Instalala con "
-            "`pip install pytesseract` o `pip install -r requirements.txt`."
+    # Basta con que UNO de los dos motores este disponible.
+    if _hay_rapidocr() or _hay_tesseract():
+        return True, ""
+
+    # Ningun motor disponible: recomendar RapidOCR (no requiere instalar programas)
+    extra = ""
+    if sys.platform.startswith("win"):
+        extra = (
+            "\n\n*Alternativa (mejor calidad, requiere instalar un programa aparte):* "
+            "Tesseract desde https://github.com/UB-Mannheim/tesseract/wiki "
+            "(marca **Spanish** al instalar)."
         )
-    _configurar_tesseract()
-    try:
-        pytesseract.get_tesseract_version()
-    except Exception:
-        if sys.platform.startswith("win"):
-            ayuda = (
-                "**Windows:** descarga e instala Tesseract desde "
-                "https://github.com/UB-Mannheim/tesseract/wiki "
-                "(marca el idioma **Spanish** durante la instalacion).\n\n"
-                "Si ya lo instalaste pero sigue sin detectarse, define la variable "
-                "de entorno `TESSERACT_CMD` apuntando al ejecutable, por ejemplo:\n\n"
-                "```\nC:\\Program Files\\Tesseract-OCR\\tesseract.exe\n```"
-            )
-        elif sys.platform == "darwin":
-            ayuda = "**macOS:** instalalo con `brew install tesseract tesseract-lang`."
-        else:
-            ayuda = (
-                "**Streamlit Cloud:** crea un archivo `packages.txt` en la raiz del "
-                "repositorio con:\n\n"
-                "```\ntesseract-ocr\ntesseract-ocr-spa\ntesseract-ocr-eng\npoppler-utils\n```\n\n"
-                "**Servidor propio (Debian/Ubuntu):** "
-                "`sudo apt install tesseract-ocr tesseract-ocr-spa poppler-utils`."
-            )
-        return False, (
-            "El motor **Tesseract OCR** no esta instalado o no se encuentra.\n\n" + ayuda
-        )
-    return True, ""
+    return False, (
+        "No hay ningun motor de OCR disponible. La forma mas sencilla "
+        "(no requiere instalar ningun programa aparte) es:\n\n"
+        "```\npip install rapidocr-onnxruntime\n```\n\n"
+        "Reinicia la app despues de instalarlo. Tambien puedes instalar todas "
+        "las dependencias del proyecto con `pip install -r requirements.txt`."
+        + extra
+    )
 
 
 def _idiomas():
@@ -325,6 +311,101 @@ def _puntuacion_texto(texto):
     return len(palabras) * 4 + len(texto)  # penaliza textos muy cortos
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Motor RapidOCR (pip puro, sin binario del sistema) — ideal para Windows
+# ─────────────────────────────────────────────────────────────────────────────
+
+_rapidocr_engine = None
+_rapidocr_estado = None   # None=sin probar, True=disponible, False=no disponible
+
+
+def _motor_rapidocr():
+    """Devuelve la instancia (cacheada) de RapidOCR, o None si no esta instalado.
+
+    Los modelos ONNX vienen incluidos en el paquete, asi que no se descarga
+    nada de internet: funciona offline tras `pip install rapidocr-onnxruntime`.
+    """
+    global _rapidocr_engine, _rapidocr_estado
+    if _rapidocr_estado is None:
+        try:
+            from rapidocr_onnxruntime import RapidOCR
+            _rapidocr_engine = RapidOCR()
+            _rapidocr_estado = True
+        except Exception:
+            _rapidocr_engine = None
+            _rapidocr_estado = False
+    return _rapidocr_engine
+
+
+def _hay_rapidocr():
+    return _motor_rapidocr() is not None
+
+
+def _reconstruir_lineas(resultado):
+    """Reconstruye el texto en orden de lectura a partir de las cajas de RapidOCR.
+
+    RapidOCR devuelve una lista de [caja, texto, confianza] sin orden de lectura;
+    agrupamos las cajas por filas (centro vertical proximo) y, dentro de cada
+    fila, las ordenamos de izquierda a derecha.
+    """
+    items = []
+    for box, texto, _score in resultado:
+        ys = [p[1] for p in box]
+        xs = [p[0] for p in box]
+        items.append((sum(ys) / len(ys), min(xs), max(ys) - min(ys), texto))
+    if not items:
+        return ""
+    items.sort(key=lambda t: (t[0], t[1]))
+    altos = sorted(t[2] for t in items)
+    alto_medio = altos[len(altos) // 2] or 10
+
+    lineas, actual, y_linea = [], [], None
+    for y_centro, x_izq, _alto, texto in items:
+        if y_linea is not None and abs(y_centro - y_linea) > alto_medio * 0.6:
+            actual.sort(key=lambda t: t[0])
+            lineas.append(" ".join(t[1] for t in actual))
+            actual = []
+        actual.append((x_izq, texto))
+        y_linea = y_centro
+    if actual:
+        actual.sort(key=lambda t: t[0])
+        lineas.append(" ".join(t[1] for t in actual))
+    return "\n".join(lineas)
+
+
+def _ocr_rapidocr(img_bgr):
+    """Ejecuta RapidOCR sobre una imagen BGR y devuelve el texto reconstruido."""
+    engine = _motor_rapidocr()
+    if engine is None:
+        return ""
+    try:
+        resultado, _elapse = engine(img_bgr)
+    except Exception:
+        return ""
+    return _reconstruir_lineas(resultado) if resultado else ""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Motor Tesseract
+# ─────────────────────────────────────────────────────────────────────────────
+
+_tesseract_estado = None   # cache de disponibilidad
+
+
+def _hay_tesseract():
+    """True si pytesseract y el binario de Tesseract estan disponibles."""
+    global _tesseract_estado
+    if _tesseract_estado is None:
+        try:
+            import pytesseract
+            _configurar_tesseract()
+            pytesseract.get_tesseract_version()
+            _tesseract_estado = True
+        except Exception:
+            _tesseract_estado = False
+    return _tesseract_estado
+
+
 def _ocr_imagen_pil(pil_img, psm, lang=None):
     """Una pasada Tesseract sobre una imagen PIL.
 
@@ -342,26 +423,36 @@ def _ocr_imagen_pil(pil_img, psm, lang=None):
 
 
 def _ocr_multipasada(img_bgr):
-    """Prueba varios modos de preprocesado y PSM; devuelve el mejor texto.
+    """Extrae texto usando los motores disponibles; devuelve el mejor resultado.
 
-    Si una pasada ya da un texto de buena calidad, termina antes para no
-    multiplicar el tiempo de proceso innecesariamente.
+    Prioriza RapidOCR (motor pip, hace su propia deteccion sobre la imagen
+    escalada). Si no esta disponible, o no da buena calidad, recurre a
+    Tesseract con varias pasadas de preprocesado. Termina en cuanto un
+    resultado es de buena calidad para no malgastar tiempo.
     """
     candidatos = []
 
-    for modo_pre, psms in [
-        ("normal",    [3, 4, 6]),
-        ("documento", [3, 6]),
-    ]:
-        pre = _preprocesar(img_bgr, modo=modo_pre)
-        pil = _cv2_a_pil(pre)
-        for psm in psms:
-            texto = _corregir(_ocr_imagen_pil(pil, psm))
-            if _evaluar_legibilidad(texto) == "buena":
-                return texto
-            candidatos.append(texto)
+    # 1. RapidOCR sobre imagen escalada (sin binarizar: el motor ya segmenta)
+    if _hay_rapidocr():
+        texto = _corregir(_ocr_rapidocr(_escalar(img_bgr.copy())))
+        if _evaluar_legibilidad(texto) == "buena":
+            return texto
+        candidatos.append(texto)
 
-    # Devolver el candidato con mayor puntuacion
+    # 2. Tesseract: varias combinaciones de preprocesado y PSM
+    if _hay_tesseract():
+        for modo_pre, psms in [
+            ("normal",    [3, 4, 6]),
+            ("documento", [3, 6]),
+        ]:
+            pre = _preprocesar(img_bgr, modo=modo_pre)
+            pil = _cv2_a_pil(pre)
+            for psm in psms:
+                texto = _corregir(_ocr_imagen_pil(pil, psm))
+                if _evaluar_legibilidad(texto) == "buena":
+                    return texto
+                candidatos.append(texto)
+
     return max(candidatos, key=_puntuacion_texto, default="")
 
 
@@ -369,18 +460,25 @@ def _ocr_zona_mrz(img_bgr):
     """Aplica OCR optimizado en el tercio inferior para detectar la MRZ."""
     h = img_bgr.shape[0]
     franja = img_bgr[int(h * 0.65):, :]
-    pre = _preprocesar(franja, modo="mrz")
-    pil = _cv2_a_pil(pre)
-    try:
-        import pytesseract
-        # PSM 6 = bloque uniforme de texto; whitelist de caracteres MRZ
-        cfg = (
-            "--oem 1 --psm 6 -l eng "
-            "-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<"
-        )
-        return pytesseract.image_to_string(pil, config=cfg)
-    except Exception:
-        return ""
+
+    # Tesseract con whitelist de caracteres MRZ es el mas fiable para la OCR-B
+    if _hay_tesseract():
+        pre = _preprocesar(franja, modo="mrz")
+        pil = _cv2_a_pil(pre)
+        try:
+            import pytesseract
+            cfg = (
+                "--oem 1 --psm 6 -l eng "
+                "-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<"
+            )
+            return pytesseract.image_to_string(pil, config=cfg)
+        except Exception:
+            pass
+
+    # Alternativa: RapidOCR sobre la franja inferior
+    if _hay_rapidocr():
+        return _ocr_rapidocr(_escalar(franja.copy()))
+    return ""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
