@@ -10,8 +10,12 @@ Pipeline:
   6. Post-proceso   — correccion de errores OCR tipicos
 """
 
+import glob
 import io
+import os
 import re
+import shutil
+import sys
 from datetime import date
 
 # OpenCV y NumPy son dependencias pesadas y opcionales: si no estan instaladas,
@@ -183,6 +187,71 @@ _LANG = "spa+eng"   # las mas utiles para docs de extranjeria en España
 _lang_cache = None
 
 
+_tesseract_configurado = False
+
+
+def _localizar_tesseract():
+    """Busca el ejecutable de Tesseract aunque no este en el PATH.
+
+    Muchos usuarios de Windows instalan Tesseract pero no lo añaden al PATH,
+    asi que pytesseract no lo encuentra. Probamos la variable de entorno
+    TESSERACT_CMD y las rutas de instalacion mas habituales por sistema.
+    """
+    # 1. Variable de entorno explicita (tiene prioridad)
+    env = os.environ.get("TESSERACT_CMD")
+    if env and os.path.isfile(env):
+        return env
+
+    # 2. Ya esta en el PATH
+    en_path = shutil.which("tesseract")
+    if en_path:
+        return en_path
+
+    # 3. Rutas habituales por sistema operativo
+    candidatos = []
+    if sys.platform.startswith("win"):
+        candidatos += [
+            r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+            r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        ]
+        local = os.environ.get("LOCALAPPDATA", "")
+        if local:
+            candidatos.append(os.path.join(local, "Programs", "Tesseract-OCR", "tesseract.exe"))
+            candidatos += glob.glob(os.path.join(local, "**", "tesseract.exe"), recursive=True)
+    elif sys.platform == "darwin":
+        candidatos += [
+            "/opt/homebrew/bin/tesseract",   # Apple Silicon
+            "/usr/local/bin/tesseract",      # Intel
+        ]
+    else:
+        candidatos += ["/usr/bin/tesseract", "/usr/local/bin/tesseract"]
+
+    for ruta in candidatos:
+        if ruta and os.path.isfile(ruta):
+            return ruta
+    return None
+
+
+def _configurar_tesseract():
+    """Apunta pytesseract al ejecutable de Tesseract si logra localizarlo.
+
+    Idempotente: solo hace el trabajo la primera vez. Devuelve True si
+    pytesseract esta listo para usarse.
+    """
+    global _tesseract_configurado
+    try:
+        import pytesseract
+    except ImportError:
+        return False
+    if _tesseract_configurado:
+        return True
+    ruta = _localizar_tesseract()
+    if ruta:
+        pytesseract.pytesseract.tesseract_cmd = ruta
+    _tesseract_configurado = True
+    return True
+
+
 def verificar_disponible():
     """Comprueba que las dependencias de OCR estan instaladas y operativas.
 
@@ -204,16 +273,31 @@ def verificar_disponible():
             "Falta la libreria pytesseract. Instalala con "
             "`pip install pytesseract` o `pip install -r requirements.txt`."
         )
+    _configurar_tesseract()
     try:
         pytesseract.get_tesseract_version()
     except Exception:
+        if sys.platform.startswith("win"):
+            ayuda = (
+                "**Windows:** descarga e instala Tesseract desde "
+                "https://github.com/UB-Mannheim/tesseract/wiki "
+                "(marca el idioma **Spanish** durante la instalacion).\n\n"
+                "Si ya lo instalaste pero sigue sin detectarse, define la variable "
+                "de entorno `TESSERACT_CMD` apuntando al ejecutable, por ejemplo:\n\n"
+                "```\nC:\\Program Files\\Tesseract-OCR\\tesseract.exe\n```"
+            )
+        elif sys.platform == "darwin":
+            ayuda = "**macOS:** instalalo con `brew install tesseract tesseract-lang`."
+        else:
+            ayuda = (
+                "**Streamlit Cloud:** crea un archivo `packages.txt` en la raiz del "
+                "repositorio con:\n\n"
+                "```\ntesseract-ocr\ntesseract-ocr-spa\ntesseract-ocr-eng\npoppler-utils\n```\n\n"
+                "**Servidor propio (Debian/Ubuntu):** "
+                "`sudo apt install tesseract-ocr tesseract-ocr-spa poppler-utils`."
+            )
         return False, (
-            "El motor Tesseract OCR no esta instalado en el servidor. "
-            "Si la app esta en Streamlit Cloud, crea un archivo `packages.txt` "
-            "en la raiz del repositorio con estas lineas:\n\n"
-            "```\ntesseract-ocr\ntesseract-ocr-spa\ntesseract-ocr-eng\npoppler-utils\n```\n\n"
-            "En un servidor propio (Debian/Ubuntu): "
-            "`sudo apt install tesseract-ocr tesseract-ocr-spa poppler-utils`."
+            "El motor **Tesseract OCR** no esta instalado o no se encuentra.\n\n" + ayuda
         )
     return True, ""
 
@@ -224,6 +308,7 @@ def _idiomas():
     if _lang_cache is None:
         try:
             import pytesseract
+            _configurar_tesseract()
             instalados = set(pytesseract.get_languages(config=""))
             usar = [l for l in ("spa", "eng") if l in instalados]
             _lang_cache = "+".join(usar) if usar else "eng"
