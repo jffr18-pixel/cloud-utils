@@ -836,6 +836,48 @@ def pagina_revisar(api_key, modelo, dias_aviso):
 
 def _pagina_alta_rapida():
     """Formulario de alta de cliente sin documentos."""
+    # ── Pre-rellenar desde OCR si hay datos pendientes ───────────────────────
+    _ocr_pre = st.session_state.pop("ocr_relleno_alta", None)
+    if _ocr_pre:
+        _MAPA_TEXTO = {
+            "nombre": "ar_nombre",
+            "nacionalidad": "ar_nac",
+            "nie": "ar_nie",
+            "num_pasaporte": "ar_numpas",
+            "telefono": "ar_tel",
+            "email_cliente": "ar_email",
+            "direccion": "ar_dir",
+            "empleador": "ar_emp",
+        }
+        for campo_ocr, clave_form in _MAPA_TEXTO.items():
+            if _ocr_pre.get(campo_ocr) and not st.session_state.get(clave_form):
+                st.session_state[clave_form] = _ocr_pre[campo_ocr]
+        for campo_ocr, clave_form in (
+            ("fecha_nacimiento", "ar_fnac"),
+            ("cad_pasaporte", "ar_cadpas"),
+            ("fecha_entrada_espana", "ar_fentrada"),
+        ):
+            if _ocr_pre.get(campo_ocr) and not st.session_state.get(clave_form):
+                try:
+                    st.session_state[clave_form] = date.fromisoformat(_ocr_pre[campo_ocr])
+                except Exception:
+                    pass
+        if _ocr_pre.get("tipo_contrato") and not st.session_state.get("ar_tcont"):
+            tc = _ocr_pre["tipo_contrato"].lower()
+            if "indefinido" in tc:
+                st.session_state["ar_tcont"] = "Indefinido"
+            elif "temporal" in tc:
+                st.session_state["ar_tcont"] = "Temporal"
+            elif "parcial" in tc:
+                st.session_state["ar_tcont"] = "A tiempo parcial"
+        st.session_state["_ocr_alta_banner"] = True
+
+    if st.session_state.pop("_ocr_alta_banner", False):
+        st.success(
+            "✨ **Formulario pre-rellenado con datos detectados por OCR.** "
+            "Revisa los campos, completa lo que falte y pulsa **Crear expediente**."
+        )
+
     opciones = tramites.lista_tramites_con_icono()
     etiquetas = [n for _, n in opciones]
 
@@ -1354,6 +1396,10 @@ def _pagina_ocr():
     except Exception:  # noqa: BLE001
         pass
 
+    # ── Guardar datos para pre-rellenar la pestaña Alta de cliente ──────── #
+    if datos_cliente_ocr:
+        st.session_state["ocr_relleno_alta"] = datos_cliente_ocr
+
     # ── Banner de datos detectados ───────────────────────────────────────── #
     if datos_cliente_ocr:
         _LABELS_OCR = {
@@ -1381,7 +1427,11 @@ def _pagina_ocr():
             f"padding:10px 14px;margin-bottom:12px;'>"
             f"<div style='font-size:0.85rem;color:#6AAF6A;font-weight:600;margin-bottom:6px;'>"
             f"✨ Datos extraidos por OCR y guardados en el expediente</div>"
-            f"{chips_ocr}</div>",
+            f"{chips_ocr}"
+            f"<div style='font-size:0.78rem;color:#4A9A4A;margin-top:8px;'>"
+            f"💡 Ve a la pestaña <b>➕ Alta de cliente</b> para crear un nuevo expediente "
+            f"con estos datos ya pre-rellenados en el formulario.</div>"
+            f"</div>",
             unsafe_allow_html=True,
         )
 

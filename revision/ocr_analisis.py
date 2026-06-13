@@ -505,6 +505,7 @@ def _ocr_multipasada(img_bgr):
         for modo_pre, psms in [
             ("normal",    [3, 4, 6]),
             ("documento", [3, 6]),
+            ("normal",    [11]),   # texto disperso (logos, sellos, marcas de agua)
         ]:
             pre = _preprocesar(img_bgr, modo=modo_pre)
             pil = _cv2_a_pil(pre)
@@ -760,14 +761,16 @@ def parsear_mrz(texto):
 
 _PALABRAS_CLAVE_TIPO = [
     # Documentos de identidad — primero los mas especificos
-    ("pasaporte",           ["PASAPORTE", "PASSPORT", "REPUBLIC OF", "REPUBLIQUE"]),
+    ("pasaporte",           ["PASAPORTE", "PASSPORT", "REPUBLIC OF", "REPUBLIQUE",
+                             "PASSEPORT", "REISEPASS"]),
     ("tie",                 ["TARJETA DE IDENTIDAD DE EXTRANJERO",
                              "AUTORIZACION DE RESIDENCIA Y TRABAJO", " TIE ",
-                             "EXTRANJEROS EN ESPANA"]),
+                             "EXTRANJEROS EN ESPANA", "RESIDENCIA TEMPORAL",
+                             "IDENTIFICACION EXTRANJERO"]),
     ("nie",                 ["NUMERO DE IDENTIFICACION DE EXTRANJERO",
                              "NÚMERO DE IDENTIFICACIÓN",
                              "CERTIFICADO NIE", "TARJETA NIE",
-                             "RESIDENCIA NO LUCRATIVA"]),
+                             "RESIDENCIA NO LUCRATIVA", "CERTIFICADO DE REGISTRO"]),
     ("dni",                 ["DOCUMENTO NACIONAL DE IDENTIDAD", "D.N.I", "DNI"]),
     ("tarjeta_comunitaria", ["TARJETA DE RESIDENCIA COMUNITARIA",
                              "CIUDADANO DE LA UNION EUROPEA",
@@ -776,44 +779,58 @@ _PALABRAS_CLAVE_TIPO = [
     ("empadronamiento",     ["EMPADRONAMIENTO", "PADRON MUNICIPAL",
                              "PADRÓN MUNICIPAL", "EMPADRONADO", "INSCRIPCION PADRON",
                              "VOLANTE DE EMPADRONAMIENTO", "CERTIFICADO DE EMPADRONAMIENTO",
-                             "DOMICILIO EN", "ALTA EN EL PADRON"]),
+                             "DOMICILIO EN", "ALTA EN EL PADRON",
+                             "CERTIFICADO DE CONVIVENCIA", "CONVIVENCIA EN EL PADRON",
+                             "INSCRITO EN EL PADRON", "INSCRITA EN EL PADRON"]),
     # Documentacion laboral
     ("vida_laboral",        ["VIDA LABORAL", "INFORME DE VIDA LABORAL",
                              "TESORERIA GENERAL", "TGSS", "PERIODOS COTIZADOS",
-                             "REGIMEN GENERAL", "COTIZACIONES"]),
+                             "REGIMEN GENERAL", "COTIZACIONES",
+                             "HISTORIAL DE COTIZACIONES", "INFORME DE COTIZACIONES",
+                             "SITUACION DE AFILIACION", "PERIODOS DE ALTA"]),
     ("contrato_trabajo",    ["CONTRATO DE TRABAJO", "CONTRATO LABORAL",
                              "CONTRATO INDEFINIDO", "CONTRATO TEMPORAL",
                              "PRESTACION DE SERVICIOS", "MODALIDAD DEL CONTRATO",
-                             "JORNADA LABORAL", "EL TRABAJADOR Y LA EMPRESA"]),
+                             "JORNADA LABORAL", "EL TRABAJADOR Y LA EMPRESA",
+                             "CONTRATO A TIEMPO", "CONTRATO POR OBRA",
+                             "FECHA DE INICIO DEL CONTRATO", "LA EMPRESA Y EL TRABAJADOR"]),
     ("nomina",              ["NOMINA", "NÓMINA", "RECIBO DE SALARIO",
                              "SALARIO BRUTO", "DEVENGOS", "DEDUCCIONES",
-                             "SALARIO NETO", "RETENCIONES IRPF"]),
+                             "SALARIO NETO", "RETENCIONES IRPF",
+                             "PERCEPCIONES SALARIALES", "TOTAL DEVENGADO"]),
     ("cuenta_propia",       ["AUTONOMO", "AUTÓNOMO", "ACTIVIDAD ECONOMICA",
                              "ALTA EN EL RETA", "REGIMEN ESPECIAL DE TRABAJADORES AUTONOMOS",
-                             "LICENCIA DE ACTIVIDAD", "DECLARACION CENSAL"]),
+                             "LICENCIA DE ACTIVIDAD", "DECLARACION CENSAL",
+                             "DECLARACION DE ALTA", "IMPUESTO DE ACTIVIDADES ECONOMICAS",
+                             "IAE", "TRABAJADOR AUTONOMO"]),
     # Informes sociales
     ("informe_arraigo",     ["INFORME DE ARRAIGO", "INFORME SOCIAL",
                              "INFORME DE INTEGRACION", "TRABAJADOR SOCIAL",
                              "INTEGRACION SOCIAL", "SERVICIOS SOCIALES",
-                             "GRADO DE INTEGRACION", "ARRAIGO SOCIAL"]),
+                             "GRADO DE INTEGRACION", "ARRAIGO SOCIAL",
+                             "VINCULACION CON ESPANA", "INSERCION SOCIAL"]),
     # Antecedentes penales
     ("certificado_penal",   ["ANTECEDENTES PENALES", "REGISTRO CENTRAL DE PENADOS",
                              "CERTIFICADO DE PENALES", "CERTIFICADO DE CONDUCTA",
                              "NO CONSTA ANTECEDENTE", "POLICIA JUDICIAL",
-                             "AUSENCIA DE ANTECEDENTES"]),
+                             "AUSENCIA DE ANTECEDENTES", "SIN ANTECEDENTES PENALES",
+                             "MINISTERIO DE JUSTICIA", "ANTECEDENTES EN ESPANA"]),
     # Certificados civiles
     ("acta_nacimiento",     ["ACTA DE NACIMIENTO", "CERTIFICADO DE NACIMIENTO",
                              "PARTIDA DE NACIMIENTO", "REGISTRO CIVIL",
                              "NACIDO EN", "LIBRO DE FAMILIA",
-                             "ACTA LITERAL DE NACIMIENTO"]),
+                             "ACTA LITERAL DE NACIMIENTO", "INSCRIPCION DE NACIMIENTO"]),
     ("vinculo_familiar",    ["LIBRO DE FAMILIA", "CERTIFICADO DE MATRIMONIO",
                              "ACTA MATRIMONIO", "REAGRUPACION FAMILIAR",
-                             "PARENTESCO", "CONYUGE", "HIJO/A DE"]),
+                             "PARENTESCO", "CONYUGE", "HIJO/A DE",
+                             "CERTIFICADO DE FAMILIA NUMEROSA", "ACTA DE MATRIMONIO"]),
     # Educacion
     ("titulo_academico",    ["TITULO UNIVERSITARIO", "DIPLOMA", "CERTIFICADO DE ESTUDIOS",
                              "GRADO EN", "MÁSTER", "BACHILLERATO",
                              "MATRICULA OFICIAL", "ADMISION AL PROGRAMA",
-                             "CERTIFICADO DE MATRICULA", "INFORME DE APROVECHAMIENTO"]),
+                             "CERTIFICADO DE MATRICULA", "INFORME DE APROVECHAMIENTO",
+                             "ACUERDO DE FORMACION", "CONTRATO DE FORMACION",
+                             "CERTIFICADO DE FORMACION PROFESIONAL"]),
     # Salud
     ("seguro_medico",       ["SEGURO MEDICO", "POLIZA DE SALUD", "COBERTURA SANITARIA",
                              "SEGURO DE SALUD", "TARJETA SANITARIA", "MUTUA"]),
@@ -977,6 +994,19 @@ _RE_TELEFONO = re.compile(
     r"((?:\+?\d[\s\-]?){9,13})",
     re.IGNORECASE,
 )
+# Telefono sin etiqueta: numero espanol de 9 cifras (movil o fijo)
+_RE_TELEFONO_BARE = re.compile(
+    r"(?<!\d)(\+?34[ \-]?)?([67]\d{8}|[89]\d{8})(?!\d)",
+)
+# Domicilio desde tipo de via: C/, CALLE, AVDA., PLAZA, etc.
+# El \s* entre el prefijo y el nombre captura el espacio que OCR suele insertar.
+_RE_DOMICILIO_VIA = re.compile(
+    r"(?:C[/\.]\s*|CL\.?\s+|CALLE\s+|AVDA?\.?\s+|AVENIDA\s+|PZA\.?\s+|PLAZA\s+|"
+    r"PASEO\s+|PSO\.?\s+|RONDA\s+|CARRETERA\s+|POLIGONO\s+|POL\.?\s+|"
+    r"BARRIO\s+|URB(?:ANIZACION)?\.?\s+)"
+    r"([A-ZÁÉÍÓÚÜÑA-Za-záéíóúüñ0-9][A-ZÁÉÍÓÚÜÑa-záéíóúüñ0-9 ,\.\-/º°ªnN]{3,69})",
+    re.IGNORECASE,
+)
 
 
 def _parsear_fecha(raw):
@@ -1110,6 +1140,13 @@ def _extraer_campos(texto, tipo_id):
         direccion = re.split(r"\s{2,}|\n", m_dir.group(1).strip())[0].strip(" .,-")
         if len(direccion) >= 5:
             campos["direccion"] = direccion
+    # Fallback: buscar por tipo de via (C/, CALLE, AVDA, etc.)
+    if not campos["direccion"]:
+        m_via = _RE_DOMICILIO_VIA.search(texto)
+        if m_via:
+            direccion = re.split(r"\s{2,}|\n", m_via.group(0).strip())[0].strip(" .,-")
+            if len(direccion) >= 5:
+                campos["direccion"] = direccion
 
     # Email y telefono (frecuentes en contratos, solicitudes, etc.)
     m_email = _RE_EMAIL.search(texto)
@@ -1120,6 +1157,14 @@ def _extraer_campos(texto, tipo_id):
         tel = re.sub(r"[\s\-]", "", m_tel.group(1))
         if 9 <= len(tel) <= 13:
             campos["telefono"] = tel
+    # Fallback: telefono sin etiqueta (movil/fijo espanol de 9 cifras)
+    if not campos["telefono"]:
+        m_tel_bare = _RE_TELEFONO_BARE.search(texto)
+        if m_tel_bare:
+            tel_bare = re.sub(r"[\s\-]", "", m_tel_bare.group(0))
+            # Descartar si coincide con un NIE (X/Y/Z + 7 digitos) o parece fecha
+            if re.fullmatch(r"(\+34)?[6789]\d{8}", tel_bare):
+                campos["telefono"] = tel_bare
 
     return campos
 
