@@ -1254,6 +1254,31 @@ def _pagina_ocr():
         st.error(f"⚠️ El OCR no esta disponible en este servidor.\n\n{ocr_msg}")
         return
 
+    # Diagnostico de dependencias (util para depurar problemas con PDFs)
+    with st.expander("🔧 Estado del OCR y lectura de PDF"):
+        diag = ocr_analisis.diagnostico()
+        _DIAG_INFO = {
+            "rapidocr":   "Motor OCR RapidOCR (lee imagenes y PDF escaneados)",
+            "tesseract":  "Motor OCR Tesseract (alternativo, mejor para pasaportes)",
+            "opencv":     "OpenCV (preprocesado de imagen)",
+            "pdfplumber": "pdfplumber (texto de PDFs digitales)",
+            "pymupdf":    "PyMuPDF (texto y conversion de PDFs, sin programas extra)",
+            "pdf2image":  "pdf2image (alternativa; necesita Poppler instalado)",
+        }
+        for clave, desc in _DIAG_INFO.items():
+            icono = "✅" if diag.get(clave) else "❌"
+            st.write(f"{icono} **{clave}** — {desc}")
+        if not (diag.get("pymupdf") or diag.get("pdf2image")):
+            st.warning(
+                "Para leer **PDFs escaneados** instala PyMuPDF:\n\n"
+                "```\npip install pymupdf\n```"
+            )
+        st.caption(
+            "Para PDFs digitales (con texto seleccionable) basta con pdfplumber o "
+            "PyMuPDF. Para PDFs escaneados (foto dentro del PDF) hace falta PyMuPDF "
+            "y un motor OCR (RapidOCR o Tesseract)."
+        )
+
     opciones = tramites.lista_tramites_con_icono()
     etiquetas = [n for _, n in opciones]
     idx_def_ocr = 0
@@ -2293,6 +2318,51 @@ def pagina_seguimiento(api_key, modelo, dias_aviso):
     reg = historial.cargar(eid)
     if not reg:
         return
+
+    # ── Acciones del expediente: guardar / borrar ───────────────────────────── #
+    ac1, ac2 = st.columns(2)
+    if ac1.button("💾 Guardar expediente", type="primary",
+                  use_container_width=True, key=f"save_exp_{eid}"):
+        g = lambda k, d="": (st.session_state.get(k, d) or d)
+        nombre_limpio = g(f"ec_nombre_{eid}", reg.get("nombre", "") or reg.get("solicitante", "")).strip()
+        historial.actualizar(
+            eid,
+            nombre=nombre_limpio,
+            solicitante=nombre_limpio or reg.get("solicitante", ""),
+            fecha_nacimiento=g(f"ec_fnac_{eid}", reg.get("fecha_nacimiento", "")).strip(),
+            nacionalidad=g(f"ec_nac_{eid}", reg.get("nacionalidad", "")).strip(),
+            num_pasaporte=g(f"ec_pas_{eid}", reg.get("num_pasaporte", "")).strip(),
+            cad_pasaporte=g(f"ec_cadpas_{eid}", reg.get("cad_pasaporte", "")).strip(),
+            fecha_entrada_espana=g(f"ec_fent_{eid}", reg.get("fecha_entrada_espana", "")).strip(),
+            telefono=g(f"ec_tel_{eid}", reg.get("telefono", "")).strip(),
+            email_cliente=g(f"ec_email_{eid}", reg.get("email_cliente", "")).strip(),
+            direccion=g(f"ec_dir_{eid}", reg.get("direccion", "")).strip(),
+            ciudad=g(f"ec_ciudad_{eid}", reg.get("ciudad", "")).strip(),
+            empleador=g(f"ec_emp_{eid}", reg.get("empleador", "")).strip(),
+            fecha_contrato=g(f"ec_fcont_{eid}", reg.get("fecha_contrato", "")).strip(),
+            tipo_contrato=g(f"ec_tcont_{eid}", reg.get("tipo_contrato", "")).strip(),
+            notas=g(f"ec_notas_{eid}", reg.get("notas", "")).strip(),
+        )
+        st.success("Expediente guardado.")
+        st.rerun()
+
+    _confirm_del = f"confirm_del_{eid}"
+    if ac2.button("🗑️ Borrar expediente", use_container_width=True, key=f"del_exp_{eid}"):
+        st.session_state[_confirm_del] = True
+    if st.session_state.get(_confirm_del):
+        st.warning(
+            "¿Seguro que quieres **borrar este expediente**? "
+            "Se eliminaran todos sus datos y no se puede deshacer."
+        )
+        dc1, dc2 = st.columns(2)
+        if dc1.button("Sí, borrar definitivamente", type="primary", key=f"del_yes_{eid}"):
+            historial.eliminar(eid)
+            st.session_state.pop(_confirm_del, None)
+            st.success("Expediente borrado.")
+            st.rerun()
+        if dc2.button("Cancelar", key=f"del_no_{eid}"):
+            st.session_state.pop(_confirm_del, None)
+            st.rerun()
 
     # ── Datos del cliente (alta rapida) ─────────────────────────────────────── #
     _CAMPOS_CLIENTE = [

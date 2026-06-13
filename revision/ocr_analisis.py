@@ -561,7 +561,22 @@ def _pdf_a_imagenes_bgr(datos_bytes, dpi=300):
 
 
 def _texto_pdf_nativo(datos_bytes):
-    """Extrae texto de un PDF digital con pdfplumber."""
+    """Extrae el texto embebido de un PDF digital.
+
+    Intenta PyMuPDF (rapido y fiable) y, si no, pdfplumber. Devuelve "" si el
+    PDF no tiene texto seleccionable (PDF escaneado) o no hay librerias.
+    """
+    # 1. PyMuPDF
+    try:
+        import fitz
+        doc = fitz.open(stream=datos_bytes, filetype="pdf")
+        texto = "\n".join(pag.get_text("text") for pag in doc)
+        doc.close()
+        if len(texto.strip()) >= 30:
+            return texto
+    except Exception:
+        pass
+    # 2. pdfplumber
     try:
         import pdfplumber
         textos = []
@@ -572,6 +587,23 @@ def _texto_pdf_nativo(datos_bytes):
         return "\n".join(textos)
     except Exception:
         return ""
+
+
+def diagnostico():
+    """Devuelve el estado de cada dependencia de OCR/PDF, para mostrar en la UI."""
+    estado = {
+        "opencv": _CV2_OK,
+        "rapidocr": _hay_rapidocr(),
+        "tesseract": _hay_tesseract(),
+    }
+    for nombre, modulo in (("pdfplumber", "pdfplumber"), ("pymupdf", "fitz"),
+                           ("pdf2image", "pdf2image")):
+        try:
+            __import__(modulo)
+            estado[nombre] = True
+        except Exception:
+            estado[nombre] = False
+    return estado
 
 
 def _texto_pdf_escaneado(datos_bytes):
