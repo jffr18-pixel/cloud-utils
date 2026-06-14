@@ -819,25 +819,57 @@ def parsear_mrz(texto):
 
 _PALABRAS_CLAVE_TIPO = [
     # Documentos de identidad — primero los mas especificos
-    ("pasaporte",           ["PASAPORTE", "PASSPORT", "REPUBLIC OF", "REPUBLIQUE",
-                             "PASSEPORT", "REISEPASS"]),
+    ("pasaporte",           ["PASAPORTE", "PASSPORT", "PASSEPORT", "REISEPASS",
+                             # Rumano
+                             "PASAPORT",
+                             # Italiano / portugues
+                             "PASSAPORTO", "PASSAPORTE",
+                             # Arabe transliterado (Marruecos, Argelia)
+                             "ROYAUME DU MAROC", "REPUBLIQUE ALGERIENNE",
+                             "REPUBLIQUE TUNISIENNE",
+                             # Paises hispanoamericanos comunes (aparece en cabecera)
+                             "REPUBLICA DE COLOMBIA", "REPUBLICA DEL ECUADOR",
+                             "REPUBLICA BOLIVARIANA DE VENEZUELA",
+                             "REPUBLICA DOMINICANA",
+                             "ESTADO PLURINACIONAL DE BOLIVIA",
+                             "REPUBLICA DEL PERU", "REPUBLICA DE HONDURAS",
+                             "REPUBLICA DE GUATEMALA", "REPUBLICA DE NICARAGUA",
+                             "REPUBLICA DE EL SALVADOR",
+                             # Asia (transliteraciones latinas que aparecen en OCR)
+                             "REPUBLIKA NG PILIPINAS", "PEOPLE'S REPUBLIC OF CHINA",
+                             "ISLAMIC REPUBLIC OF PAKISTAN",
+                             "PEOPLE'S REPUBLIC OF BANGLADESH",
+                             # Comun a muchos pasaportes
+                             "REPUBLIC OF", "REPUBLIQUE DU", "REPUBLIQUE DE"]),
     ("tie",                 ["TARJETA DE IDENTIDAD DE EXTRANJERO",
                              "AUTORIZACION DE RESIDENCIA Y TRABAJO", " TIE ",
                              "EXTRANJEROS EN ESPANA", "RESIDENCIA TEMPORAL",
-                             "IDENTIFICACION EXTRANJERO"]),
+                             "IDENTIFICACION EXTRANJERO",
+                             # Variantes reales impresas en la tarjeta
+                             "TARJETA DE RESIDENCIA", "LARGA DURACION",
+                             "PERMISO DE RESIDENCIA", "AUTORIZA A RESIDIR",
+                             "MINISTERIO DEL INTERIOR", "DIRECCION GENERAL DE POLICIA",
+                             "AUTORIZACION SIN AUTORIZACION DE TRABAJO",
+                             "RESIDENCIA DE LARGA DURACION"]),
     ("nie",                 ["NUMERO DE IDENTIFICACION DE EXTRANJERO",
-                             "NÚMERO DE IDENTIFICACIÓN",
+                             "NÚMERO DE IDENTIFICACIÓN DE EXTRANJERO",
+                             # Certificado verde (ciudadanos UE)
+                             "CERTIFICADO DE REGISTRO DE CIUDADANO DE LA UNION",
+                             "CERTIFICADO DE INSCRIPCION EN EL REGISTRO CENTRAL",
+                             "REGISTRO CENTRAL DE EXTRANJEROS",
                              "CERTIFICADO NIE", "TARJETA NIE",
-                             "RESIDENCIA NO LUCRATIVA", "CERTIFICADO DE REGISTRO"]),
-    ("dni",                 ["DOCUMENTO NACIONAL DE IDENTIDAD", "D.N.I", "DNI"]),
+                             "RESIDENCIA NO LUCRATIVA"]),
+    ("dni",                 ["DOCUMENTO NACIONAL DE IDENTIDAD", "D.N.I", "DNI",
+                             "REINO DE ESPANA", "MINISTERIO DEL INTERIOR"]),
     ("tarjeta_comunitaria", ["TARJETA DE RESIDENCIA COMUNITARIA",
                              "CIUDADANO DE LA UNION EUROPEA",
-                             "FAMILIAR DE CIUDADANO UE"]),
+                             "FAMILIAR DE CIUDADANO UE",
+                             "RESIDENCIA COMUNITARIA"]),
     # Pruebas de empadronamiento/presencia
     ("empadronamiento",     ["EMPADRONAMIENTO", "PADRON MUNICIPAL",
                              "PADRÓN MUNICIPAL", "EMPADRONADO", "INSCRIPCION PADRON",
                              "VOLANTE DE EMPADRONAMIENTO", "CERTIFICADO DE EMPADRONAMIENTO",
-                             "DOMICILIO EN", "ALTA EN EL PADRON",
+                             "ALTA EN EL PADRON",
                              "CERTIFICADO DE CONVIVENCIA", "CONVIVENCIA EN EL PADRON",
                              "INSCRITO EN EL PADRON", "INSCRITA EN EL PADRON",
                              # Empadronamiento historico / certificado de residencia
@@ -846,28 +878,54 @@ _PALABRAS_CLAVE_TIPO = [
                              "PADRON MUNICIPAL DE HABITANTES",
                              "CERTIFICADO DE RESIDENCIA EN",
                              "TIEMPO DE RESIDENCIA", "ANOS DE RESIDENCIA",
-                             "MESES DE RESIDENCIA", "FECHA DE ALTA PADRONAL"]),
+                             "MESES DE RESIDENCIA", "FECHA DE ALTA PADRONAL",
+                             # Encabezado de los certificados municipales
+                             "AYUNTAMIENTO DE", "SECRETARIO DEL AYUNTAMIENTO",
+                             "SECRETARIA DEL AYUNTAMIENTO"]),
     # Documentacion laboral
     ("vida_laboral",        ["VIDA LABORAL", "INFORME DE VIDA LABORAL",
+                             "TESORERIA GENERAL DE LA SEGURIDAD SOCIAL",
                              "TESORERIA GENERAL", "TGSS", "PERIODOS COTIZADOS",
-                             "REGIMEN GENERAL", "COTIZACIONES",
-                             "HISTORIAL DE COTIZACIONES", "INFORME DE COTIZACIONES",
-                             "SITUACION DE AFILIACION", "PERIODOS DE ALTA"]),
+                             "COTIZACIONES", "HISTORIAL DE COTIZACIONES",
+                             "INFORME DE COTIZACIONES", "SITUACION DE AFILIACION",
+                             "PERIODOS DE ALTA",
+                             # Campos reales del informe TGSS
+                             "NUMERO DE AFILIACION", "N.A.F.", " NAF ",
+                             "SITUACION ACTUAL EN LA SEGURIDAD SOCIAL",
+                             "CUENTA DE COTIZACION", "TOTAL DE DIAS COTIZADOS",
+                             "ALTA EN EL REGIMEN", "REGIMEN GENERAL",
+                             "REGIMEN ESPECIAL DE EMPLEADOS DEL HOGAR",
+                             "REGIMEN ESPECIAL AGRARIO"]),
     ("contrato_trabajo",    ["CONTRATO DE TRABAJO", "CONTRATO LABORAL",
                              "CONTRATO INDEFINIDO", "CONTRATO TEMPORAL",
                              "PRESTACION DE SERVICIOS", "MODALIDAD DEL CONTRATO",
                              "JORNADA LABORAL", "EL TRABAJADOR Y LA EMPRESA",
                              "CONTRATO A TIEMPO", "CONTRATO POR OBRA",
-                             "FECHA DE INICIO DEL CONTRATO", "LA EMPRESA Y EL TRABAJADOR"]),
+                             "FECHA DE INICIO DEL CONTRATO", "LA EMPRESA Y EL TRABAJADOR",
+                             # Campos comunes en contratos españoles
+                             "DURACION DEL CONTRATO", "CATEGORIA PROFESIONAL",
+                             "CONVENIO COLECTIVO", "GRUPO PROFESIONAL",
+                             "SERVICIO PUBLICO DE EMPLEO", "SEPE",
+                             "COMUNICACION DE CONTRATO"]),
     ("nomina",              ["NOMINA", "NÓMINA", "RECIBO DE SALARIO",
-                             "SALARIO BRUTO", "DEVENGOS", "DEDUCCIONES",
-                             "SALARIO NETO", "RETENCIONES IRPF",
-                             "PERCEPCIONES SALARIALES", "TOTAL DEVENGADO"]),
+                             "RECIBO DE SALARIOS", "SALARIO BRUTO",
+                             "DEVENGOS", "DEDUCCIONES", "SALARIO NETO",
+                             "RETENCIONES IRPF", "PERCEPCIONES SALARIALES",
+                             "TOTAL DEVENGADO",
+                             # Campos reales en nominas españolas
+                             "SALARIO BASE", "COMPLEMENTOS SALARIALES",
+                             "BASE DE COTIZACION", "SEGURIDAD SOCIAL TRABAJADOR",
+                             "IMPORTE NETO A PERCIBIR", "IRPF"]),
     ("cuenta_propia",       ["AUTONOMO", "AUTÓNOMO", "ACTIVIDAD ECONOMICA",
                              "ALTA EN EL RETA", "REGIMEN ESPECIAL DE TRABAJADORES AUTONOMOS",
                              "LICENCIA DE ACTIVIDAD", "DECLARACION CENSAL",
                              "DECLARACION DE ALTA", "IMPUESTO DE ACTIVIDADES ECONOMICAS",
-                             "IAE", "TRABAJADOR AUTONOMO"]),
+                             "IAE", "TRABAJADOR AUTONOMO",
+                             # Modelos AEAT para autónomos
+                             "MODELO 036", "MODELO 037",
+                             "ALTA EN EL CENSO DE EMPRESARIOS",
+                             "ACTIVIDAD PROFESIONAL", "EPIGRAFE",
+                             "NUMERO DE IAE"]),
     # Informes sociales e informe de vulnerabilidad social
     ("informe_arraigo",     ["INFORME DE ARRAIGO", "INFORME SOCIAL",
                              "INFORME DE INTEGRACION", "TRABAJADOR SOCIAL",
@@ -878,7 +936,10 @@ _PALABRAS_CLAVE_TIPO = [
                              "VULNERABILIDAD SOCIAL", "INFORME DE VULNERABILIDAD",
                              "SITUACION DE VULNERABILIDAD", "RIESGO DE EXCLUSION SOCIAL",
                              "CERTIFICADO DE VULNERABILIDAD", "EXCLUSION SOCIAL",
-                             "INFORME SOCIAL DE VULNERABILIDAD"]),
+                             "INFORME SOCIAL DE VULNERABILIDAD",
+                             # Entidades emisoras
+                             "ENTIDAD LOCAL", "CRUZ ROJA", "CARITAS",
+                             "ENTIDAD COLABORADORA"]),
     # Antecedentes penales (España e internacionales)
     ("certificado_penal",   ["ANTECEDENTES PENALES", "REGISTRO CENTRAL DE PENADOS",
                              "CERTIFICADO DE PENALES", "CERTIFICADO DE CONDUCTA",
@@ -891,52 +952,107 @@ _PALABRAS_CLAVE_TIPO = [
                              "CERTIFICADO JUDICIAL",
                              # Mexico
                              "CONSTANCIA DE NO ANTECEDENTES", "SECRETARIA DE SEGURIDAD",
-                             "REGISTRO PUBLICO DE DERECHOS DEL ACREEDOR",
                              # Republica Dominicana
                              "POLICIA NACIONAL DOMINICANA", "CERTIFICADO DE NO DELINCUENCIA",
-                             # Marruecos
+                             # Marruecos / paises francófonos africanos
                              "CASIER JUDICIAIRE", "EXTRAIT DU CASIER",
-                             # General
+                             "BULLETIN N 3",
+                             # Rumania
+                             "CAZIER JUDICIAR", "CERTIFICAT DE CAZIER",
+                             # Ecuador, Bolivia, Peru
+                             "RECORD POLICIAL", "CERTIFICADO DE ANTECEDENTES POLICIALES",
+                             "ANTECEDENTES POLICIALES", "POLICIA NACIONAL DEL PERU",
+                             "DIRECCION DE ANTECEDENTES POLICIALES",
+                             # Venezuela
+                             "CUERPO DE INVESTIGACIONES CIENTIFICAS PENALES",
+                             "CICPC",
+                             # Argentina
+                             "ANTECEDENTES PENALES NACIONALES", "REGISTRO NACIONAL DE REINCIDENCIA",
+                             # Honduras, Guatemala
+                             "POLICIA NACIONAL CIVIL", "DIRECCION GENERAL DE INVESTIGACION",
+                             # Pakistan, Bangladesh, Filipinas — inglés
+                             "POLICE CLEARANCE CERTIFICATE", "CHARACTER CERTIFICATE",
+                             "NATIONAL BUREAU OF INVESTIGATION", "NBI CLEARANCE",
+                             # China
+                             "CERTIFICATE OF NO CRIMINAL RECORD", "PUBLIC SECURITY BUREAU",
+                             # Terminos generales
                              "CERTIFICADO DE BUENA CONDUCTA", "BUEN COMPORTAMIENTO",
                              "CARENCIA DE ANTECEDENTES", "PRONTUARIO POLICIAL",
-                             "HISTORIAL DELICTIVO", "REGISTRO CRIMINAL",
-                             "CRIMINAL RECORD", "NO CRIMINAL RECORD"]),
+                             "REGISTRO CRIMINAL", "CRIMINAL RECORD", "NO CRIMINAL RECORD",
+                             "CERTIFICATE OF GOOD CONDUCT"]),
     # Certificados civiles
     ("acta_nacimiento",     ["ACTA DE NACIMIENTO", "CERTIFICADO DE NACIMIENTO",
                              "PARTIDA DE NACIMIENTO", "REGISTRO CIVIL",
-                             "NACIDO EN", "LIBRO DE FAMILIA",
-                             "ACTA LITERAL DE NACIMIENTO", "INSCRIPCION DE NACIMIENTO"]),
+                             "ACTA LITERAL DE NACIMIENTO", "INSCRIPCION DE NACIMIENTO",
+                             "PARTIDA DE REGISTRO CIVIL", "ACTA DE REGISTRO DE NACIMIENTO",
+                             "EXTRACTO DE NACIMIENTO",
+                             # Inglés
+                             "BIRTH CERTIFICATE", "CERTIFICATE OF BIRTH",
+                             # Francés
+                             "ACTE DE NAISSANCE", "EXTRAIT D'ACTE DE NAISSANCE",
+                             "EXTRAIT DE NAISSANCE",
+                             # Alemán
+                             "GEBURTSURKUNDE",
+                             # Rumano
+                             "CERTIFICAT DE NASTERE",
+                             # Genérico
+                             "LUGAR DE NACIMIENTO", "FECHA DE NACIMIENTO"]),
     ("vinculo_familiar",    ["LIBRO DE FAMILIA", "CERTIFICADO DE MATRIMONIO",
-                             "ACTA MATRIMONIO", "REAGRUPACION FAMILIAR",
-                             "PARENTESCO", "CONYUGE", "HIJO/A DE",
-                             "CERTIFICADO DE FAMILIA NUMEROSA", "ACTA DE MATRIMONIO"]),
-    # Educacion
+                             "ACTA MATRIMONIO", "ACTA DE MATRIMONIO",
+                             "REAGRUPACION FAMILIAR", "PARENTESCO", "CONYUGE",
+                             "CERTIFICADO DE FAMILIA NUMEROSA",
+                             # Más variantes habituales
+                             "CERTIFICADO DE ESTADO CIVIL", "ACTA DE MATRIMONIO CIVIL",
+                             "FE DE VIDA Y ESTADO", "CERTIFICADO DE SOLTERIA",
+                             "FE DE SOLTERIA",
+                             # Inglés
+                             "MARRIAGE CERTIFICATE", "CERTIFICATE OF MARRIAGE",
+                             # Francés
+                             "ACTE DE MARIAGE", "EXTRAIT D'ACTE DE MARIAGE",
+                             # Alemán
+                             "HEIRATSURKUNDE",
+                             # Rumano
+                             "CERTIFICAT DE CASATORIE"]),
+    # Educacion y formacion
     ("titulo_academico",    ["TITULO UNIVERSITARIO", "DIPLOMA", "CERTIFICADO DE ESTUDIOS",
-                             "GRADO EN", "MÁSTER", "BACHILLERATO",
+                             "GRADO EN", "MÁSTER", "MASTER EN", "BACHILLERATO",
                              "MATRICULA OFICIAL", "ADMISION AL PROGRAMA",
                              "CERTIFICADO DE MATRICULA", "INFORME DE APROVECHAMIENTO",
                              "ACUERDO DE FORMACION", "CONTRATO DE FORMACION",
-                             "CERTIFICADO DE FORMACION PROFESIONAL"]),
+                             "CERTIFICADO DE FORMACION PROFESIONAL",
+                             # Educacion para arraigo para la formación
+                             "CENTRO DE FORMACION", "PROGRAMA DE FORMACION",
+                             "CERTIFICADO DE ASISTENCIA", "ACREDITACION DE ESTUDIOS"]),
     # Salud
     ("seguro_medico",       ["SEGURO MEDICO", "POLIZA DE SALUD", "COBERTURA SANITARIA",
-                             "SEGURO DE SALUD", "TARJETA SANITARIA", "MUTUA"]),
+                             "SEGURO DE SALUD", "TARJETA SANITARIA", "MUTUA",
+                             "ASEGURADORA", "COBERTURA MEDICA", "POLIZA MEDICA"]),
     ("certificado_discapacidad", ["GRADO DE DISCAPACIDAD", "CERTIFICADO DE DISCAPACIDAD",
-                                  "MINUSVALIA", "DEPENDENCIA", "RECONOCIMIENTO DE DISCAPACIDAD"]),
+                                  "MINUSVALIA", "DEPENDENCIA",
+                                  "RECONOCIMIENTO DE DISCAPACIDAD",
+                                  "GRADO DE DEPENDENCIA", "RESOLUCION DE DEPENDENCIA"]),
     # Formularios oficiales de extranjeria
     ("solicitud_ex",        ["MODELO EX-01", "MODELO EX-10", "MODELO EX-32",
                              "IMPRESO EX01", "IMPRESO EX10", "IMPRESO EX32",
                              "EX - 01", "EX - 10", "EX - 32",
+                             "EX 01", "EX 10", "EX 32",
                              "SOLICITUD DE AUTORIZACION DE RESIDENCIA",
-                             "SECRETARIA DE ESTADO DE MIGRACIONES"]),
+                             "SECRETARIA DE ESTADO DE MIGRACIONES",
+                             "FORMULARIO DE SOLICITUD",
+                             "OFICINA DE EXTRANJERIA",
+                             "DELEGACION DEL GOBIERNO EN"]),
     # Tasas y pagos
-    ("tasa",                ["MODELO 790", "TASA 790", "052",
+    ("tasa",                ["MODELO 790", "TASA 790", "790 052",
+                             "MODELO 790 CODIGO 052",
                              "ABONO DE TASA", "PAGO DE TASA",
-                             "AGENCIA TRIBUTARIA", "CARTA DE PAGO"]),
+                             "CARTA DE PAGO", "TASAS"]),
     # Resoluciones y autorizaciones
-    ("resolucion",          ["RESOLUCION DE", "RESOLUCION FAVORABLE",
-                             "AUTORIZACION DE RESIDENCIA", "AUTORIZACION FAVORABLE",
-                             "RESOLUCION DENEGATORIA", "SE RESUELVE",
-                             "DELEGACION DEL GOBIERNO"]),
+    ("resolucion",          ["RESOLUCION DE CONCESION", "RESOLUCION DE",
+                             "RESOLUCION FAVORABLE", "AUTORIZACION DE RESIDENCIA",
+                             "AUTORIZACION FAVORABLE", "RESOLUCION DENEGATORIA",
+                             "SE RESUELVE", "DELEGACION DEL GOBIERNO",
+                             "PROPUESTA DE RESOLUCION", "UNIDAD DE EXTRANJERIA",
+                             "COMISARIA GENERAL DE EXTRANJERIA"]),
 ]
 
 
@@ -1262,6 +1378,12 @@ def _extraer_campos(texto, tipo_id):
 _DOCS_SIN_CADUCIDAD = {
     "empadronamiento", "vida_laboral", "acta_nacimiento",
     "informe_arraigo", "certificado_penal", "titulo_academico",
+    # Documentos que no tienen campo de caducidad propio
+    "vinculo_familiar",   # actas de matrimonio/familia no caducan
+    "nomina",             # recibos de salario son documentos historicos
+    "solicitud_ex",       # formularios de solicitud no tienen fecha de caducidad
+    "cuenta_propia",      # declaraciones censales / licencias no caducan en general
+    "tasa",               # carta de pago es un documento historico
 }
 _DIAS_AVISO = 90
 
