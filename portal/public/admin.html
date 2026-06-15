@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Panel de gestión | Burocracia Zero</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/portal.css" />
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar__brand">
+      <svg width="28" height="28" viewBox="0 0 40 40" fill="none" aria-hidden="true"><rect width="40" height="40" rx="10" fill="#16a085"/><path d="M11 14h18M11 20h18M11 26h11" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg>
+      Burocracia<b>Zero</b> <span class="badge-role">Gestor</span>
+    </div>
+    <div class="topbar__right">
+      <span class="topbar__user" id="user-name"></span>
+      <button class="btn btn--sm btn--ghost" id="logout" style="color:#fff;border-color:rgba(255,255,255,.3)">Salir</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div id="alert" class="alert hidden" role="status"></div>
+
+    <!-- VISTA: lista de clientes -->
+    <section id="view-list">
+      <div class="page-title">
+        <h1 style="margin:0">Clientes</h1>
+        <button class="btn" id="new-client-btn">+ Nuevo cliente</button>
+      </div>
+      <div class="card" style="padding:0;overflow:auto">
+        <table class="table">
+          <thead><tr><th>Cliente</th><th>Contacto</th><th>Trámites</th><th>Docs</th><th>Alta</th><th></th></tr></thead>
+          <tbody id="clients-body"><tr><td colspan="6" class="muted" style="padding:20px">Cargando…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- VISTA: detalle de cliente -->
+    <section id="view-detail" class="hidden">
+      <p style="margin-bottom:10px"><a href="#" id="back-link">&larr; Volver a clientes</a></p>
+      <div class="page-title">
+        <div>
+          <h1 style="margin-bottom:2px" id="d-name"></h1>
+          <p class="muted" style="margin:0" id="d-contact"></p>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn--ghost" id="new-doc-btn">+ Subir documento</button>
+          <button class="btn" id="new-tramite-btn">+ Nuevo trámite</button>
+        </div>
+      </div>
+
+      <h2 class="section-h">Trámites</h2>
+      <div id="d-tramites"></div>
+
+      <h2 class="section-h" style="margin-top:28px">Documentos del cliente</h2>
+      <div class="card"><ul class="doc-list" id="d-docs"></ul></div>
+    </section>
+  </div>
+
+  <!-- Modal: nuevo cliente -->
+  <div class="modal-bg hidden" id="client-modal">
+    <div class="modal">
+      <div class="modal__head"><h3 style="margin:0">Nuevo cliente</h3><button class="modal__close" data-close>&times;</button></div>
+      <div class="alert hidden" id="cm-alert"></div>
+      <form id="client-form">
+        <div class="field"><label>Nombre y apellidos</label><input name="name" required /></div>
+        <div class="field"><label>Email (será su usuario)</label><input type="email" name="email" required /></div>
+        <div class="field"><label>Teléfono (opcional)</label><input name="phone" /></div>
+        <div class="field"><label>Contraseña inicial (mín. 8 caracteres)</label><input name="password" minlength="8" required /></div>
+        <button class="btn btn--block" type="submit">Crear cliente</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: nuevo trámite -->
+  <div class="modal-bg hidden" id="tramite-modal">
+    <div class="modal">
+      <div class="modal__head"><h3 style="margin:0">Nuevo trámite</h3><button class="modal__close" data-close>&times;</button></div>
+      <div class="alert hidden" id="tm-alert"></div>
+      <form id="tramite-form">
+        <div class="field"><label>Título</label><input name="title" required placeholder="Ej: Renovación de residencia" /></div>
+        <div class="field"><label>Tipo</label>
+          <select name="type">
+            <option>Extranjería</option><option>Fiscal</option><option>Seguridad Social</option>
+            <option>Autónomos y empresas</option><option>Otro</option>
+          </select>
+        </div>
+        <div class="field"><label>Estado inicial</label><select name="status" id="tm-status"></select></div>
+        <div class="field"><label>Descripción (visible para el cliente)</label><textarea name="description"></textarea></div>
+        <button class="btn btn--block" type="submit">Crear trámite</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: actualizar trámite -->
+  <div class="modal-bg hidden" id="update-modal">
+    <div class="modal">
+      <div class="modal__head"><h3 style="margin:0" id="um-title">Actualizar trámite</h3><button class="modal__close" data-close>&times;</button></div>
+      <div class="alert hidden" id="um-alert"></div>
+      <form id="update-form">
+        <div class="field"><label>Nuevo estado</label><select name="status" id="um-status"></select></div>
+        <div class="field"><label>Nota para el cliente (opcional)</label><textarea name="note" placeholder="Ej: Hemos presentado la solicitud, a la espera de resolución."></textarea></div>
+        <button class="btn btn--block" type="submit">Guardar cambios</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: subir documento (admin) -->
+  <div class="modal-bg hidden" id="doc-modal">
+    <div class="modal">
+      <div class="modal__head"><h3 style="margin:0">Subir documento al cliente</h3><button class="modal__close" data-close>&times;</button></div>
+      <div class="alert hidden" id="dm-alert"></div>
+      <form id="doc-form">
+        <div class="field"><label>Asociar a un trámite (opcional)</label><select name="tramite_id" id="dm-tramite"><option value="">— Sin trámite concreto —</option></select></div>
+        <div class="field"><label>Archivos (máx. 15 MB c/u)</label>
+          <div class="dropzone" id="dm-dropzone"><strong>Haz clic o arrastra aquí</strong><div class="muted" id="dm-filelist" style="margin-top:8px;font-size:.85rem">Ningún archivo</div></div>
+          <input type="file" id="dm-fileinput" multiple class="hidden" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx,.xls,.xlsx" />
+        </div>
+        <button class="btn btn--block" type="submit" id="dm-submit">Subir</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/common.js"></script>
+  <script src="/js/admin.js"></script>
+</body>
+</html>

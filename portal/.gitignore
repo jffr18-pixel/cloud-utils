@@ -1,0 +1,15 @@
+# Dependencias
+node_modules/
+
+# Datos en tiempo de ejecución (base de datos y documentos subidos)
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Variables de entorno
+.env
+
+# Logs
+*.log
+npm-debug.log*

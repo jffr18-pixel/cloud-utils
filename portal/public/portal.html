@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Mis trámites | Burocracia Zero</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/portal.css" />
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar__brand">
+      <svg width="28" height="28" viewBox="0 0 40 40" fill="none" aria-hidden="true"><rect width="40" height="40" rx="10" fill="#16a085"/><path d="M11 14h18M11 20h18M11 26h11" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg>
+      Burocracia<b>Zero</b>
+    </div>
+    <div class="topbar__right">
+      <span class="topbar__user" id="user-name"></span>
+      <button class="btn btn--sm btn--ghost" id="logout" style="color:#fff;border-color:rgba(255,255,255,.3)">Salir</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="page-title">
+      <div>
+        <h1 style="margin-bottom:2px">Hola, <span id="greet"></span></h1>
+        <p class="muted" style="margin:0">Aquí puedes seguir el estado de tus trámites y subir la documentación que necesitemos.</p>
+      </div>
+      <button class="btn" id="upload-btn">+ Subir documento</button>
+    </div>
+
+    <div id="alert" class="alert hidden" role="status"></div>
+
+    <h2 class="section-h">Mis trámites</h2>
+    <div id="tramites"><p class="muted">Cargando…</p></div>
+
+    <h2 class="section-h" style="margin-top:32px">Todos mis documentos</h2>
+    <div class="card">
+      <ul class="doc-list" id="all-docs"></ul>
+    </div>
+  </div>
+
+  <!-- Modal de subida -->
+  <div class="modal-bg hidden" id="upload-modal">
+    <div class="modal">
+      <div class="modal__head">
+        <h3 style="margin:0">Subir documentación</h3>
+        <button class="modal__close" data-close>&times;</button>
+      </div>
+      <div id="modal-alert" class="alert hidden"></div>
+      <form id="upload-form">
+        <div class="field">
+          <label for="tramite-select">Asociar a un trámite (opcional)</label>
+          <select id="tramite-select" name="tramite_id">
+            <option value="">— Sin trámite concreto —</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Archivos (PDF, imágenes o documentos · máx. 15 MB c/u)</label>
+          <div class="dropzone" id="dropzone">
+            <strong>Haz clic o arrastra aquí tus archivos</strong>
+            <div class="muted" id="file-list" style="margin-top:8px;font-size:.85rem">Ningún archivo seleccionado</div>
+          </div>
+          <input type="file" id="file-input" multiple class="hidden"
+                 accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx,.xls,.xlsx" />
+        </div>
+        <button type="submit" class="btn btn--block" id="upload-submit">Subir</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/common.js"></script>
+  <script src="/js/portal.js"></script>
+</body>
+</html>

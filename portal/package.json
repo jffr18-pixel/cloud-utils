@@ -1,0 +1,22 @@
+{
+  "name": "burocracia-zero-portal",
+  "version": "1.0.0",
+  "description": "Portal de clientes de Burocracia Zero: subida de documentación y seguimiento de trámites.",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node --experimental-sqlite --disable-warning=ExperimentalWarning server.js",
+    "seed": "node --experimental-sqlite --disable-warning=ExperimentalWarning src/seed.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.2.0"
+  }
+}
