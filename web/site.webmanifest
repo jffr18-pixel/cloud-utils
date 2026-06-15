@@ -1,0 +1,17 @@
+{
+  "name": "Burocracia Zero",
+  "short_name": "BurocraciaZero",
+  "description": "Gestoría y trámites administrativos en Toledo: extranjería, Hacienda, Seguridad Social, autónomos y empresas.",
+  "lang": "es",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0a2540",
+  "icons": [
+    {
+      "src": "/img/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a2540"/>
+      <stop offset="0.6" stop-color="#14457a"/>
+      <stop offset="1" stop-color="#0e7a63"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <circle cx="1050" cy="120" r="260" fill="#16a085" opacity="0.18"/>
+  <circle cx="120" cy="560" r="220" fill="#14457a" opacity="0.4"/>
+
+  <!-- Logo -->
+  <g transform="translate(90,90)">
+    <rect width="84" height="84" rx="20" fill="#16a085"/>
+    <path d="M22 30h40M22 42h40M22 54h24" stroke="#fff" stroke-width="5.5" stroke-linecap="round"/>
+  </g>
+  <text x="200" y="148" font-family="Poppins, Arial, sans-serif" font-size="40" font-weight="700" fill="#ffffff">Burocracia<tspan fill="#16a085">Zero</tspan></text>
+
+  <!-- Headline -->
+  <text x="90" y="320" font-family="Poppins, Arial, sans-serif" font-size="72" font-weight="800" fill="#ffffff">Olvídate del papeleo.</text>
+  <text x="90" y="400" font-family="Poppins, Arial, sans-serif" font-size="72" font-weight="800" fill="#16a085">Lo gestionamos por ti.</text>
+
+  <text x="90" y="470" font-family="Inter, Arial, sans-serif" font-size="32" fill="#cfe0ee">Gestoría en Toledo · Extranjería · Hacienda · Seguridad Social</text>
+
+  <!-- CTA pill -->
+  <rect x="90" y="510" width="340" height="64" rx="32" fill="#16a085"/>
+  <text x="260" y="551" font-family="Poppins, Arial, sans-serif" font-size="28" font-weight="600" fill="#ffffff" text-anchor="middle">Presupuesto gratis</text>
+
+  <text x="1110" y="595" font-family="Inter, Arial, sans-serif" font-size="26" fill="#cfe0ee" text-anchor="end">www.burocraciazero.es</text>
+</svg>

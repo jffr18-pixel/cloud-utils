@@ -1,0 +1,6 @@
+# robots.txt - Burocracia Zero
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://www.burocraciazero.es/sitemap.xml
