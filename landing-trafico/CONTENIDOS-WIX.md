@@ -8,6 +8,17 @@ Este paquete tiene **dos formas de usarse**, tal y como pediste:
 Colores de marca usados: lila `#C9C8FC`, amarillo `#FFEA63`, negro `#15141c`, blanco `#FFFFFF`.
 Estilo: minimalista y sobrio. Acción principal: **WhatsApp**.
 
+## 📁 Archivos de este paquete
+
+| Archivo | Para qué sirve |
+|---|---|
+| `index.html` | La landing lista para incrustar en Wix (o abrir en el navegador). |
+| `CONTENIDOS-WIX.md` | Este documento: textos + cómo montarla en Wix + SEO básico. |
+| `TEXTOS-LEGALES.md` | Aviso Legal, Privacidad y Cookies para copiar/pegar + checklist de datos a rellenar. |
+| `legal/aviso-legal.html` · `legal/politica-privacidad.html` · `legal/politica-cookies.html` | Las 3 páginas legales ya diseñadas con el estilo de la web. |
+| `SEO-AVANZADO.md` | Plan SEO detallado por trámite (local Toledo + nacional) para salir en Google. |
+| `PROPUESTAS-MEJORA.md` | Propuestas de mejora priorizadas (conversión, captación, automatización…). |
+
 ---
 
 ## ✅ Tus datos ya están metidos
