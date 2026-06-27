@@ -282,6 +282,21 @@
   .calc-guarantee svg{width:18px;height:18px;flex:0 0 auto}
   .calc-card .btn-wa{margin-top:1.3rem}
   .calc-note{font-size:.82rem;color:var(--muted);margin-top:1rem;max-width:58ch;margin-left:auto;margin-right:auto}
+  .calc-fields{display:grid;grid-template-columns:1fr 1fr;gap:.9rem;max-width:520px;margin:0 auto 1rem;text-align:left}
+  @media(max-width:560px){.calc-fields{grid-template-columns:1fr}}
+  .calc-field{display:flex;flex-direction:column;gap:.3rem}
+  .calc-field label{font-size:.85rem;font-weight:600;color:var(--accent)}
+  .calc-field label span{font-weight:500;color:var(--muted)}
+  .calc-field select,.calc-field input{font:inherit;padding:.65rem .75rem;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);width:100%}
+  .calc-field select:focus,.calc-field input:focus{outline:2px solid var(--brand-lav);border-color:var(--brand-lav)}
+  .calc-breakdown{max-width:520px;margin:0 auto;background:var(--bg-soft);border:1px solid var(--line);border-radius:12px;padding:.4rem 1rem}
+  .cb-row{display:flex;justify-content:space-between;align-items:baseline;gap:1rem;padding:.55rem 0;border-top:1px solid var(--line);text-align:left}
+  .cb-row:first-child{border-top:0}
+  .cb-row > span{font-weight:600}
+  .cb-row span small{display:block;font-weight:400;color:var(--muted);font-size:.78rem}
+  .cb-row b{white-space:nowrap;font-size:1.05rem;color:var(--accent)}
+  .cb-total{border-top:2px solid var(--accent)}
+  .cb-total b{font-size:1.45rem}
 
   /* ====== FOOTER ====== */
   footer.site{background:var(--accent);color:#cdd8e8;padding:2.8rem 0 1.6rem;font-size:.95rem}
@@ -385,21 +400,34 @@
     <div class="section-head">
       <span class="eyebrow">Precio al instante</span>
       <h2>Calcula tu transferencia</h2>
-      <p class="lead">Precio cerrado y con las <strong>tasas de la DGT incluidas</strong>. Sin sorpresas.</p>
+      <p class="lead">Elige tu vehículo y tu comunidad: te mostramos la gestión <strong>todo incluido</strong> (con tasa de la DGT) y una <strong>estimación del ITP</strong> de tu comunidad.</p>
     </div>
     <div class="calc-card">
-      <p class="lead-min">Tu transferencia de…</p>
+      <p class="lead-min">1 · ¿Qué vehículo quieres transferir?</p>
       <div class="calc-types" id="calcTypes"></div>
-      <div class="calc-price"><span id="calcAmount">—</span><small> € todo incluido</small></div>
-      <p class="calc-incl">Honorarios + tasa de la DGT incluidos</p>
+      <div class="calc-fields">
+        <div class="calc-field">
+          <label for="calcCCAA">2 · ¿En qué comunidad resides? <span>(para el ITP)</span></label>
+          <select id="calcCCAA"></select>
+        </div>
+        <div class="calc-field">
+          <label for="calcValor">3 · Valor del vehículo <span>(orientativo, €)</span></label>
+          <input id="calcValor" type="number" min="0" step="100" inputmode="numeric" placeholder="Ej. 6000">
+        </div>
+      </div>
+      <div class="calc-breakdown">
+        <div class="cb-row"><span>Gestión <small>todo incluido · honorarios + tasa DGT</small></span><b><span id="cbGestion">—</span> €</b></div>
+        <div class="cb-row"><span>ITP estimado <small id="cbItpLabel">impuesto de transmisiones</small></span><b><span id="cbItp">—</span> €</b></div>
+        <div class="cb-row cb-total"><span>Total estimado</span><b><span id="cbTotal">—</span> €</b></div>
+      </div>
       <div class="calc-stats">
         <span><b data-field="ratingGoogle">4,9</b>★ valoración</span>
-        <span><b data-field="numTransferencias">+5.000</b> trámites realizados</span>
+        <span><b data-field="numTransferencias">+5.000</b> trámites</span>
         <span><b>Gestoría colegiada</b> · nº 0146</span>
       </div>
       <div><span class="calc-guarantee"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5z"/><path d="m9 12 2 2 4-4"/></svg><span data-field="garantiaTexto">Garantía: si no podemos tramitarlo, te devolvemos el importe</span></span></div>
       <a class="btn btn-wa" data-wa="calc"><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64C22.15 26.08 27.09 21.15 27.09 15.04 27.09 8.93 22.15 4 16.04 4z"/></svg>Empezar mi transferencia</a>
-      <p class="calc-note" data-field="calcNota">Precio orientativo con la tasa de la DGT incluida. El ITP (impuesto de transmisiones) se calcula aparte según el vehículo y tu comunidad autónoma; te confirmamos el precio exacto al revisar tu caso.</p>
+      <p class="calc-note" data-field="calcNota">El ITP es orientativo: su base real es el valor fiscal oficial del vehículo (tablas de Hacienda con depreciación por antigüedad) y depende del tipo de tu comunidad, con posibles exenciones o cuotas reducidas. Te confirmamos el importe exacto al revisar tu caso.</p>
     </div>
   </div>
 </section>
@@ -752,7 +780,7 @@
     // ⚠️ Cambia estos importes de ejemplo por tus precios reales.
     numTransferencias: "+5.000",   // nº de trámites realizados (pon tu cifra real o déjalo orientativo)
     garantiaTexto:   "Garantía: si no podemos tramitarlo, te devolvemos el importe",
-    calcNota:        "Precio orientativo con la tasa de la DGT incluida. El ITP (impuesto de transmisiones) se calcula aparte según el vehículo y tu comunidad autónoma; te confirmamos el precio exacto al revisar tu caso.",
+    calcNota:        "El ITP es orientativo: su base real es el valor fiscal oficial del vehículo (tablas de Hacienda con depreciación por antigüedad) y depende del tipo de tu comunidad, con posibles exenciones o cuotas reducidas. Te confirmamos el importe exacto al revisar tu caso.",
     calculadora: {
       activa: true,
       precios: {
@@ -761,6 +789,23 @@
         "Ciclomotor":           "79",
         "Furgoneta":            "139",
         "Remolque / caravana":  "99"
+      }
+    },
+
+    // --- ITP (impuesto de transmisiones) para la calculadora ---
+    // ⚠️ TIPOS ORIENTATIVOS para transmisión de vehículos usados. Como gestor colegiado,
+    //    VERIFICA y actualiza los tipos vigentes de cada comunidad (cambian por año y tienen
+    //    reglas especiales, cuotas fijas y exenciones). La base real del ITP es el valor fiscal
+    //    oficial (tablas de Hacienda con depreciación), no el precio de compra: esto es solo una
+    //    estimación orientativa.
+    itp: {
+      tiposPorCCAA: {
+        "Andalucía": 4, "Aragón": 4, "Asturias": 4, "Baleares": 4,
+        "Canarias": 5.5, "Cantabria": 8, "Castilla-La Mancha": 6,
+        "Castilla y León": 5, "Cataluña": 5, "Ceuta": 4,
+        "Comunidad Valenciana": 6, "Extremadura": 6, "Galicia": 8,
+        "La Rioja": 4, "Madrid": 4, "Melilla": 4, "Murcia": 4,
+        "Navarra": 4, "País Vasco": 4
       }
     },
 
@@ -908,31 +953,50 @@
       });
     }
 
-    // 4f) Calculadora de transferencia
+    // 4f) Calculadora de transferencia (gestión + ITP estimado por comunidad)
     (function(){
       var cfg = CONFIG.calculadora;
+      var itp = CONFIG.itp || {};
       var typesEl = document.getElementById("calcTypes");
-      var amountEl = document.getElementById("calcAmount");
+      var ccaaEl  = document.getElementById("calcCCAA");
+      var valorEl = document.getElementById("calcValor");
+      var cbG = document.getElementById("cbGestion"), cbI = document.getElementById("cbItp"),
+          cbT = document.getElementById("cbTotal"), cbItpLabel = document.getElementById("cbItpLabel");
       var cta = document.querySelector('[data-wa="calc"]');
-      if (!cfg || cfg.activa === false || !typesEl || !amountEl) return;
-      var keys = Object.keys(cfg.precios || {});
-      function select(k){
-        amountEl.textContent = cfg.precios[k];
-        Array.prototype.forEach.call(typesEl.children, function(b){ b.classList.toggle("active", b.getAttribute("data-k") === k); });
+      if (!cfg || cfg.activa === false || !typesEl) return;
+      var tipos = itp.tiposPorCCAA || {};
+      var vehKeys = Object.keys(cfg.precios || {});
+      var ccaaKeys = Object.keys(tipos);
+      var state = { veh: vehKeys[0], ccaa: ccaaKeys[0] || null };
+      function eur(n){ return Math.round(n).toLocaleString("es-ES"); }
+      function paint(){
+        var gestion = parseFloat(cfg.precios[state.veh]) || 0;
+        var rate = (state.ccaa && tipos[state.ccaa] != null) ? tipos[state.ccaa] : null;
+        var valor = parseFloat(valorEl && valorEl.value) || 0;
+        var itpEur = (rate != null && valor > 0) ? valor * rate / 100 : 0;
+        if (cbG) cbG.textContent = eur(gestion);
+        if (cbI) cbI.textContent = (rate != null && valor > 0) ? eur(itpEur) : "—";
+        if (cbItpLabel) cbItpLabel.textContent = state.ccaa ? (state.ccaa + " · ~" + (rate != null ? rate : "?") + "%") : "impuesto de transmisiones";
+        if (cbT) cbT.textContent = eur(gestion + itpEur);
+        Array.prototype.forEach.call(typesEl.children, function(b){ b.classList.toggle("active", b.getAttribute("data-k") === state.veh); });
         if (cta) {
-          var msg = "Hola, quiero hacer una transferencia de " + k + ". ¿Me confirmáis precio y documentos?";
+          var msg = "Hola, quiero hacer una transferencia de " + state.veh + (state.ccaa ? (" en " + state.ccaa) : "") + ". ¿Me confirmáis el precio total con el ITP?";
           cta.setAttribute("href", "https://wa.me/" + CONFIG.whatsapp + "?text=" + enc(msg));
-          cta.setAttribute("target", "_blank");
-          cta.setAttribute("rel", "noopener noreferrer");
+          cta.setAttribute("target", "_blank"); cta.setAttribute("rel", "noopener noreferrer");
         }
       }
-      keys.forEach(function(k){
+      vehKeys.forEach(function(k){
         var btn = document.createElement("button");
         btn.type = "button"; btn.className = "calc-type"; btn.textContent = k; btn.setAttribute("data-k", k);
-        btn.addEventListener("click", function(){ select(k); });
+        btn.addEventListener("click", function(){ state.veh = k; paint(); });
         typesEl.appendChild(btn);
       });
-      if (keys.length) select(keys[0]);
+      if (ccaaEl) {
+        ccaaKeys.forEach(function(c){ var o = document.createElement("option"); o.value = c; o.textContent = c; ccaaEl.appendChild(o); });
+        ccaaEl.addEventListener("change", function(){ state.ccaa = ccaaEl.value; paint(); });
+      }
+      if (valorEl) valorEl.addEventListener("input", paint);
+      paint();
     })();
 
     // 5) Precios "desde" en las tarjetas
