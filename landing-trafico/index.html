@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- ╔══════════════════════════════════════════════════════════════════════╗
+     ║  LANDING TRÁMITES DE TRÁFICO · Burocracia Zero                        ║
+     ║  Estilo: minimalista y sobrio · CTA principal: WhatsApp              ║
+     ║                                                                      ║
+     ║  👉 SOLO TIENES QUE EDITAR EL BLOQUE "CONFIG" DE ABAJO (en el <script>║
+     ║     justo antes de </body>). Todos los teléfonos, WhatsApp, email,    ║
+     ║     precios y textos clave salen de ahí. No hace falta tocar nada más.║
+     ╚══════════════════════════════════════════════════════════════════════╝ -->
+
+<title>Trámites de Tráfico online | Transferencias, Matriculaciones y Bajas · Burocracia Zero</title>
+<meta name="description" content="Gestoría en Toledo para tus trámites de tráfico: transferencias en menos de 48 h, cambios de titularidad, matriculaciones e importación, bajas de vehículos y trámites DGT. Gestión 100% online en toda España. Escríbenos por WhatsApp.">
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#15141c">
+
+<!-- Open Graph (para que se vea bien al compartir en WhatsApp / redes) -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Trámites de Tráfico online | Burocracia Zero">
+<meta property="og:description" content="Transferencias en menos de 48 h, matriculaciones, bajas y trámites DGT sin pisar la jefatura. 100% online, toda España.">
+<meta property="og:locale" content="es_ES">
+
+<style>
+  /* ====== PALETA Y VARIABLES (cambia --accent por tu color corporativo) ====== */
+  :root{
+    /* ====== COLORES DE MARCA · Burocracia Zero ====== */
+    --accent:      #15141c;   /* negro de marca: textos, botones, footer */
+    --accent-soft: #2c2550;   /* variante para degradados/hover */
+    --brand-lav:   #C9C8FC;   /* lila corporativo */
+    --brand-yellow:#FFEA63;   /* amarillo corporativo (resaltados) */
+    --wa:          #25D366;   /* verde WhatsApp (no lo cambies) */
+    --wa-dark:     #128C7E;
+    --ink:         #15141c;   /* texto principal */
+    --muted:       #5d5b6b;   /* texto secundario */
+    --line:        #e7e6f2;   /* líneas/bordes */
+    --bg:          #ffffff;
+    --bg-soft:     #f3f2fe;   /* fondo lila muy suave para secciones alternas */
+    --radius:      18px;
+    --maxw:        1120px;
+    --shadow:      0 6px 24px rgba(21,20,28,.07);
+    --shadow-lg:   0 14px 40px rgba(21,20,28,.13);
+  }
+
+  /* ====== RESET LIGERO ====== */
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,"Helvetica Neue",sans-serif;
+    color:var(--ink);background:var(--bg);line-height:1.6;font-size:17px;
+    -webkit-font-smoothing:antialiased;
+  }
+  img{max-width:100%;display:block}
+  a{color:inherit;text-decoration:none}
+  ul{list-style:none}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 22px}
+
+  h1,h2,h3{line-height:1.18;letter-spacing:-.01em;color:var(--ink);font-weight:700}
+  h1{font-size:clamp(1.9rem,4.6vw,3.05rem)}
+  h2{font-size:clamp(1.55rem,3.4vw,2.25rem)}
+  h3{font-size:1.12rem}
+  .lead{font-size:clamp(1.05rem,2vw,1.22rem);color:var(--muted)}
+  .eyebrow{font-size:.82rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+
+  /* ====== BOTONES ====== */
+  .btn{display:inline-flex;align-items:center;gap:.55rem;font-weight:600;font-size:1rem;
+    padding:.95rem 1.5rem;border-radius:999px;cursor:pointer;border:2px solid transparent;
+    transition:transform .12s ease,box-shadow .2s ease,background .2s ease;white-space:nowrap}
+  .btn:active{transform:translateY(1px)}
+  .btn-wa{background:var(--wa);color:#fff;box-shadow:0 8px 22px rgba(37,211,102,.32)}
+  .btn-wa:hover{background:var(--wa-dark);box-shadow:0 10px 26px rgba(18,140,126,.34)}
+  .btn-ghost{background:transparent;color:var(--accent);border-color:var(--line)}
+  .btn-ghost:hover{border-color:var(--accent);background:var(--bg-soft)}
+  .btn-light{background:#fff;color:var(--accent)}
+  .btn-light:hover{background:#eef2f8}
+  .btn svg{width:20px;height:20px;flex:0 0 auto}
+
+  /* ====== HEADER ====== */
+  header.site{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.92);
+    backdrop-filter:saturate(180%) blur(8px);border-bottom:1px solid var(--line)}
+  .nav{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.7rem 0}
+  .brand{display:flex;align-items:center;gap:.6rem;font-weight:800;font-size:1.18rem;color:var(--accent);letter-spacing:-.02em}
+  .brand .logo-dot{width:32px;height:32px;border-radius:10px;background:var(--brand-lav);
+    display:grid;place-items:center;color:var(--accent);font-size:.9rem;font-weight:800}
+  .nav-actions{display:flex;align-items:center;gap:.7rem}
+  .nav-tel{display:inline-flex;align-items:center;gap:.4rem;font-weight:600;color:var(--accent)}
+  .nav-tel svg{width:18px;height:18px}
+  @media(max-width:620px){.nav-tel span{display:none}}
+
+  /* ====== HERO ====== */
+  .hero{padding:clamp(2.6rem,6vw,4.6rem) 0 clamp(2.2rem,5vw,3.6rem);
+    background:radial-gradient(1200px 480px at 78% -12%,#ECEBFE 0,transparent 62%)}
+  .hero-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:clamp(1.6rem,4vw,3.2rem);align-items:center}
+  @media(max-width:880px){.hero-grid{grid-template-columns:1fr}}
+  .hero h1{margin:.7rem 0 .9rem}
+  .hero .lead{max-width:38ch}
+  .hero-badge{display:inline-flex;align-items:center;gap:.45rem;background:var(--brand-yellow);
+    color:#15141c;font-weight:700;font-size:.85rem;padding:.42rem .85rem;border-radius:999px;border:1px solid rgba(0,0,0,.06)}
+  .hero-badge svg{width:16px;height:16px;flex:0 0 auto}
+  .hero-cta{display:flex;flex-wrap:wrap;gap:.7rem;margin:1.5rem 0 1.1rem}
+  .hero-trust{display:flex;flex-wrap:wrap;gap:1rem 1.4rem;margin-top:.8rem;color:var(--muted);font-size:.93rem}
+  .hero-trust li{display:flex;align-items:center;gap:.45rem}
+  .hero-trust svg{width:18px;height:18px;color:var(--wa)}
+
+  /* tarjeta lateral del hero */
+  .hero-card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow-lg);padding:1.6rem}
+  .hero-card h3{font-size:1.05rem;margin-bottom:.2rem}
+  .hero-card .sub{color:var(--muted);font-size:.93rem;margin-bottom:1rem}
+  .hero-card .row{display:flex;align-items:center;gap:.75rem;padding:.7rem 0;border-top:1px solid var(--line)}
+  .hero-card .row:first-of-type{border-top:0}
+  .hero-card .ic{width:38px;height:38px;border-radius:10px;background:var(--bg-soft);
+    display:grid;place-items:center;flex:0 0 auto;color:var(--accent)}
+  .hero-card .ic svg{width:20px;height:20px}
+  .hero-card .row b{display:block;font-size:.97rem}
+  .hero-card .row small{color:var(--muted)}
+  .hero-card .btn{width:100%;justify-content:center;margin-top:1.1rem}
+
+  /* ====== BARRA DE CONFIANZA ====== */
+  .trustbar{border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--bg-soft)}
+  .trustbar ul{display:flex;flex-wrap:wrap;justify-content:center;gap:1rem 2.4rem;padding:1rem 0;
+    text-align:center;color:var(--muted);font-weight:600;font-size:.95rem}
+  .trustbar li{display:flex;align-items:center;gap:.5rem}
+  .trustbar svg{width:20px;height:20px;color:var(--accent)}
+
+  /* ====== SECCIONES ====== */
+  section.block{padding:clamp(2.8rem,6vw,4.6rem) 0}
+  .section-head{max-width:62ch;margin:0 auto clamp(1.8rem,4vw,2.6rem);text-align:center}
+  .section-head h2{margin:.5rem 0 .6rem}
+
+  /* ====== TRÁMITES (grid de tarjetas) ====== */
+  .cards{display:grid;grid-template-columns:repeat(2,1fr);gap:1.1rem}
+  @media(max-width:760px){.cards{grid-template-columns:1fr}}
+  .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:1.5rem;
+    box-shadow:var(--shadow);display:flex;flex-direction:column;transition:transform .15s ease,box-shadow .2s ease,border-color .2s}
+  .card:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg);border-color:#d4dcea}
+  .card .ic{width:48px;height:48px;border-radius:12px;background:var(--accent);color:#fff;
+    display:grid;place-items:center;margin-bottom:1rem}
+  .card .ic svg{width:25px;height:25px}
+  .card h3{margin-bottom:.5rem}
+  .card p{color:var(--muted);font-size:.97rem;margin-bottom:1rem}
+  .card ul.mini{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:1.2rem}
+  .card ul.mini li{font-size:.82rem;background:var(--bg-soft);border:1px solid var(--line);
+    color:var(--muted);padding:.28rem .65rem;border-radius:999px}
+  .card .price{font-weight:700;color:var(--accent);margin-bottom:1rem;font-size:.98rem}
+  .card .price small{font-weight:500;color:var(--muted)}
+  .card .card-cta{margin-top:auto}
+  .card .card-cta a{display:inline-flex;align-items:center;gap:.4rem;font-weight:600;color:var(--wa-dark)}
+  .card .card-cta svg{width:18px;height:18px}
+
+  /* ====== CÓMO FUNCIONA (pasos) ====== */
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:1.4rem;counter-reset:step}
+  @media(max-width:760px){.steps{grid-template-columns:1fr}}
+  .step{position:relative;padding:1.6rem 1.4rem;background:#fff;border:1px solid var(--line);
+    border-radius:var(--radius);box-shadow:var(--shadow)}
+  .step .num{counter-increment:step;width:42px;height:42px;border-radius:50%;background:var(--accent);
+    color:#fff;display:grid;place-items:center;font-weight:800;font-size:1.1rem;margin-bottom:.9rem}
+  .step .num::before{content:counter(step)}
+  .step h3{margin-bottom:.4rem}
+  .step p{color:var(--muted);font-size:.96rem}
+
+  /* ====== VENTAJAS ====== */
+  .why{background:var(--bg-soft)}
+  .why-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:1.1rem 2rem;max-width:920px;margin:0 auto}
+  @media(max-width:680px){.why-grid{grid-template-columns:1fr}}
+  .why-item{display:flex;gap:.9rem;align-items:flex-start}
+  .why-item .ic{width:42px;height:42px;border-radius:11px;background:#fff;border:1px solid var(--line);
+    display:grid;place-items:center;flex:0 0 auto;color:var(--accent)}
+  .why-item .ic svg{width:22px;height:22px}
+  .why-item b{display:block;margin-bottom:.15rem}
+  .why-item p{color:var(--muted);font-size:.95rem}
+
+  /* ====== FRANJA CTA ====== */
+  .cta-band{background:linear-gradient(135deg,var(--accent),var(--accent-soft));color:#fff;text-align:center}
+  .cta-band h2{color:#fff}
+  .cta-band p{color:#d6e0ee;max-width:54ch;margin:.7rem auto 1.5rem}
+  .cta-band .btn-wa{box-shadow:0 10px 30px rgba(0,0,0,.25)}
+
+  /* ====== FAQ (acordeón) ====== */
+  .faq{max-width:760px;margin:0 auto}
+  .faq details{border:1px solid var(--line);border-radius:12px;margin-bottom:.7rem;background:#fff;overflow:hidden}
+  .faq summary{list-style:none;cursor:pointer;padding:1.05rem 1.2rem;font-weight:600;
+    display:flex;justify-content:space-between;align-items:center;gap:1rem}
+  .faq summary::-webkit-details-marker{display:none}
+  .faq summary .chev{transition:transform .2s ease;flex:0 0 auto;color:var(--accent)}
+  .faq details[open] summary .chev{transform:rotate(180deg)}
+  .faq .ans{padding:0 1.2rem 1.15rem;color:var(--muted);font-size:.97rem}
+
+  /* ====== FOOTER ====== */
+  footer.site{background:var(--accent);color:#cdd8e8;padding:2.8rem 0 1.6rem;font-size:.95rem}
+  .foot-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:1.8rem}
+  @media(max-width:760px){.foot-grid{grid-template-columns:1fr}}
+  footer.site .brand{color:#fff}
+  footer.site .brand .logo-dot{background:#fff;color:var(--accent)}
+  footer.site h4{color:#fff;font-size:.95rem;margin-bottom:.7rem;letter-spacing:.02em}
+  footer.site a:hover{color:#fff;text-decoration:underline}
+  footer.site .foot-list li{margin-bottom:.45rem}
+  footer.site .foot-contact li{display:flex;align-items:center;gap:.55rem;margin-bottom:.55rem}
+  footer.site .foot-contact svg{width:17px;height:17px;flex:0 0 auto}
+  .foot-bottom{border-top:1px solid rgba(255,255,255,.15);margin-top:2rem;padding-top:1.1rem;
+    display:flex;flex-wrap:wrap;justify-content:space-between;gap:.6rem;color:#9fb0c8;font-size:.85rem}
+  .legal-note{font-size:.82rem;color:#9fb0c8;margin-top:.6rem;line-height:1.5}
+
+  /* ====== BOTÓN FLOTANTE WHATSAPP ====== */
+  .wa-float{position:fixed;right:18px;bottom:18px;z-index:60;display:inline-flex;align-items:center;gap:.6rem;
+    background:var(--wa);color:#fff;font-weight:700;padding:.85rem 1.1rem;border-radius:999px;
+    box-shadow:0 10px 28px rgba(37,211,102,.45);transition:transform .15s ease,box-shadow .2s}
+  .wa-float:hover{transform:translateY(-2px);background:var(--wa-dark)}
+  .wa-float svg{width:26px;height:26px}
+  @media(max-width:520px){.wa-float .label{display:none}.wa-float{padding:.95rem;border-radius:50%}}
+
+  /* accesibilidad: foco visible */
+  a:focus-visible,.btn:focus-visible,summary:focus-visible{outline:3px solid #9cc2ff;outline-offset:2px;border-radius:8px}
+</style>
+</head>
+<body>
+
+<!-- ══════════════ HEADER ══════════════ -->
+<header class="site">
+  <div class="wrap nav">
+    <a class="brand" href="#inicio" aria-label="Inicio">
+      <span class="logo-dot">BZ</span>
+      <span data-field="nombreEmpresa">Burocracia Zero</span>
+    </a>
+    <div class="nav-actions">
+      <a class="nav-tel" data-tel href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span data-field="telefono">Llámanos</span></a>
+      <a class="btn btn-wa" data-wa="hero_header"><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64h.01c6.1 0 11.04-4.93 11.04-11.04C27.09 8.93 22.15 4 16.04 4zm0 20.2c-1.12 0-2.22-.3-3.18-.86l-.23-.14-3.79.99 1.01-3.7-.15-.24a8.99 8.99 0 0 1-1.39-4.86c0-5.02 4.09-9.1 9.12-9.1 2.44 0 4.73.95 6.46 2.67a9.02 9.02 0 0 1 2.67 6.43c0 5.03-4.09 9.11-9.13 9.11zm5.01-6.82c-.27-.14-1.62-.8-1.87-.89-.25-.09-.43-.14-.62.14-.18.27-.71.89-.87 1.07-.16.18-.32.2-.59.07-.27-.14-1.16-.43-2.2-1.36-.81-.72-1.36-1.62-1.52-1.89-.16-.27-.02-.42.12-.55.12-.12.27-.32.41-.48.14-.16.18-.27.27-.46.09-.18.05-.34-.02-.48-.07-.14-.62-1.5-.85-2.05-.22-.53-.45-.46-.62-.47l-.53-.01c-.18 0-.48.07-.73.34-.25.27-.96.94-.96 2.3s.98 2.66 1.12 2.85c.14.18 1.93 2.95 4.68 4.14.65.28 1.16.45 1.56.58.66.21 1.25.18 1.72.11.52-.08 1.62-.66 1.85-1.3.23-.64.23-1.18.16-1.3-.07-.11-.25-.18-.52-.32z"/></svg>WhatsApp</a>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════════ HERO ══════════════ -->
+<section class="hero" id="inicio">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="hero-badge"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11l-1 8.5L19.5 10H13z"/></svg><span data-field="eslogan">Transferencias en menos de 48 h</span></span>
+      <span class="eyebrow" style="display:block;margin-top:.7rem">Gestoría en Toledo · Online en toda España</span>
+      <h1>Tus trámites de tráfico, hechos por nosotros. Tú, sin colas.</h1>
+      <p class="lead">Transferencias, matriculaciones, bajas y trámites con la DGT gestionados de principio a fin. Trabajamos de forma <strong>100% digital</strong> y por eso podemos hacer tus trámites de tráfico <strong>en toda España</strong>: solo nos envías la documentación por WhatsApp y nosotros nos encargamos del resto.</p>
+      <div class="hero-cta">
+        <a class="btn btn-wa" data-wa="hero_main"><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64h.01c6.1 0 11.04-4.93 11.04-11.04C27.09 8.93 22.15 4 16.04 4zm0 20.2c-1.12 0-2.22-.3-3.18-.86l-.23-.14-3.79.99 1.01-3.7-.15-.24a8.99 8.99 0 0 1-1.39-4.86c0-5.02 4.09-9.1 9.12-9.1 2.44 0 4.73.95 6.46 2.67a9.02 9.02 0 0 1 2.67 6.43c0 5.03-4.09 9.11-9.13 9.11zm5.01-6.82c-.27-.14-1.62-.8-1.87-.89-.25-.09-.43-.14-.62.14-.18.27-.71.89-.87 1.07-.16.18-.32.2-.59.07-.27-.14-1.16-.43-2.2-1.36-.81-.72-1.36-1.62-1.52-1.89-.16-.27-.02-.42.12-.55.12-.12.27-.32.41-.48.14-.16.18-.27.27-.46.09-.18.05-.34-.02-.48-.07-.14-.62-1.5-.85-2.05-.22-.53-.45-.46-.62-.47l-.53-.01c-.18 0-.48.07-.73.34-.25.27-.96.94-.96 2.3s.98 2.66 1.12 2.85c.14.18 1.93 2.95 4.68 4.14.65.28 1.16.45 1.56.58.66.21 1.25.18 1.72.11.52-.08 1.62-.66 1.85-1.3.23-.64.23-1.18.16-1.3-.07-.11-.25-.18-.52-.32z"/></svg>Consulta gratis por WhatsApp</a>
+        <a class="btn btn-ghost" href="#tramites">Ver trámites</a>
+      </div>
+      <ul class="hero-trust">
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Sin desplazamientos</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Gestión 100% online</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Toda España</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Precio cerrado</li>
+      </ul>
+    </div>
+
+    <aside class="hero-card" aria-label="Resumen de contacto">
+      <h3>¿Qué trámite necesitas?</h3>
+      <p class="sub">Te damos presupuesto cerrado y te decimos qué papeles hacen falta. Sin compromiso.</p>
+      <div class="row">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0z"/><path d="M12 7v5l3 2"/></svg></span>
+        <div><b>Rápido</b><small>Empezamos en cuanto recibimos los documentos</small></div>
+      </div>
+      <div class="row">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5z"/><path d="m9 12 2 2 4-4"/></svg></span>
+        <div><b>Seguro y legal</b><small>Gestores profesionales revisan tu trámite</small></div>
+      </div>
+      <div class="row">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18M3 12h18M3 17h12"/></svg></span>
+        <div><b>Sin papeleo para ti</b><small>Nos ocupamos de todo el trámite con la DGT</small></div>
+      </div>
+      <a class="btn btn-wa" data-wa="hero_card"><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64h.01c6.1 0 11.04-4.93 11.04-11.04C27.09 8.93 22.15 4 16.04 4zm0 20.2c-1.12 0-2.22-.3-3.18-.86l-.23-.14-3.79.99 1.01-3.7-.15-.24a8.99 8.99 0 0 1-1.39-4.86c0-5.02 4.09-9.1 9.12-9.1 2.44 0 4.73.95 6.46 2.67a9.02 9.02 0 0 1 2.67 6.43c0 5.03-4.09 9.11-9.13 9.11z"/></svg>Pedir presupuesto</a>
+    </aside>
+  </div>
+</section>
+
+<!-- ══════════════ BARRA DE CONFIANZA ══════════════ -->
+<div class="trustbar">
+  <div class="wrap">
+    <ul>
+      <li><svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11l-1 8.5L19.5 10H13z"/></svg>Transferencias en menos de 48 h</li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7 9 18l-5-5"/></svg>Presupuesto sin compromiso</li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>Atención personal por WhatsApp</li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Toda España</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ══════════════ TRÁMITES ══════════════ -->
+<section class="block" id="tramites">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Lo que hacemos</span>
+      <h2>Trámites de tráfico que gestionamos</h2>
+      <p class="lead">Elige tu trámite y escríbenos. Te decimos el precio cerrado y exactamente qué documentos necesitas.</p>
+    </div>
+
+    <div class="cards">
+
+      <!-- Transferencias -->
+      <article class="card">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h13l-2-3"/><path d="M21 15H8l2 3"/></svg></span>
+        <h3>Transferencias y cambio de titularidad</h3>
+        <p>Compraventa de coches, motos, ciclomotores, remolques y caravanas. Lo dejamos todo a tu nombre (o del comprador) sin que tengas que ir a la jefatura.</p>
+        <ul class="mini">
+          <li>Compraventa</li><li>Notificación de venta</li><li>Transferencia por herencia</li><li>Ciclomotores</li>
+        </ul>
+        <p class="price" data-price="transferencia">Presupuesto sin compromiso</p>
+        <div class="card-cta"><a data-wa="card_transferencia"><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64h.01c6.1 0 11.04-4.93 11.04-11.04C27.09 8.93 22.15 4 16.04 4z"/></svg>Solicitar transferencia →</a></div>
+      </article>
+
+      <!-- Matriculaciones -->
+      <article class="card">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 7V5h10v2M7 12h2m6 0h2"/></svg></span>
+        <h3>Matriculaciones e importación</h3>
+        <p>Matrícula de vehículos nuevos, de importación (UE y fuera de la UE), rematriculaciones y matrículas históricas para clásicos. Nos encargamos también del impuesto de matriculación.</p>
+        <ul class="mini">
+          <li>Vehículos nuevos</li><li>Importación</li><li>Históricas</li><li>Rematriculación</li>
+        </ul>
+        <p class="price" data-price="matriculacion">Presupuesto sin compromiso</p>
+        <div class="card-cta"><a data-wa="card_matriculacion"><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64h.01c6.1 0 11.04-4.93 11.04-11.04C27.09 8.93 22.15 4 16.04 4z"/></svg>Matricular mi vehículo →</a></div>
+      </article>
+
+      <!-- Bajas -->
+      <article class="card">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg></span>
+        <h3>Bajas de vehículos</h3>
+        <p>Baja definitiva por desguace (CAT), baja temporal voluntaria, por robo o por exportación. Dejamos el vehículo en regla ante la DGT para que dejes de pagar lo que no debes.</p>
+        <ul class="mini">
+          <li>Baja definitiva</li><li>Baja temporal</li><li>Por robo</li><li>Por exportación</li>
+        </ul>
+        <p class="price" data-price="baja">Presupuesto sin compromiso</p>
+        <div class="card-cta"><a data-wa="card_baja"><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64h.01c6.1 0 11.04-4.93 11.04-11.04C27.09 8.93 22.15 4 16.04 4z"/></svg>Dar de baja →</a></div>
+      </article>
+
+      <!-- Otros DGT -->
+      <article class="card">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H4z"/><path d="M8 20h8M9 8h6M9 12h4"/></svg></span>
+        <h3>Otros trámites con la DGT</h3>
+        <p>Todo lo demás que necesites resolver con Tráfico, sin pedir cita ni hacer cola. Si tu trámite no está en la lista, pregúntanos: seguramente también lo hacemos.</p>
+        <ul class="mini">
+          <li>Distintivo ambiental</li><li>Duplicado de permiso</li><li>Informe de vehículo</li><li>Cambio de domicilio</li><li>Duplicado ficha técnica</li>
+        </ul>
+        <p class="price" data-price="otros">Presupuesto sin compromiso</p>
+        <div class="card-cta"><a data-wa="card_otros"><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64h.01c6.1 0 11.04-4.93 11.04-11.04C27.09 8.93 22.15 4 16.04 4z"/></svg>Consultar mi trámite →</a></div>
+      </article>
+
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ CÓMO FUNCIONA ══════════════ -->
+<section class="block why" id="como-funciona">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Así de fácil</span>
+      <h2>Tu trámite en 3 pasos</h2>
+      <p class="lead">Sin desplazamientos, sin pedir cita en la DGT y sin entender de papeleo. Solo hablas con nosotros.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="num"></div>
+        <h3>Cuéntanos qué necesitas</h3>
+        <p>Escríbenos por WhatsApp el trámite que quieres hacer. Te damos presupuesto cerrado y la lista de documentos.</p>
+      </div>
+      <div class="step">
+        <div class="num"></div>
+        <h3>Nos pasas la documentación</h3>
+        <p>Nos envías una foto o el escaneo de los papeles. Revisamos que todo esté correcto antes de empezar.</p>
+      </div>
+      <div class="step">
+        <div class="num"></div>
+        <h3>Nosotros lo gestionamos</h3>
+        <p>Tramitamos todo ante la DGT y te entregamos la documentación lista. Tú no pisas la jefatura.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ VENTAJAS ══════════════ -->
+<section class="block">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Por qué elegirnos</span>
+      <h2>Gestoría de confianza, sin complicaciones</h2>
+    </div>
+    <div class="why-grid">
+      <div class="why-item">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0z"/><path d="M12 7v5l3 2"/></svg></span>
+        <div><b>Te ahorramos tiempo</b><p>Olvídate de citas, colas y formularios. Nosotros nos ocupamos de todo el proceso.</p></div>
+      </div>
+      <div class="why-item">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2 8 4-16 2 8h4"/></svg></span>
+        <div><b>Precio cerrado y transparente</b><p>Sabes lo que pagas antes de empezar. Te separamos siempre honorarios de tasas e impuestos.</p></div>
+      </div>
+      <div class="why-item">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5z"/><path d="m9 12 2 2 4-4"/></svg></span>
+        <div><b>Gestores profesionales</b><p>Tu trámite lo revisan profesionales del sector. Hecho bien a la primera, sin errores ni rechazos.</p></div>
+      </div>
+      <div class="why-item">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+        <div><b>Trato cercano por WhatsApp</b><p>Hablas con una persona, no con un robot. Resolvemos tus dudas y te avisamos en cada paso.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ FRANJA CTA ══════════════ -->
+<section class="block cta-band">
+  <div class="wrap">
+    <h2>¿Tienes un trámite de tráfico pendiente?</h2>
+    <p>Escríbenos por WhatsApp y te decimos en un momento cuánto cuesta y qué necesitas. La consulta es gratis y sin compromiso.</p>
+    <a class="btn btn-wa" data-wa="band"><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64h.01c6.1 0 11.04-4.93 11.04-11.04C27.09 8.93 22.15 4 16.04 4z"/></svg>Escríbenos por WhatsApp</a>
+  </div>
+</section>
+
+<!-- ══════════════ FAQ ══════════════ -->
+<section class="block" id="faq">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Dudas frecuentes</span>
+      <h2>Preguntas frecuentes</h2>
+    </div>
+    <div class="faq">
+      <details>
+        <summary>¿Tengo que ir a la DGT o a la jefatura de tráfico?
+          <svg class="chev" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></summary>
+        <div class="ans">No. Nos ocupamos nosotros de todo el trámite ante Tráfico. Tú solo tienes que enviarnos la documentación; no necesitas pedir cita ni hacer colas.</div>
+      </details>
+      <details>
+        <summary>¿Trabajáis en toda España?
+          <svg class="chev" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></summary>
+        <div class="ans">Sí. Al ser una gestión online, tramitamos para clientes de cualquier punto de España. Estés donde estés, nos envías los papeles por WhatsApp o email.</div>
+      </details>
+      <details>
+        <summary>¿El precio incluye las tasas y los impuestos?
+          <svg class="chev" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></summary>
+        <div class="ans">Te damos siempre el precio desglosado: por un lado nuestros honorarios y por otro las tasas de la DGT y los impuestos que correspondan. Sabes exactamente lo que pagas antes de empezar.</div>
+      </details>
+      <details>
+        <summary>¿Qué documentos necesito para mi trámite?
+          <svg class="chev" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></summary>
+        <div class="ans">Depende del trámite. Cuando nos escribas te enviamos la lista exacta de lo que necesitas (DNI, permiso de circulación, ficha técnica / ITV, contrato de compraventa, etc.). Te lo ponemos fácil.</div>
+      </details>
+      <details>
+        <summary>¿Cuánto tarda en estar listo?
+          <svg class="chev" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></summary>
+        <div class="ans">Empezamos en cuanto recibimos toda la documentación correcta. Los plazos dependen del tipo de trámite y de la propia DGT, pero te informamos del tiempo estimado antes de comenzar.</div>
+      </details>
+      <details>
+        <summary>¿Cómo os envío la documentación?
+          <svg class="chev" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></summary>
+        <div class="ans">Por donde te resulte más cómodo: una foto por WhatsApp o un escaneo por email es suficiente para empezar. Sencillo y sin moverte de casa.</div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ FOOTER ══════════════ -->
+<footer class="site">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a class="brand" href="#inicio"><span class="logo-dot">BZ</span><span data-field="nombreEmpresa">Burocracia Zero</span></a>
+        <p style="margin-top:.8rem;max-width:34ch">Tu gestoría para trámites de tráfico. Transferencias, matriculaciones, bajas y trámites DGT sin colas ni desplazamientos.</p>
+        <p class="legal-note">Honorarios de gestión. Las tasas de la DGT y los impuestos (ITP, IVTM, impuesto de matriculación, etc.) no están incluidos salvo que se indique lo contrario.</p>
+      </div>
+      <div>
+        <h4>Trámites</h4>
+        <ul class="foot-list">
+          <li><a href="#tramites">Transferencias</a></li>
+          <li><a href="#tramites">Matriculaciones e importación</a></li>
+          <li><a href="#tramites">Bajas de vehículos</a></li>
+          <li><a href="#tramites">Trámites DGT</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Contacto</h4>
+        <ul class="foot-contact">
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg><a data-tel href="#" data-field="telefono">Teléfono</a></li>
+          <li><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64C22.15 26.08 27.09 21.15 27.09 15.04 27.09 8.93 22.15 4 16.04 4z"/></svg><a data-wa="footer">WhatsApp</a></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg><a data-email href="#" data-field="email">Email</a></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><a data-map href="#" data-field="direccion">Dirección (Toledo)</a></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span data-field="horario">Horario</span></li>
+        </ul>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© <span data-field="nombreEmpresa">Burocracia Zero</span>. Todos los derechos reservados.</span>
+      <span>Aviso legal · Política de privacidad · Cookies</span>
+    </div>
+  </div>
+</footer>
+
+<!-- ══════════════ BOTÓN FLOTANTE WHATSAPP ══════════════ -->
+<a class="wa-float" data-wa="float" aria-label="Escríbenos por WhatsApp">
+  <svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64h.01c6.1 0 11.04-4.93 11.04-11.04C27.09 8.93 22.15 4 16.04 4zm0 20.2c-1.12 0-2.22-.3-3.18-.86l-.23-.14-3.79.99 1.01-3.7-.15-.24a8.99 8.99 0 0 1-1.39-4.86c0-5.02 4.09-9.1 9.12-9.1 2.44 0 4.73.95 6.46 2.67a9.02 9.02 0 0 1 2.67 6.43c0 5.03-4.09 9.11-9.13 9.11zm5.01-6.82c-.27-.14-1.62-.8-1.87-.89-.25-.09-.43-.14-.62.14-.18.27-.71.89-.87 1.07-.16.18-.32.2-.59.07-.27-.14-1.16-.43-2.2-1.36-.81-.72-1.36-1.62-1.52-1.89-.16-.27-.02-.42.12-.55.12-.12.27-.32.41-.48.14-.16.18-.27.27-.46.09-.18.05-.34-.02-.48-.07-.14-.62-1.5-.85-2.05-.22-.53-.45-.46-.62-.47l-.53-.01c-.18 0-.48.07-.73.34-.25.27-.96.94-.96 2.3s.98 2.66 1.12 2.85c.14.18 1.93 2.95 4.68 4.14.65.28 1.16.45 1.56.58.66.21 1.25.18 1.72.11.52-.08 1.62-.66 1.85-1.3.23-.64.23-1.18.16-1.3-.07-.11-.25-.18-.52-.32z"/></svg>
+  <span class="label">WhatsApp</span>
+</a>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ███  CONFIG · EDITA SOLO ESTO  ████████████████████████████████████████
+     Cambia los valores entre comillas por tus datos reales. Es lo único
+     que necesitas tocar: el resto de la página se rellena automáticamente.
+     ══════════════════════════════════════════════════════════════════════ -->
+<script>
+  const CONFIG = {
+    // --- DATOS DE LA EMPRESA ---
+    nombreEmpresa:   "Burocracia Zero",
+
+    // --- TELÉFONO (botón "Llamar") ---
+    // "telefono" se muestra; "telLink" se usa para llamar (internacional, sin espacios).
+    telefono:        "674 57 34 47",
+    telLink:         "+34674573447",
+
+    // --- WHATSAPP ---
+    // Número en formato internacional SIN "+", SIN espacios y SIN guiones.
+    // España: 34 + número  ->  "34674573447"
+    whatsapp:        "34674573447",
+
+    // --- EMAIL ---
+    email:           "jose@burocraciazero.es",
+
+    // --- DIRECCIÓN (footer + enlace a Google Maps) ---
+    direccion:       "Calle Río Alberche, 38 (Tiendas G), Local 32 · 45007 Toledo",
+
+    // --- HORARIO ---
+    horario:         "L–V de 10:00 a 14:00 y de 17:00 a 20:00",
+
+    // --- ESLOGAN (badge amarillo del hero) ---
+    eslogan:         "Transferencias en menos de 48 h",
+
+    // --- PRECIOS POR TARJETA ---
+    // Texto libre: pon "Desde 60 €" para mostrar precio, o "" para ocultar la línea.
+    precios: {
+      transferencia: "Presupuesto sin compromiso",
+      matriculacion: "Presupuesto sin compromiso",
+      baja:          "Presupuesto sin compromiso",
+      otros:         "Presupuesto sin compromiso"
+    },
+
+    // --- MENSAJE QUE SE ESCRIBE SOLO AL ABRIR WHATSAPP (según el botón) ---
+    mensajes: {
+      defecto:            "Hola, me gustaría información sobre un trámite de tráfico.",
+      hero_main:          "Hola, quiero hacer una consulta sobre un trámite de tráfico.",
+      hero_header:        "Hola, quiero información sobre vuestros trámites de tráfico.",
+      hero_card:          "Hola, me gustaría pedir un presupuesto para un trámite.",
+      card_transferencia: "Hola, quiero hacer una TRANSFERENCIA / cambio de titularidad de un vehículo.",
+      card_matriculacion: "Hola, necesito MATRICULAR / importar un vehículo.",
+      card_baja:          "Hola, quiero dar de BAJA un vehículo.",
+      card_otros:         "Hola, necesito hacer un trámite con la DGT (distintivo, duplicado, informe, etc.).",
+      band:               "Hola, tengo un trámite de tráfico pendiente y quiero información.",
+      footer:             "Hola, quiero información sobre vuestros trámites de tráfico.",
+      float:              "Hola, quiero información sobre un trámite de tráfico."
+    }
+  };
+
+  /* ====== A PARTIR DE AQUÍ NO HACE FALTA TOCAR NADA ====== */
+  (function(){
+    var enc = encodeURIComponent;
+
+    // 1) Construir todos los enlaces de WhatsApp
+    document.querySelectorAll("[data-wa]").forEach(function(el){
+      var key = el.getAttribute("data-wa");
+      var msg = (CONFIG.mensajes && CONFIG.mensajes[key]) || CONFIG.mensajes.defecto || "";
+      el.setAttribute("href", "https://wa.me/" + CONFIG.whatsapp + "?text=" + enc(msg));
+      el.setAttribute("target", "_blank");
+      el.setAttribute("rel", "noopener");
+    });
+
+    // 2) Enlaces de teléfono
+    document.querySelectorAll("[data-tel]").forEach(function(el){
+      el.setAttribute("href", "tel:" + CONFIG.telLink.replace(/\s+/g,""));
+    });
+
+    // 3) Enlaces de email
+    document.querySelectorAll("[data-email]").forEach(function(el){
+      el.setAttribute("href", "mailto:" + CONFIG.email);
+    });
+
+    // 3b) Enlace de la dirección a Google Maps
+    document.querySelectorAll("[data-map]").forEach(function(el){
+      el.setAttribute("href", "https://www.google.com/maps/search/?api=1&query=" + enc(CONFIG.direccion || ""));
+      el.setAttribute("target", "_blank");
+      el.setAttribute("rel", "noopener");
+    });
+
+    // 4) Rellenar textos (nombre, teléfono, email, horario, experiencia)
+    document.querySelectorAll("[data-field]").forEach(function(el){
+      var f = el.getAttribute("data-field");
+      if (f && CONFIG[f]) el.textContent = CONFIG[f];
+    });
+
+    // 5) Precios "desde" en las tarjetas
+    document.querySelectorAll("[data-price]").forEach(function(el){
+      var key = el.getAttribute("data-price");
+      var val = CONFIG.precios && CONFIG.precios[key];
+      if (val) { el.innerHTML = val; }
+      else { el.style.display = "none"; } // texto vacío -> ocultamos la línea de precio
+    });
+
+    // 6) (Opcional Wix) avisar de la altura al contenedor para auto-ajustar el iframe.
+    //    Funciona si en Wix añades un poco de código Velo (ver CONTENIDOS-WIX.md).
+    function postHeight(){
+      try { parent.postMessage({ type: "bz-landing-height", height: document.body.scrollHeight }, "*"); } catch(e){}
+    }
+    window.addEventListener("load", postHeight);
+    window.addEventListener("resize", postHeight);
+  })();
+</script>
+</body>
+</html>
