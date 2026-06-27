@@ -13,7 +13,7 @@
      ║     precios y textos clave salen de ahí. No hace falta tocar nada más.║
      ╚══════════════════════════════════════════════════════════════════════╝ -->
 
-<title>Trámites de Tráfico online | Transferencias, Matriculaciones y Bajas · Burocracia Zero</title>
+<title>Trámites de Tráfico en Toledo y online | Transferencias, Matriculaciones y Bajas · Burocracia Zero</title>
 <meta name="description" content="Gestoría en Toledo para tus trámites de tráfico: transferencias en menos de 48 h, cambios de titularidad, matriculaciones e importación, bajas de vehículos y trámites DGT. Gestión 100% online en toda España. Escríbenos por WhatsApp.">
 <meta name="robots" content="index, follow">
 <meta name="theme-color" content="#15141c">
@@ -32,6 +32,11 @@
 <meta name="twitter:title" content="Trámites de Tráfico online | Burocracia Zero">
 <meta name="twitter:description" content="Transferencias, matriculaciones, bajas y trámites DGT sin pisar la jefatura. 100% online, toda España.">
 <meta name="twitter:image" content="https://www.burocraciazero.es/og-burocracia-zero.jpg">
+
+<!-- Tipografía redondeada para el logotipo (si no carga, usa la del sistema) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
 
 <style>
   /* ====== PALETA Y VARIABLES (cambia --accent por tu color corporativo) ====== */
@@ -91,9 +96,10 @@
   header.site{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.92);
     backdrop-filter:saturate(180%) blur(8px);border-bottom:1px solid var(--line)}
   .nav{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.7rem 0}
-  .brand{display:flex;align-items:center;gap:.6rem;font-weight:800;font-size:1.18rem;color:var(--accent);letter-spacing:-.02em}
-  .brand .logo-dot{width:32px;height:32px;border-radius:10px;background:var(--brand-lav);
-    display:grid;place-items:center;color:var(--accent);font-size:.9rem;font-weight:800}
+  .brand{display:flex;align-items:center;gap:.5rem;text-decoration:none}
+  .brand-word{font-family:"Fredoka",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-weight:600;font-size:1.4rem;letter-spacing:-.01em;color:var(--accent);line-height:1}
+  .brand-logo{height:40px;width:auto;display:block}
+  footer.site .brand-word{color:#fff}
   .nav-actions{display:flex;align-items:center;gap:.7rem}
   .nav-tel{display:inline-flex;align-items:center;gap:.4rem;font-weight:600;color:var(--accent)}
   .nav-tel svg{width:18px;height:18px}
@@ -203,7 +209,7 @@
   .foot-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:1.8rem}
   @media(max-width:760px){.foot-grid{grid-template-columns:1fr}}
   footer.site .brand{color:#fff}
-  footer.site .brand .logo-dot{background:#fff;color:var(--accent)}
+  footer.site .brand-logo{display:none}
   footer.site h4{color:#fff;font-size:.95rem;margin-bottom:.7rem;letter-spacing:.02em}
   footer.site a:hover{color:#fff;text-decoration:underline}
   footer.site .foot-list li{margin-bottom:.45rem}
@@ -230,9 +236,9 @@
 <!-- ══════════════ HEADER ══════════════ -->
 <header class="site">
   <div class="wrap nav">
-    <a class="brand" href="#inicio" aria-label="Inicio">
-      <span class="logo-dot">BZ</span>
-      <span data-field="nombreEmpresa">Burocracia Zero</span>
+    <a class="brand" href="#inicio" aria-label="Burocracia Zero">
+      <img class="brand-logo" alt="Burocracia Zero" style="display:none">
+      <span class="brand-word" data-field="nombreEmpresa">Burocracia Zero</span>
     </a>
     <div class="nav-actions">
       <a class="nav-tel" data-tel href="tel:+34674573447"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span data-field="telefono">674 57 34 47</span></a>
@@ -468,7 +474,7 @@
   <div class="wrap">
     <div class="foot-grid">
       <div>
-        <a class="brand" href="#inicio"><span class="logo-dot">BZ</span><span data-field="nombreEmpresa">Burocracia Zero</span></a>
+        <a class="brand" href="#inicio"><span class="brand-word" data-field="nombreEmpresa">Burocracia Zero</span></a>
         <p style="margin-top:.8rem;max-width:34ch">Tu gestoría para trámites de tráfico. Transferencias, matriculaciones, bajas y trámites DGT sin colas ni desplazamientos.</p>
         <p class="legal-note">Honorarios de gestión. No incluye las tasas de la DGT ni los impuestos (ITP, IVTM, impuesto de matriculación, etc.), salvo que se indique lo contrario. El plazo de «menos de 48&nbsp;h» en transferencias es orientativo: aplica una vez recibida la documentación correcta y pagado el ITP, y puede variar por incidencias o demoras de la DGT.</p>
       </div>
@@ -515,6 +521,15 @@
   const CONFIG = {
     // --- DATOS DE LA EMPRESA ---
     nombreEmpresa:   "Burocracia Zero",
+
+    // --- LOGO (opcional): pega la URL de tu logo (PNG/SVG) subido a Wix u otro hosting.
+    //     Si lo dejas en "", se muestra "Burocracia Zero" como texto con tipografía de marca. ---
+    logoUrl:         "",
+
+    // --- ENLACES LEGALES (pega las URLs de tus páginas legales de Wix · OBLIGATORIO RGPD/LSSI) ---
+    urlAvisoLegal:   "",
+    urlPrivacidad:   "",
+    urlCookies:      "",
 
     // --- TELÉFONO (botón "Llamar") ---
     // "telefono" se muestra; "telLink" se usa para llamar (internacional, sin espacios).
@@ -597,6 +612,21 @@
     document.querySelectorAll("[data-field]").forEach(function(el){
       var f = el.getAttribute("data-field");
       if (f && (f in CONFIG) && typeof CONFIG[f] === "string") el.textContent = CONFIG[f];
+    });
+
+    // 4b) Logo: si defines CONFIG.logoUrl, se muestra tu logo (imagen) y se oculta el texto del header
+    if (CONFIG.logoUrl) {
+      var hImg = document.querySelector("header.site .brand-logo");
+      var hWord = document.querySelector("header.site .brand .brand-word");
+      if (hImg) { hImg.src = CONFIG.logoUrl; hImg.style.display = "block"; }
+      if (hWord) hWord.style.display = "none";
+    }
+
+    // 4c) Enlaces legales (footer): se activan al pegar sus URLs en CONFIG
+    var legalMap = { "data-legal": CONFIG.urlAvisoLegal, "data-priv": CONFIG.urlPrivacidad, "data-cookies": CONFIG.urlCookies };
+    Object.keys(legalMap).forEach(function(attr){
+      var url = legalMap[attr];
+      if (url) document.querySelectorAll("[" + attr + "]").forEach(function(el){ el.setAttribute("href", url); });
     });
 
     // 5) Precios "desde" en las tarjetas
