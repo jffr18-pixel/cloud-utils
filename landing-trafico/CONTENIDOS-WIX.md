@@ -18,7 +18,7 @@ Estilo: minimalista y sobrio. Acción principal: **WhatsApp**.
 | Teléfono | 674 57 34 47 |
 | WhatsApp | 674 57 34 47 (`34674573447`) |
 | Email | jose@burocraciazero.es |
-| Dirección | Calle Río Alberche, 38 (Tiendas G), Local 32 · 45007 Toledo |
+| Dirección | Calle Río Alberche, 38 (Tiendas G), Local 32, 45007 Toledo |
 | Horario | L–V de 10:00 a 14:00 y de 17:00 a 20:00 |
 | Eslogan | Transferencias en menos de 48 h |
 | Precios | «Presupuesto sin compromiso» (sin importe fijo) |
@@ -89,24 +89,24 @@ Crea una página en blanco y ve añadiendo **tiras/secciones** de arriba abajo c
 **Subtítulo:** `Elige tu trámite y escríbenos. Te decimos el precio cerrado y exactamente qué documentos necesitas.`
 
 **Tarjeta 1 — Transferencias y cambio de titularidad**
-> Compraventa de coches, motos, ciclomotores, remolques y caravanas. Lo dejamos todo a tu nombre (o del comprador) sin que tengas que ir a la jefatura.
+> Compraventa de coches, motos, ciclomotores, remolques y caravanas. La transferencia (cambio de titularidad) pone el vehículo a nombre del comprador; la notificación de venta libera al vendedor de multas y responsabilidad. Son trámites distintos: te asesoramos sobre cuál necesitas, sin que tengas que ir a la jefatura.
 > Etiquetas: Compraventa · Notificación de venta · Transferencia por herencia · Ciclomotores
 > Botón: `Solicitar transferencia →` (WhatsApp con mensaje: *"Hola, quiero hacer una TRANSFERENCIA / cambio de titularidad de un vehículo."*)
 
 **Tarjeta 2 — Matriculaciones e importación**
-> Matrícula de vehículos nuevos, de importación (UE y fuera de la UE), rematriculaciones y matrículas históricas para clásicos. Nos encargamos también del impuesto de matriculación.
+> Matrícula de vehículos nuevos, de importación (UE y fuera de la UE), rematriculaciones y matrículas históricas para clásicos. Gestionamos el impuesto de matriculación cuando corresponda (muchos vehículos están exentos según emisiones) y te informamos del IVA o aranceles en las importaciones.
 > Etiquetas: Vehículos nuevos · Importación · Históricas · Rematriculación
 > Botón: `Matricular mi vehículo →` (mensaje: *"Hola, necesito MATRICULAR / importar un vehículo."*)
 
 **Tarjeta 3 — Bajas de vehículos**
-> Baja definitiva por desguace (CAT), baja temporal voluntaria, por robo o por exportación. Dejamos el vehículo en regla ante la DGT para que dejes de pagar lo que no debes.
+> Baja definitiva por desguace (CAT), baja temporal voluntaria, por robo o por exportación. Tramitamos la baja ante la DGT: en la baja definitiva dejarás de pagar el impuesto de circulación (IVTM) a partir del año siguiente; en la baja temporal, consúltanos según tu municipio.
 > Etiquetas: Baja definitiva · Baja temporal · Por robo · Por exportación
 > Botón: `Dar de baja →` (mensaje: *"Hola, quiero dar de BAJA un vehículo."*)
 
 **Tarjeta 4 — Otros trámites con la DGT**
 > Todo lo demás que necesites resolver con Tráfico, sin pedir cita ni hacer cola. Si tu trámite no está en la lista, pregúntanos: seguramente también lo hacemos.
 > Etiquetas: Distintivo ambiental · Duplicado de permiso · Informe de vehículo · Cambio de domicilio · Duplicado ficha técnica
-> Botón: `Consultar mi trámite →` (mensaje: *"Hola, necesito hacer un trámite con la DGT..."*)
+> Botón: `Consultar mi trámite →` (mensaje: *"Hola, necesito hacer un trámite con la DGT (distintivo, duplicado, informe, etc.)."*)
 
 ### 5. Sección «Tu trámite en 3 pasos»
 **Título (H2):** `Tu trámite en 3 pasos`
@@ -117,7 +117,7 @@ Crea una página en blanco y ve añadiendo **tiras/secciones** de arriba abajo c
 ### 6. Sección «Por qué elegirnos» (4 ventajas)
 - **Te ahorramos tiempo** — Olvídate de citas, colas y formularios. Nosotros nos ocupamos de todo el proceso.
 - **Precio cerrado y transparente** — Sabes lo que pagas antes de empezar. Te separamos siempre honorarios de tasas e impuestos.
-- **Gestores profesionales** — Tu trámite lo revisan profesionales del sector. Hecho bien a la primera, sin errores ni rechazos.
+- **Gestores profesionales** — Tu trámite lo revisan profesionales del sector. Lo preparamos con cuidado para minimizar errores y evitar rechazos.
 - **Trato cercano por WhatsApp** — Hablas con una persona, no con un robot. Resolvemos tus dudas y te avisamos en cada paso.
 
 ### 7. Franja CTA (fondo oscuro)
@@ -129,14 +129,14 @@ Crea una página en blanco y ve añadiendo **tiras/secciones** de arriba abajo c
 - **¿Tengo que ir a la DGT o a la jefatura de tráfico?** — No. Nos ocupamos nosotros de todo el trámite ante Tráfico. Tú solo tienes que enviarnos la documentación; no necesitas pedir cita ni hacer colas.
 - **¿Trabajáis en toda España?** — Sí. Al trabajar de forma 100% digital, tramitamos para clientes de cualquier punto de España. Estés donde estés, nos envías los papeles por WhatsApp o email.
 - **¿El precio incluye las tasas y los impuestos?** — Te damos siempre el precio desglosado: por un lado nuestros honorarios y por otro las tasas de la DGT y los impuestos que correspondan. Sabes exactamente lo que pagas antes de empezar.
-- **¿Qué documentos necesito para mi trámite?** — Depende del trámite. Cuando nos escribas te enviamos la lista exacta (DNI, permiso de circulación, ficha técnica / ITV, contrato de compraventa, etc.).
+- **¿Qué documentos necesito para mi trámite?** — Depende del trámite. Cuando nos escribas te enviamos la lista exacta (DNI, permiso de circulación, ficha técnica / ITV, contrato de compraventa, justificante del ITP, etc.).
 - **¿Cuánto tarda en estar listo?** — Empezamos en cuanto recibimos toda la documentación correcta. Te informamos del tiempo estimado antes de comenzar (las transferencias, en menos de 48 h).
 - **¿Cómo os envío la documentación?** — Una foto por WhatsApp o un escaneo por email es suficiente para empezar. Sencillo y sin moverte de casa.
 
 ### 9. Footer
 - Frase: `Tu gestoría para trámites de tráfico. Transferencias, matriculaciones, bajas y trámites DGT sin colas ni desplazamientos.`
-- Contacto: Teléfono 674 57 34 47 · WhatsApp · jose@burocraciazero.es · Calle Río Alberche, 38 (Tiendas G), Local 32 · 45007 Toledo · L–V de 10:00 a 14:00 y de 17:00 a 20:00
-- Nota legal: `Honorarios de gestión. Las tasas de la DGT y los impuestos (ITP, IVTM, impuesto de matriculación, etc.) no están incluidos salvo que se indique lo contrario.`
+- Contacto: Teléfono 674 57 34 47 · WhatsApp · jose@burocraciazero.es · Calle Río Alberche, 38 (Tiendas G), Local 32, 45007 Toledo · L–V de 10:00 a 14:00 y de 17:00 a 20:00
+- Nota legal: `Honorarios de gestión. No incluye las tasas de la DGT ni los impuestos (ITP, IVTM, impuesto de matriculación, etc.), salvo que se indique lo contrario. El plazo de «menos de 48 h» en transferencias es orientativo: aplica una vez recibida la documentación correcta y pagado el ITP, y puede variar por incidencias o demoras de la DGT.`
 
 ---
 
