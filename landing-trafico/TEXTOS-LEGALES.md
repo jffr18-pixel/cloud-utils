@@ -29,7 +29,8 @@ En cumplimiento del artículo 10 de la Ley 34/2002, de 11 de julio, de Servicios
 
 ## 1. Datos identificativos del titular
 
-- **Titular:** [RAZÓN SOCIAL / NOMBRE DEL TITULAR]
+- **Titular:** [RAZÓN SOCIAL] (S.L.P.)
+- **Forma jurídica:** Sociedad Limitada Profesional (S.L.P.), constituida y sujeta a la Ley 2/2007, de 15 de marzo, de sociedades profesionales.
 - **Nombre comercial:** Burocracia Zero
 - **NIF/CIF:** [NIF/CIF]
 - **Domicilio:** Calle Río Alberche, 38 (Tiendas G), Local 32, 45007 Toledo
@@ -38,32 +39,26 @@ En cumplimiento del artículo 10 de la Ley 34/2002, de 11 de julio, de Servicios
 - **Teléfono / WhatsApp:** 674 57 34 47
 - **Sitio web:** https://www.burocraciazero.es
 
-> **Nota para el titular — Forma jurídica (elija y conserve UNA de las dos opciones, borrando la que no proceda):**
->
-> **Opción A — Empresario individual (autónomo / persona física):**
-> El Titular es persona física (empresario individual). No procede la inscripción en el Registro Mercantil, por lo que no se consignan datos registrales.
->
-> **Opción B — Sociedad mercantil:**
-> - **Datos registrales:** Sociedad inscrita en el Registro Mercantil de [PROVINCIA DEL REGISTRO MERCANTIL], Tomo [TOMO], Folio [FOLIO], Hoja [HOJA], Inscripción [Nº DE INSCRIPCIÓN].
-> - **Capital social:** [CAPITAL SOCIAL] euros (recomendado).
+### Datos registrales (Ley 2/2007, de sociedades profesionales)
+
+De conformidad con la Ley 2/2007, de 15 de marzo, de sociedades profesionales, se hacen constar los siguientes datos de inscripción obligatorios:
+
+- **Registro Mercantil:** Sociedad inscrita en el Registro Mercantil de [PROVINCIA], Tomo [TOMO], Folio [FOLIO], Hoja [HOJA], Inscripción [Nº DE INSCRIPCIÓN].
+- **Registro de Sociedades Profesionales:** Sociedad inscrita en el Registro de Sociedades Profesionales del [ILUSTRE COLEGIO OFICIAL DE GESTORES ADMINISTRATIVOS DE [COMUNIDAD/PROVINCIA]], con número de inscripción [Nº DE INSCRIPCIÓN EN EL REGISTRO DE SOCIEDADES PROFESIONALES].
+- **Capital social:** [CAPITAL SOCIAL] euros.
 
 ### Profesión regulada y colegiación
 
-> **Nota para el titular — Colegiación (elija y conserve UNA de las dos opciones, borrando la que no proceda):**
->
-> **Opción A — El servicio se presta como Gestor Administrativo colegiado:**
-> - **Profesión regulada:** Gestor Administrativo.
-> - **Colegio profesional:** Ilustre Colegio Oficial de Gestores Administrativos de [COMUNIDAD AUTÓNOMA / DEMARCACIÓN].
-> - **Número de colegiado:** [NÚMERO DE COLEGIADO].
-> - **Título académico oficial:** [TÍTULO ACADÉMICO OFICIAL], expedido en el Reino de España.
-> - **Normativa profesional aplicable:** Estatuto Orgánico de la Profesión de Gestor Administrativo (Decreto 424/1963, de 1 de marzo) y normas concordantes, así como las normas deontológicas y estatutarias del Colegio correspondiente.
->
-> **Opción B — El servicio NO se presta como Gestor Administrativo colegiado:**
-> El Titular presta servicios de tramitación, gestión y representación administrativa por cuenta del cliente, **sin actuar como Gestor Administrativo colegiado** ni ostentar dicho título profesional regulado. En consecuencia, no existe colegiación profesional asociada a la prestación del servicio. Esta circunstancia se hace constar expresamente para no inducir a error sobre la naturaleza del servicio.
+La actividad objeto del presente Sitio Web la prestan **Gestores Administrativos colegiados**, profesión regulada en España. En consecuencia, se hace constar lo siguiente:
+
+- **Profesión regulada:** Gestor Administrativo.
+- **Socio(s) profesional(es):** [NOMBRE Y APELLIDOS DEL/DE LOS SOCIO(S) PROFESIONAL(ES)], Gestor(es) Administrativo(s) con número de colegiado [Nº DE COLEGIADO] en el [COLEGIO OFICIAL DE GESTORES ADMINISTRATIVOS DE [COMUNIDAD]].
+- **Título académico oficial:** [TÍTULO ACADÉMICO OFICIAL], expedido en el Reino de España.
+- **Normativa profesional aplicable:** Estatuto Orgánico de la Profesión de Gestor Administrativo (Decreto 424/1963, de 1 de marzo) y normas concordantes, así como las normas deontológicas y estatutarias del Colegio correspondiente y la Ley 2/2007, de 15 de marzo, de sociedades profesionales.
 
 ## 2. Objeto y ámbito de aplicación
 
-El presente Aviso Legal regula el acceso, navegación y uso del sitio web https://www.burocraciazero.es (en adelante, el "Sitio Web"), titularidad de [RAZÓN SOCIAL / NOMBRE DEL TITULAR] (en adelante, "Burocracia Zero" o el "Titular"), siendo "Burocracia Zero" su nombre comercial.
+El presente Aviso Legal regula el acceso, navegación y uso del sitio web https://www.burocraciazero.es (en adelante, el "Sitio Web"), titularidad de [RAZÓN SOCIAL] (S.L.P.) (en adelante, "Burocracia Zero" o el "Titular"), siendo "Burocracia Zero" su nombre comercial.
 
 A través del Sitio Web, Burocracia Zero ofrece información sobre sus servicios de gestoría especializada en trámites de tráfico (transferencias y cambios de titularidad, notificaciones de venta, matriculaciones e importación, bajas, distintivo ambiental, duplicados, informes DGT y trámites análogos), prestados de forma 100% digital para todo el territorio español, con oficina física en Toledo.
 
@@ -84,7 +79,7 @@ Burocracia Zero se reserva el derecho a denegar o retirar el acceso al Sitio Web
 
 ## 4. Propiedad intelectual e industrial
 
-Todos los contenidos del Sitio Web, entendiendo por estos, a título enunciativo y no limitativo, los textos, fotografías, gráficos, imágenes, iconos, tecnología, software, enlaces y demás contenidos audiovisuales o sonoros, así como su diseño gráfico y códigos fuente, son propiedad de [RAZÓN SOCIAL / NOMBRE DEL TITULAR] o de terceros que han autorizado su uso, sin que puedan entenderse cedidos al usuario ninguno de los derechos de explotación sobre los mismos más allá de lo estrictamente necesario para el correcto uso del Sitio Web.
+Todos los contenidos del Sitio Web, entendiendo por estos, a título enunciativo y no limitativo, los textos, fotografías, gráficos, imágenes, iconos, tecnología, software, enlaces y demás contenidos audiovisuales o sonoros, así como su diseño gráfico y códigos fuente, son propiedad de [RAZÓN SOCIAL] (S.L.P.) o de terceros que han autorizado su uso, sin que puedan entenderse cedidos al usuario ninguno de los derechos de explotación sobre los mismos más allá de lo estrictamente necesario para el correcto uso del Sitio Web.
 
 Las marcas, nombres comerciales o signos distintivos, incluida la denominación "Burocracia Zero", son titularidad del Titular o de terceros, sin que pueda entenderse que el acceso al Sitio Web atribuya derecho alguno sobre las citadas marcas, nombres comerciales y/o signos distintivos.
 
@@ -167,13 +162,14 @@ El Responsable tiene un firme compromiso con la protección de los datos de car�
 
 | Dato | Información |
 |---|---|
-| **Titular / Razón social** | [RAZÓN SOCIAL / NOMBRE DEL TITULAR] |
+| **Titular / Razón social** | [RAZÓN SOCIAL] (S.L.P.) |
+| **Forma jurídica** | Sociedad Limitada Profesional (S.L.P.), sujeta a la Ley 2/2007, de 15 de marzo, de sociedades profesionales |
 | **Nombre comercial** | Burocracia Zero |
 | **NIF / CIF** | [NIF/CIF] |
 | **Domicilio** | Calle Río Alberche, 38 (Tiendas G), Local 32, 45007 Toledo |
 | **Domicilio fiscal** | [DOMICILIO FISCAL SI DIFIERE] |
-| **Datos registrales** | [DATOS REGISTRALES SI ES SOCIEDAD] |
-| **N.º de colegiado** | [NÚMERO DE COLEGIADO SI APLICA] |
+| **Datos registrales** | Inscrita en el Registro Mercantil de [PROVINCIA], Tomo [TOMO], Folio [FOLIO], Hoja [HOJA], Inscripción [Nº DE INSCRIPCIÓN]; e inscrita en el Registro de Sociedades Profesionales del [ILUSTRE COLEGIO OFICIAL DE GESTORES ADMINISTRATIVOS DE [COMUNIDAD/PROVINCIA]], con número [Nº DE INSCRIPCIÓN EN EL REGISTRO DE SOCIEDADES PROFESIONALES] |
+| **N.º de colegiado** | [Nº DE COLEGIADO] (Gestor Administrativo colegiado en el [COLEGIO OFICIAL DE GESTORES ADMINISTRATIVOS DE [COMUNIDAD]]) |
 | **Correo electrónico** | jose@burocraciazero.es |
 | **Teléfono / WhatsApp** | 674 57 34 47 |
 | **Sitio web** | https://www.burocraciazero.es |
@@ -418,12 +414,13 @@ Esta Política se elabora conforme a lo dispuesto en el artículo 22.2 de la Ley
 
 ## 1. Responsable del tratamiento
 
-- **Titular:** [TITULAR – RAZÓN SOCIAL O NOMBRE Y APELLIDOS DEL TITULAR]
+- **Titular:** [RAZÓN SOCIAL] (S.L.P.)
+- **Forma jurídica:** Sociedad Limitada Profesional (S.L.P.), sujeta a la Ley 2/2007, de 15 de marzo, de sociedades profesionales.
 - **NIF/CIF:** [NIF/CIF]
 - **Nombre comercial:** Burocracia Zero
 - **Domicilio:** Calle Río Alberche, 38 (Tiendas G), Local 32, 45007 Toledo
 - **Domicilio fiscal:** [DOMICILIO FISCAL SI DIFIERE DEL ANTERIOR]
-- **Datos registrales:** [DATOS REGISTRALES SI ES SOCIEDAD: REGISTRO MERCANTIL, TOMO, FOLIO, HOJA; SI ES AUTÓNOMO, INDICAR "NO PROCEDE"]
+- **Datos registrales:** Inscrita en el Registro Mercantil de [PROVINCIA], Tomo [TOMO], Folio [FOLIO], Hoja [HOJA], Inscripción [Nº DE INSCRIPCIÓN]; e inscrita en el Registro de Sociedades Profesionales del [ILUSTRE COLEGIO OFICIAL DE GESTORES ADMINISTRATIVOS DE [COMUNIDAD/PROVINCIA]], con número [Nº DE INSCRIPCIÓN EN EL REGISTRO DE SOCIEDADES PROFESIONALES].
 - **Correo electrónico:** jose@burocraciazero.es
 - **Teléfono / WhatsApp:** 674 57 34 47
 - **Delegado de Protección de Datos (DPD):** [INDICAR CONTACTO DEL DPD SI SE HA DESIGNADO. Si, tras valorar el art. 37 RGPD y la actividad de la gestoría (tratamiento de datos a gran escala y/o categorías especiales), no existe obligación de designarlo, hacer constar: "No se ha designado DPD por no resultar obligatorio conforme al art. 37 RGPD".]
