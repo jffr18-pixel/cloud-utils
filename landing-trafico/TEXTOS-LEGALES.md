@@ -29,12 +29,12 @@ En cumplimiento del artículo 10 de la Ley 34/2002, de 11 de julio, de Servicios
 
 ## 1. Datos identificativos del titular
 
-- **Titular:** [RAZÓN SOCIAL] (S.L.P.)
+- **Titular:** Burocracia Zero S.L.P. (S.L.P.)
 - **Forma jurídica:** Sociedad Limitada Profesional (S.L.P.), constituida y sujeta a la Ley 2/2007, de 15 de marzo, de sociedades profesionales.
 - **Nombre comercial:** Burocracia Zero
-- **NIF/CIF:** [NIF/CIF]
+- **NIF/CIF:** B56918402
 - **Domicilio:** Calle Río Alberche, 38 (Tiendas G), Local 32, 45007 Toledo
-- **Domicilio fiscal:** [DOMICILIO FISCAL SI DIFIERE DEL ANTERIOR]
+- **Domicilio fiscal:** El mismo que el domicilio social indicado anteriormente
 - **Correo electrónico:** jose@burocraciazero.es
 - **Teléfono / WhatsApp:** 674 57 34 47
 - **Sitio web:** https://www.burocraciazero.es
@@ -43,8 +43,8 @@ En cumplimiento del artículo 10 de la Ley 34/2002, de 11 de julio, de Servicios
 
 De conformidad con la Ley 2/2007, de 15 de marzo, de sociedades profesionales, se hacen constar los siguientes datos de inscripción obligatorios:
 
-- **Registro Mercantil:** Sociedad inscrita en el Registro Mercantil de [PROVINCIA], Tomo [TOMO], Folio [FOLIO], Hoja [HOJA], Inscripción [Nº DE INSCRIPCIÓN].
-- **Registro de Sociedades Profesionales:** Sociedad inscrita en el Registro de Sociedades Profesionales del [ILUSTRE COLEGIO OFICIAL DE GESTORES ADMINISTRATIVOS DE [COMUNIDAD/PROVINCIA]], con número de inscripción [Nº DE INSCRIPCIÓN EN EL REGISTRO DE SOCIEDADES PROFESIONALES].
+- **Registro Mercantil:** Sociedad inscrita en el Registro Mercantil de Toledo, Tomo [TOMO], Folio [FOLIO], Hoja [HOJA], Inscripción [Nº DE INSCRIPCIÓN].
+- **Registro de Sociedades Profesionales:** Sociedad inscrita en el Registro de Sociedades Profesionales del Ilustre Colegio Oficial de Gestores Administrativos de Toledo, con número de inscripción [Nº DE INSCRIPCIÓN EN EL REGISTRO DE SOCIEDADES PROFESIONALES].
 - **Capital social:** [CAPITAL SOCIAL] euros.
 
 ### Profesión regulada y colegiación
@@ -52,13 +52,13 @@ De conformidad con la Ley 2/2007, de 15 de marzo, de sociedades profesionales, s
 La actividad objeto del presente Sitio Web la prestan **Gestores Administrativos colegiados**, profesión regulada en España. En consecuencia, se hace constar lo siguiente:
 
 - **Profesión regulada:** Gestor Administrativo.
-- **Socio(s) profesional(es):** [NOMBRE Y APELLIDOS DEL/DE LOS SOCIO(S) PROFESIONAL(ES)], Gestor(es) Administrativo(s) con número de colegiado [Nº DE COLEGIADO] en el [COLEGIO OFICIAL DE GESTORES ADMINISTRATIVOS DE [COMUNIDAD]].
+- **Socio(s) profesional(es):** [NOMBRE Y APELLIDOS DEL/DE LOS SOCIO(S) PROFESIONAL(ES)], Gestor(es) Administrativo(s) con número de colegiado 0146 en el Ilustre Colegio Oficial de Gestores Administrativos de Toledo.
 - **Título académico oficial:** [TÍTULO ACADÉMICO OFICIAL], expedido en el Reino de España.
 - **Normativa profesional aplicable:** Estatuto Orgánico de la Profesión de Gestor Administrativo (Decreto 424/1963, de 1 de marzo) y normas concordantes, así como las normas deontológicas y estatutarias del Colegio correspondiente y la Ley 2/2007, de 15 de marzo, de sociedades profesionales.
 
 ## 2. Objeto y ámbito de aplicación
 
-El presente Aviso Legal regula el acceso, navegación y uso del sitio web https://www.burocraciazero.es (en adelante, el "Sitio Web"), titularidad de [RAZÓN SOCIAL] (S.L.P.) (en adelante, "Burocracia Zero" o el "Titular"), siendo "Burocracia Zero" su nombre comercial.
+El presente Aviso Legal regula el acceso, navegación y uso del sitio web https://www.burocraciazero.es (en adelante, el "Sitio Web"), titularidad de Burocracia Zero S.L.P. (S.L.P.) (en adelante, "Burocracia Zero" o el "Titular"), siendo "Burocracia Zero" su nombre comercial.
 
 A través del Sitio Web, Burocracia Zero ofrece información sobre sus servicios de gestoría especializada en trámites de tráfico (transferencias y cambios de titularidad, notificaciones de venta, matriculaciones e importación, bajas, distintivo ambiental, duplicados, informes DGT y trámites análogos), prestados de forma 100% digital para todo el territorio español, con oficina física en Toledo.
 
@@ -79,7 +79,7 @@ Burocracia Zero se reserva el derecho a denegar o retirar el acceso al Sitio Web
 
 ## 4. Propiedad intelectual e industrial
 
-Todos los contenidos del Sitio Web, entendiendo por estos, a título enunciativo y no limitativo, los textos, fotografías, gráficos, imágenes, iconos, tecnología, software, enlaces y demás contenidos audiovisuales o sonoros, así como su diseño gráfico y códigos fuente, son propiedad de [RAZÓN SOCIAL] (S.L.P.) o de terceros que han autorizado su uso, sin que puedan entenderse cedidos al usuario ninguno de los derechos de explotación sobre los mismos más allá de lo estrictamente necesario para el correcto uso del Sitio Web.
+Todos los contenidos del Sitio Web, entendiendo por estos, a título enunciativo y no limitativo, los textos, fotografías, gráficos, imágenes, iconos, tecnología, software, enlaces y demás contenidos audiovisuales o sonoros, así como su diseño gráfico y códigos fuente, son propiedad de Burocracia Zero S.L.P. (S.L.P.) o de terceros que han autorizado su uso, sin que puedan entenderse cedidos al usuario ninguno de los derechos de explotación sobre los mismos más allá de lo estrictamente necesario para el correcto uso del Sitio Web.
 
 Las marcas, nombres comerciales o signos distintivos, incluida la denominación "Burocracia Zero", son titularidad del Titular o de terceros, sin que pueda entenderse que el acceso al Sitio Web atribuya derecho alguno sobre las citadas marcas, nombres comerciales y/o signos distintivos.
 
@@ -143,7 +143,7 @@ Cualquier modificación del Aviso Legal entrará en vigor desde el momento de su
 
 ---
 
-*Última actualización: [FECHA DE ÚLTIMA ACTUALIZACIÓN, p. ej. DD/MM/AAAA]*
+*Última actualización: 27/06/2026*
 
 
 ---
@@ -162,14 +162,14 @@ El Responsable tiene un firme compromiso con la protección de los datos de car�
 
 | Dato | Información |
 |---|---|
-| **Titular / Razón social** | [RAZÓN SOCIAL] (S.L.P.) |
+| **Titular / Razón social** | Burocracia Zero S.L.P. (S.L.P.) |
 | **Forma jurídica** | Sociedad Limitada Profesional (S.L.P.), sujeta a la Ley 2/2007, de 15 de marzo, de sociedades profesionales |
 | **Nombre comercial** | Burocracia Zero |
-| **NIF / CIF** | [NIF/CIF] |
+| **NIF / CIF** | B56918402 |
 | **Domicilio** | Calle Río Alberche, 38 (Tiendas G), Local 32, 45007 Toledo |
-| **Domicilio fiscal** | [DOMICILIO FISCAL SI DIFIERE] |
-| **Datos registrales** | Inscrita en el Registro Mercantil de [PROVINCIA], Tomo [TOMO], Folio [FOLIO], Hoja [HOJA], Inscripción [Nº DE INSCRIPCIÓN]; e inscrita en el Registro de Sociedades Profesionales del [ILUSTRE COLEGIO OFICIAL DE GESTORES ADMINISTRATIVOS DE [COMUNIDAD/PROVINCIA]], con número [Nº DE INSCRIPCIÓN EN EL REGISTRO DE SOCIEDADES PROFESIONALES] |
-| **N.º de colegiado** | [Nº DE COLEGIADO] (Gestor Administrativo colegiado en el [COLEGIO OFICIAL DE GESTORES ADMINISTRATIVOS DE [COMUNIDAD]]) |
+| **Domicilio fiscal** | El mismo que el domicilio social indicado anteriormente |
+| **Datos registrales** | Inscrita en el Registro Mercantil de Toledo, Tomo [TOMO], Folio [FOLIO], Hoja [HOJA], Inscripción [Nº DE INSCRIPCIÓN]; e inscrita en el Registro de Sociedades Profesionales del Ilustre Colegio Oficial de Gestores Administrativos de Toledo, con número [Nº DE INSCRIPCIÓN EN EL REGISTRO DE SOCIEDADES PROFESIONALES] |
+| **N.º de colegiado** | 0146 (Gestor Administrativo colegiado en el Ilustre Colegio Oficial de Gestores Administrativos de Toledo) |
 | **Correo electrónico** | jose@burocraciazero.es |
 | **Teléfono / WhatsApp** | 674 57 34 47 |
 | **Sitio web** | https://www.burocraciazero.es |
@@ -395,7 +395,7 @@ El Responsable se reserva el derecho a modificar la presente Política de Privac
 
 ---
 
-**Última actualización:** [FECHA DE ÚLTIMA ACTUALIZACIÓN]
+**Última actualización:** 27/06/2026
 
 
 ---
@@ -404,7 +404,7 @@ El Responsable se reserva el derecho a modificar la presente Política de Privac
 
 # Política de Cookies
 
-**Última actualización: [FECHA]**
+**Última actualización: 27/06/2026**
 
 En **Burocracia Zero** utilizamos cookies y tecnologías similares en nuestro sitio web **https://www.burocraciazero.es** (en adelante, el "Sitio Web"). Esta Política de Cookies explica qué son las cookies, qué tipos utilizamos, con qué finalidad, cuál es su base jurídica y cómo puedes aceptarlas, rechazarlas, configurarlas o revocar tu consentimiento en cualquier momento.
 
@@ -414,13 +414,13 @@ Esta Política se elabora conforme a lo dispuesto en el artículo 22.2 de la Ley
 
 ## 1. Responsable del tratamiento
 
-- **Titular:** [RAZÓN SOCIAL] (S.L.P.)
+- **Titular:** Burocracia Zero S.L.P. (S.L.P.)
 - **Forma jurídica:** Sociedad Limitada Profesional (S.L.P.), sujeta a la Ley 2/2007, de 15 de marzo, de sociedades profesionales.
-- **NIF/CIF:** [NIF/CIF]
+- **NIF/CIF:** B56918402
 - **Nombre comercial:** Burocracia Zero
 - **Domicilio:** Calle Río Alberche, 38 (Tiendas G), Local 32, 45007 Toledo
-- **Domicilio fiscal:** [DOMICILIO FISCAL SI DIFIERE DEL ANTERIOR]
-- **Datos registrales:** Inscrita en el Registro Mercantil de [PROVINCIA], Tomo [TOMO], Folio [FOLIO], Hoja [HOJA], Inscripción [Nº DE INSCRIPCIÓN]; e inscrita en el Registro de Sociedades Profesionales del [ILUSTRE COLEGIO OFICIAL DE GESTORES ADMINISTRATIVOS DE [COMUNIDAD/PROVINCIA]], con número [Nº DE INSCRIPCIÓN EN EL REGISTRO DE SOCIEDADES PROFESIONALES].
+- **Domicilio fiscal:** El mismo que el domicilio social indicado anteriormente
+- **Datos registrales:** Inscrita en el Registro Mercantil de Toledo, Tomo [TOMO], Folio [FOLIO], Hoja [HOJA], Inscripción [Nº DE INSCRIPCIÓN]; e inscrita en el Registro de Sociedades Profesionales del Ilustre Colegio Oficial de Gestores Administrativos de Toledo, con número [Nº DE INSCRIPCIÓN EN EL REGISTRO DE SOCIEDADES PROFESIONALES].
 - **Correo electrónico:** jose@burocraciazero.es
 - **Teléfono / WhatsApp:** 674 57 34 47
 - **Delegado de Protección de Datos (DPD):** [INDICAR CONTACTO DEL DPD SI SE HA DESIGNADO. Si, tras valorar el art. 37 RGPD y la actividad de la gestoría (tratamiento de datos a gran escala y/o categorías especiales), no existe obligación de designarlo, hacer constar: "No se ha designado DPD por no resultar obligatorio conforme al art. 37 RGPD".]
