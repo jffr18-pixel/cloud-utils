@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!--
+  ╔══════════════════════════════════════════════════════════════════════╗
+  ║  WIDGET CALCULADORA DE TRANSFERENCIA · Burocracia Zero                ║
+  ║  Para la versión NATIVA de Wix: añade un elemento "Insertar HTML" en  ║
+  ║  tu página y pega TODO este archivo. Edita solo el bloque CONFIG.     ║
+  ║  Dale al widget ~720px de alto (un poco más en móvil).               ║
+  ╚══════════════════════════════════════════════════════════════════════╝
+-->
+<style>
+  :root{
+    --accent:#15141c;--accent-soft:#2c2550;--brand-lav:#C9C8FC;--brand-yellow:#FFEA63;
+    --wa:#25D366;--wa-dark:#128C7E;--ink:#15141c;--muted:#5d5b6b;--line:#e7e6f2;--bg-soft:#f3f2fe;--radius:18px;
+    --shadow:0 6px 24px rgba(21,20,28,.07);--shadow-lg:0 14px 40px rgba(21,20,28,.13);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:transparent;line-height:1.6;padding:8px}
+  .calc{max-width:760px;margin:0 auto}
+  .calc h2{font-size:clamp(1.5rem,3.4vw,2.1rem);text-align:center;letter-spacing:-.01em}
+  .calc .sub{color:var(--muted);text-align:center;max-width:48ch;margin:.5rem auto 1.4rem}
+  .calc .sub strong{color:var(--ink)}
+  .calc-card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-lg);padding:1.7rem 1.5rem;text-align:center}
+  .lead-min{font-weight:600;color:var(--muted);margin-bottom:.2rem}
+  .calc-types{display:flex;flex-wrap:wrap;justify-content:center;gap:.5rem;margin:.7rem 0 1.3rem}
+  .calc-type{border:2px solid var(--line);background:#fff;color:var(--accent);font-weight:600;font-size:.95rem;padding:.55rem 1rem;border-radius:999px;cursor:pointer;transition:border-color .15s,background .15s,color .15s}
+  .calc-type:hover{border-color:var(--brand-lav)}
+  .calc-type.active{border-color:var(--accent);background:var(--accent);color:#fff}
+  .calc-fields{display:grid;grid-template-columns:1fr 1fr;gap:.9rem;max-width:520px;margin:0 auto 1rem;text-align:left}
+  @media(max-width:560px){.calc-fields{grid-template-columns:1fr}}
+  .calc-field{display:flex;flex-direction:column;gap:.3rem}
+  .calc-field label{font-size:.85rem;font-weight:600;color:var(--accent)}
+  .calc-field label span{font-weight:500;color:var(--muted)}
+  .calc-field select,.calc-field input{font:inherit;padding:.65rem .75rem;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);width:100%}
+  .calc-field select:focus,.calc-field input:focus{outline:2px solid var(--brand-lav);border-color:var(--brand-lav)}
+  .calc-breakdown{max-width:520px;margin:0 auto;background:var(--bg-soft);border:1px solid var(--line);border-radius:12px;padding:.4rem 1rem}
+  .cb-row{display:flex;justify-content:space-between;align-items:baseline;gap:1rem;padding:.55rem 0;border-top:1px solid var(--line);text-align:left}
+  .cb-row:first-child{border-top:0}
+  .cb-row>span{font-weight:600}
+  .cb-row span small{display:block;font-weight:400;color:var(--muted);font-size:.78rem}
+  .cb-row b{white-space:nowrap;font-size:1.05rem;color:var(--accent)}
+  .cb-total{border-top:2px solid var(--accent)}
+  .cb-total b{font-size:1.45rem}
+  .calc-stats{display:flex;flex-wrap:wrap;justify-content:center;gap:.5rem 1.5rem;margin-top:1.1rem;color:var(--muted);font-weight:600;font-size:.92rem}
+  .calc-stats b{color:var(--accent)}
+  .calc-guarantee{display:inline-flex;align-items:center;gap:.5rem;background:#eafaf1;color:#0f7a4f;border:1px solid #b8ead0;font-weight:700;font-size:.9rem;padding:.45rem .9rem;border-radius:999px;margin-top:1.2rem;text-align:left}
+  .calc-guarantee svg{width:18px;height:18px;flex:0 0 auto}
+  .btn-wa{display:inline-flex;align-items:center;gap:.55rem;font-weight:600;font-size:1rem;padding:.95rem 1.5rem;border-radius:999px;cursor:pointer;border:2px solid transparent;background:var(--wa-dark);color:#fff;box-shadow:0 8px 22px rgba(18,140,126,.30);text-decoration:none;margin-top:1.3rem;transition:background .2s}
+  .btn-wa:hover{background:#0e7a6e}
+  .btn-wa svg{width:20px;height:20px}
+  .calc-note{font-size:.82rem;color:var(--muted);margin-top:1rem;max-width:58ch;margin-left:auto;margin-right:auto}
+</style>
+</head>
+<body>
+<section class="calc">
+  <h2>Calcula tu transferencia</h2>
+  <p class="sub">Elige tu vehículo y tu comunidad: te mostramos la gestión <strong>todo incluido</strong> (con tasa de la DGT) y una <strong>estimación del ITP</strong>.</p>
+  <div class="calc-card">
+    <p class="lead-min">1 · ¿Qué vehículo quieres transferir?</p>
+    <div class="calc-types" id="calcTypes"></div>
+    <div class="calc-fields">
+      <div class="calc-field">
+        <label for="calcCCAA">2 · ¿En qué comunidad resides? <span>(para el ITP)</span></label>
+        <select id="calcCCAA"></select>
+      </div>
+      <div class="calc-field">
+        <label for="calcValor">3 · Valor del vehículo <span>(orientativo, €)</span></label>
+        <input id="calcValor" type="number" min="0" step="100" inputmode="numeric" placeholder="Ej. 6000">
+      </div>
+    </div>
+    <div class="calc-breakdown">
+      <div class="cb-row"><span>Gestión <small>todo incluido · honorarios + tasa DGT</small></span><b><span id="cbGestion">—</span> €</b></div>
+      <div class="cb-row"><span>ITP estimado <small id="cbItpLabel">impuesto de transmisiones</small></span><b><span id="cbItp">—</span> €</b></div>
+      <div class="cb-row cb-total"><span>Total estimado</span><b><span id="cbTotal">—</span> €</b></div>
+    </div>
+    <div class="calc-stats">
+      <span><b id="numTr">+5.000</b> trámites</span>
+      <span><b>Gestoría colegiada</b> · nº 0146</span>
+    </div>
+    <div><span class="calc-guarantee"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5z"/><path d="m9 12 2 2 4-4"/></svg><span id="garTxt">Garantía: si no podemos tramitarlo, te devolvemos el importe</span></span></div>
+    <a class="btn-wa" id="calcCta"><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64C22.15 26.08 27.09 21.15 27.09 15.04 27.09 8.93 22.15 4 16.04 4z"/></svg>Empezar mi transferencia</a>
+    <p class="calc-note" id="calcNota"></p>
+  </div>
+</section>
+
+<script>
+  /* ███ EDITA SOLO ESTO ████████████████████████████████████████████████ */
+  const CONFIG = {
+    whatsapp: "34674573447",            // tu WhatsApp (internacional, sin + ni espacios)
+    numTransferencias: "+5.000",        // nº de trámites (pon tu cifra real)
+    garantiaTexto: "Garantía: si no podemos tramitarlo, te devolvemos el importe",
+    calcNota: "El ITP es orientativo: su base real es el valor fiscal oficial del vehículo (tablas de Hacienda con depreciación) y depende del tipo de tu comunidad, con posibles exenciones o cuotas reducidas. Te confirmamos el importe exacto al revisar tu caso.",
+    // Precios "todo incluido" (honorarios + tasa DGT). ⚠️ Pon tus precios reales:
+    precios: {
+      "Coche / turismo":     "129",
+      "Moto":                "99",
+      "Ciclomotor":          "79",
+      "Furgoneta":           "139",
+      "Remolque / caravana": "99"
+    },
+    // ⚠️ TIPOS DE ITP ORIENTATIVOS por comunidad. Verifícalos y actualízalos.
+    tiposPorCCAA: {
+      "Andalucía":4,"Aragón":4,"Asturias":4,"Baleares":4,"Canarias":5.5,"Cantabria":8,
+      "Castilla-La Mancha":6,"Castilla y León":5,"Cataluña":5,"Ceuta":4,
+      "Comunidad Valenciana":6,"Extremadura":6,"Galicia":8,"La Rioja":4,"Madrid":4,
+      "Melilla":4,"Murcia":4,"Navarra":4,"País Vasco":4
+    }
+  };
+
+  /* ====== No hace falta tocar nada de aquí abajo ====== */
+  (function(){
+    var enc=encodeURIComponent;
+    var typesEl=document.getElementById("calcTypes"), ccaaEl=document.getElementById("calcCCAA"),
+        valorEl=document.getElementById("calcValor"), cbG=document.getElementById("cbGestion"),
+        cbI=document.getElementById("cbItp"), cbT=document.getElementById("cbTotal"),
+        cbItpLabel=document.getElementById("cbItpLabel"), cta=document.getElementById("calcCta");
+    document.getElementById("numTr").textContent=CONFIG.numTransferencias;
+    document.getElementById("garTxt").textContent=CONFIG.garantiaTexto;
+    document.getElementById("calcNota").textContent=CONFIG.calcNota;
+    var tipos=CONFIG.tiposPorCCAA||{}, vehKeys=Object.keys(CONFIG.precios||{}), ccaaKeys=Object.keys(tipos);
+    var state={veh:vehKeys[0],ccaa:ccaaKeys[0]||null};
+    function eur(n){return Math.round(n).toLocaleString("es-ES");}
+    function paint(){
+      var gestion=parseFloat(CONFIG.precios[state.veh])||0;
+      var rate=(state.ccaa&&tipos[state.ccaa]!=null)?tipos[state.ccaa]:null;
+      var valor=parseFloat(valorEl.value)||0;
+      var itpEur=(rate!=null&&valor>0)?valor*rate/100:0;
+      cbG.textContent=eur(gestion);
+      cbI.textContent=(rate!=null&&valor>0)?eur(itpEur):"—";
+      cbItpLabel.textContent=state.ccaa?(state.ccaa+" · ~"+(rate!=null?rate:"?")+"%"):"impuesto de transmisiones";
+      cbT.textContent=eur(gestion+itpEur);
+      Array.prototype.forEach.call(typesEl.children,function(b){b.classList.toggle("active",b.getAttribute("data-k")===state.veh);});
+      var msg="Hola, quiero hacer una transferencia de "+state.veh+(state.ccaa?(" en "+state.ccaa):"")+". ¿Me confirmáis el precio total con el ITP?";
+      cta.setAttribute("href","https://wa.me/"+CONFIG.whatsapp+"?text="+enc(msg));
+      cta.setAttribute("target","_blank");cta.setAttribute("rel","noopener noreferrer");
+    }
+    vehKeys.forEach(function(k){
+      var b=document.createElement("button");
+      b.type="button";b.className="calc-type";b.textContent=k;b.setAttribute("data-k",k);
+      b.addEventListener("click",function(){state.veh=k;paint();});
+      typesEl.appendChild(b);
+    });
+    ccaaKeys.forEach(function(c){var o=document.createElement("option");o.value=c;o.textContent=c;ccaaEl.appendChild(o);});
+    ccaaEl.addEventListener("change",function(){state.ccaa=ccaaEl.value;paint();});
+    valorEl.addEventListener("input",paint);
+    paint();
+  })();
+</script>
+</body>
+</html>
