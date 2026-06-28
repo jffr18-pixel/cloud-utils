@@ -45,7 +45,7 @@
     --brand-lav:   #C9C8FC;   /* lila corporativo */
     --brand-yellow:#FFEA63;   /* amarillo corporativo (resaltados) */
     --wa:          #25D366;   /* verde WhatsApp (no lo cambies) */
-    --wa-dark:     #128C7E;
+    --wa-dark:     #9272b0;
     --ink:         #15141c;   /* texto principal */
     --muted:       #5d5b6b;   /* texto secundario */
     --line:        #e7e6f2;   /* líneas/bordes */
@@ -82,8 +82,8 @@
     padding:.95rem 1.5rem;border-radius:999px;cursor:pointer;border:2px solid transparent;
     transition:transform .12s ease,box-shadow .2s ease,background .2s ease;white-space:nowrap}
   .btn:active{transform:translateY(1px)}
-  .btn-wa{background:var(--wa-dark);color:#fff;box-shadow:0 8px 22px rgba(18,140,126,.30)}
-  .btn-wa:hover{background:var(--wa-dark);box-shadow:0 10px 26px rgba(18,140,126,.34)}
+  .btn-wa{background:var(--wa-dark);color:#fff;box-shadow:0 8px 22px rgba(146,114,176,.30)}
+  .btn-wa:hover{background:#7c5f9b;box-shadow:0 10px 26px rgba(146,114,176,.34)}
   .btn-ghost{background:transparent;color:var(--accent);border-color:var(--line)}
   .btn-ghost:hover{border-color:var(--accent);background:var(--bg-soft)}
   .btn-light{background:#fff;color:var(--accent)}
@@ -370,7 +370,7 @@
   /* ====== BOTÓN FLOTANTE WHATSAPP ====== */
   .wa-float{position:fixed;right:18px;bottom:18px;z-index:60;display:inline-flex;align-items:center;gap:.6rem;
     background:var(--wa-dark);color:#fff;font-weight:700;padding:.85rem 1.1rem;border-radius:999px;
-    box-shadow:0 10px 28px rgba(18,140,126,.45);transition:transform .15s ease,box-shadow .2s}
+    box-shadow:0 10px 28px rgba(146,114,176,.45);transition:transform .15s ease,box-shadow .2s}
   .wa-float:hover{transform:translateY(-2px);background:var(--wa-dark)}
   .wa-float svg{width:26px;height:26px}
   @media(max-width:520px){.wa-float .label{display:none}.wa-float{padding:.95rem;border-radius:50%}}
