@@ -254,6 +254,12 @@
   .form-field input:focus,.form-field select:focus,.form-field textarea:focus{outline:2px solid var(--brand-lav);border-color:var(--brand-lav)}
   .form-note{font-size:.82rem;color:var(--muted);margin-top:.5rem}
   #bzForm .btn-wa{width:100%;justify-content:center;margin-top:.3rem}
+  .form-consent{text-align:left;margin:.2rem 0 .4rem}
+  .consent-check{display:flex;align-items:flex-start;gap:.5rem;font-size:.88rem;color:var(--ink);cursor:pointer}
+  .consent-check input{margin-top:.2rem;flex:0 0 auto;width:18px;height:18px}
+  .consent-check a{color:#5b54c9;text-decoration:underline}
+  #bzConsentErr{display:none;color:#c0392b;font-size:.82rem;margin-top:.35rem}
+  .consent-info{font-size:.78rem;color:var(--muted);margin-top:.55rem;line-height:1.45}
   /* ====== BARRA CTA FIJA EN MÓVIL ====== */
   .mbar{display:none}
   @media(max-width:620px){
@@ -774,8 +780,12 @@
         </select>
       </div>
       <div class="form-field"><label for="bzMsg">Cuéntanos tu caso (opcional)</label><textarea id="bzMsg" rows="3" placeholder="Marca, modelo, situación..."></textarea></div>
+      <div class="form-consent">
+        <label class="consent-check"><input type="checkbox" id="bzConsent" required> He leído y acepto la <a data-priv href="#" target="_blank" rel="noopener">Política de Privacidad</a>.</label>
+        <span id="bzConsentErr">Debes aceptar la Política de Privacidad para continuar.</span>
+        <p class="consent-info"><strong>Información básica de protección de datos:</strong> Responsable: Burocracia Zero S.L.P. (CIF B56918402). Finalidad: atender tu consulta y enviarte presupuesto. Legitimación: tu consentimiento. No cedemos tus datos salvo obligación legal. Puedes ejercer tus derechos de acceso, rectificación, supresión y otros; más información en la Política de Privacidad.</p>
+      </div>
       <button class="btn btn-wa" id="bzSubmit" type="submit"><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64C22.15 26.08 27.09 21.15 27.09 15.04 27.09 8.93 22.15 4 16.04 4z"/></svg>Enviar por WhatsApp</button>
-      <p class="form-note">Al enviar se abre WhatsApp con tus datos para que solo pulses "enviar"; podrás adjuntar la documentación (foto/escaneo) en el propio chat. ⚠️ En Wix puedes conectar este formulario a <b>Wix Forms</b> para recibirlo también por email.</p>
     </form>
   </div>
 </section>
@@ -1016,6 +1026,9 @@
     if (bzForm) {
       bzForm.addEventListener("submit", function(ev){
         ev.preventDefault();
+        var consent=document.getElementById("bzConsent"), consentErr=document.getElementById("bzConsentErr");
+        if (consent && !consent.checked) { if (consentErr) consentErr.style.display="block"; consent.focus(); return; }
+        if (consentErr) consentErr.style.display="none";
         function v(id){ var el=document.getElementById(id); return el ? el.value.trim() : ""; }
         var msg = "Hola, quiero un presupuesto.\n";
         msg += "Trámite: " + v("bzTramite") + "\n";
