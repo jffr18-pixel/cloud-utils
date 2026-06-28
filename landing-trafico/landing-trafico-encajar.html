@@ -443,7 +443,7 @@
     <div class="section-head">
       <span class="eyebrow">Precio al instante</span>
       <h2>Calcula tu transferencia</h2>
-      <p class="lead">Elige tu vehículo y tu comunidad: te mostramos la gestión <strong>todo incluido</strong> (con tasa de la DGT) y una <strong>estimación del ITP</strong> de tu comunidad.</p>
+      <p class="lead">Elige tu vehículo y tu comunidad y te desglosamos el precio: <strong>honorarios</strong>, <strong>tasa de la DGT</strong> y una <strong>estimación del ITP</strong>.</p>
     </div>
     <div class="calc-card">
       <p class="lead-min">1 · ¿Qué vehículo quieres transferir?</p>
@@ -459,7 +459,8 @@
         </div>
       </div>
       <div class="calc-breakdown">
-        <div class="cb-row"><span>Gestión <small>todo incluido · honorarios + tasa DGT</small></span><b><span id="cbGestion">—</span> €</b></div>
+        <div class="cb-row"><span>Honorarios de gestión <small>IVA incluido</small></span><b><span id="cbGestion">—</span> €</b></div>
+        <div class="cb-row"><span>Tasa de la DGT <small>cambio de titularidad</small></span><b><span id="cbTasa">—</span> €</b></div>
         <div class="cb-row"><span>ITP estimado <small id="cbItpLabel">impuesto de transmisiones</small></span><b><span id="cbItp">—</span> €</b></div>
         <div class="cb-row cb-total"><span>Total estimado</span><b><span id="cbTotal">—</span> €</b></div>
       </div>
@@ -847,7 +848,7 @@
     nombreGestor:    "Carmen García · Burocracia Zero",
     cargoGestor:     "Gestora Administrativa colegiada nº 0146 · Colegio de Gestores de Toledo",
     bioGestor:       "Soy gestora administrativa colegiada y llevo años ayudando a particulares y empresas con sus trámites de tráfico. Tú me cuentas lo que necesitas y yo me encargo de todo, con trato cercano y precio claro.",
-    fotoGestorUrl:   "",   // pega la URL de tu foto (o súbela en Wix)
+    fotoGestorUrl:   "https://static.wixstatic.com/media/736539_407acb75b2174a98b60c402c18b420b7~mv2.jpg/v1/fill/w_600,h_600,al_c,q_85,enc_auto/DMD_0208.jpg",   // foto de Carmen (Wix, optimizada 600px)
 
     // --- CALCULADORA DE TRANSFERENCIA (precios "todo incluido": honorarios + tasa DGT) ---
     // ⚠️ Cambia estos importes de ejemplo por tus precios reales.
@@ -856,12 +857,11 @@
     calcNota:        "El ITP es solo orientativo. El importe real depende del valor fiscal del vehículo (tablas de Hacienda con depreciación por antigüedad), del tipo de tu comunidad y de casos especiales: cuotas fijas en vehículos antiguos, 0% o tipos reducidos en coches eléctricos/0 emisiones en algunas comunidades, e IGIC en Canarias. Te calculamos el importe exacto al revisar tu caso.",
     calculadora: {
       activa: true,
-      precios: {
-        "Coche / turismo":      "129",
-        "Moto":                 "99",
-        "Ciclomotor":           "79",
-        "Furgoneta":            "139",
-        "Remolque / caravana":  "99"
+      // Honorarios (IVA incluido) y tasa de la DGT, en €, por tipo de vehículo.
+      // Para añadir más tipos, copia una línea (ciclomotor, furgoneta, remolque...).
+      vehiculos: {
+        "Coche / turismo": { honorarios: 66.55, tasaDGT: 55.70 },
+        "Moto":            { honorarios: 48.40, tasaDGT: 27.85 }
       }
     },
 
@@ -1051,19 +1051,23 @@
       var cta = document.querySelector('[data-wa="calc"]');
       if (!cfg || cfg.activa === false || !typesEl) return;
       var tipos = itp.tiposPorCCAA || {};
-      var vehKeys = Object.keys(cfg.precios || {});
+      var vehs = cfg.vehiculos || {};
+      var vehKeys = Object.keys(vehs);
       var ccaaKeys = Object.keys(tipos);
       var state = { veh: vehKeys[0], ccaa: ccaaKeys[0] || null };
-      function eur(n){ return Math.round(n).toLocaleString("es-ES"); }
+      function eur(n){ return n.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
       function paint(){
-        var gestion = parseFloat(cfg.precios[state.veh]) || 0;
+        var vv = vehs[state.veh] || {};
+        var hon = parseFloat(vv.honorarios) || 0;
+        var tasa = parseFloat(vv.tasaDGT) || 0;
         var rate = (state.ccaa && tipos[state.ccaa] != null) ? tipos[state.ccaa] : null;
         var valor = parseFloat(valorEl && valorEl.value) || 0;
         var itpEur = (rate != null && valor > 0) ? valor * rate / 100 : 0;
-        if (cbG) cbG.textContent = eur(gestion);
+        if (cbG) cbG.textContent = eur(hon);
+        var cbTa = document.getElementById("cbTasa"); if (cbTa) cbTa.textContent = eur(tasa);
         if (cbI) cbI.textContent = (rate != null && valor > 0) ? eur(itpEur) : "—";
         if (cbItpLabel) cbItpLabel.textContent = state.ccaa ? (state.ccaa + " · ~" + (rate != null ? rate : "?") + "%") : "impuesto de transmisiones";
-        if (cbT) cbT.textContent = eur(gestion + itpEur);
+        if (cbT) cbT.textContent = eur(hon + tasa + itpEur);
         Array.prototype.forEach.call(typesEl.children, function(b){ b.classList.toggle("active", b.getAttribute("data-k") === state.veh); });
         if (cta) {
           var msg = "Hola, quiero hacer una transferencia de " + state.veh + (state.ccaa ? (" en " + state.ccaa) : "") + ". ¿Me confirmáis el precio total con el ITP?";
