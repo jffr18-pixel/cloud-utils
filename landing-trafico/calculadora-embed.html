@@ -113,7 +113,6 @@
     </div>
     <p class="calc-base" id="calcBaseNote"></p>
     <div class="calc-stats">
-      <span><b id="numTr">+5.000</b> trámites</span>
       <span><b>Gestoría colegiada</b> · nº 0146</span>
     </div>
     <div><span class="calc-guarantee"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5z"/><path d="m9 12 2 2 4-4"/></svg><span id="garTxt">Garantía: si no podemos tramitarlo, te devolvemos el importe</span></span></div>
@@ -126,7 +125,6 @@
   /* ███ EDITA SOLO ESTO ████████████████████████████████████████████████ */
   const CONFIG = {
     whatsapp: "34674573447",            // tu WhatsApp (internacional, sin + ni espacios)
-    numTransferencias: "+5.000",        // nº de trámites (pon tu cifra real)
     garantiaTexto: "Garantía: si no podemos tramitarlo, te devolvemos el importe",
     calcNota: "Estimación orientativa con las tablas oficiales 2026 (Orden HAC/1501/2025). El importe definitivo lo confirmamos al revisar tu caso: valor fiscal exacto, casos especiales y posibles cuotas autonómicas propias.",
     // Honorarios (IVA incluido) por tipo de vehículo. Edita aquí tus precios.
@@ -197,7 +195,6 @@
         cbI=document.getElementById("cbItp"), cbT=document.getElementById("cbTotal"),
         cbItpLabel=document.getElementById("cbItpLabel"), baseNote=document.getElementById("calcBaseNote"),
         cta=document.getElementById("calcCta");
-    document.getElementById("numTr").textContent=CONFIG.numTransferencias;
     document.getElementById("garTxt").textContent=CONFIG.garantiaTexto;
     document.getElementById("calcNota").textContent=CONFIG.calcNota;
 
