@@ -311,6 +311,9 @@
   .doc-list li{display:flex;align-items:flex-start;gap:.6rem;text-align:left;font-size:.95rem;line-height:1.45}
   .doc-list li svg{width:20px;height:20px;flex:0 0 auto;color:#0f7a4f;margin-top:.12rem}
   .doc-note{font-size:.85rem;color:var(--muted);max-width:560px;margin:1.1rem auto 0;line-height:1.5;text-align:left;background:var(--bg-soft);border-radius:12px;padding:.85rem 1rem}
+  .doc-tax{display:flex;align-items:flex-start;gap:.6rem;max-width:560px;margin:.7rem auto 0;background:#eafaf1;border:1px solid #b8ead0;color:var(--ink);border-radius:12px;padding:.85rem 1rem;font-size:.86rem;line-height:1.5;text-align:left}
+  .doc-tax svg{width:20px;height:20px;flex:0 0 auto;color:#0f7a4f;margin-top:.12rem}
+  .doc-tax strong{color:#0c5f3e}
   #documentacion .btn-wa{display:flex;width:100%;max-width:560px;justify-content:center;margin:1.4rem auto 0}
   .calc-field select:focus,.calc-field input:focus{outline:2px solid var(--brand-lav);border-color:var(--brand-lav)}
   .calc-breakdown{max-width:520px;margin:0 auto;background:var(--bg-soft);border:1px solid var(--line);border-radius:12px;padding:.4rem 1rem}
@@ -593,7 +596,7 @@
     <div class="section-head">
       <span class="eyebrow">Sin sorpresas</span>
       <h2>¿Qué documentación necesitas?</h2>
-      <p class="lead">Elige tu trámite y te decimos <strong>exactamente</strong> qué tienes que aportarnos. De la cita previa, los impresos oficiales y la tasa nos encargamos nosotros: tú solo firmas la autorización.</p>
+      <p class="lead">Elige tu trámite y te decimos <strong>exactamente</strong> qué tienes que aportarnos. De la cita previa, los impresos oficiales, <strong>la presentación de los impuestos</strong> y la tasa nos encargamos nosotros: tú solo firmas la autorización.</p>
     </div>
     <div class="doc-card">
       <div class="doc-pick">
@@ -604,6 +607,7 @@
       <h3 class="doc-h">Lo que necesitas aportarnos</h3>
       <ul class="doc-list" id="docList"></ul>
       <p class="doc-note" id="docNote"></p>
+      <p class="doc-tax"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5z"/><path d="m9 12 2 2 4-4"/></svg><span><strong>De presentar los impuestos nos encargamos nosotros.</strong> Cuando corresponda, gestionamos el ITP, el impuesto de matriculación (IEDMT) o el de donaciones y herencias (ISD), además de la tasa de la DGT. Tú solo firmas la autorización.</span></p>
       <a class="btn btn-wa" id="docCta"><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64C22.15 26.08 27.09 21.15 27.09 15.04 27.09 8.93 22.15 4 16.04 4z"/></svg>Pídenos este trámite</a>
     </div>
   </div>
