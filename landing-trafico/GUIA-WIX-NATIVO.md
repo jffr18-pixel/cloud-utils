@@ -36,7 +36,7 @@ Casi todo se monta nativo, **menos la calculadora** (es código interactivo). Po
 | 1 | **Cabecera** | Header de Wix: logo a la izquierda + botón **WhatsApp** y teléfono a la derecha. |
 | 2 | **Hero** | Franja con fondo lila claro: título (H1), texto, **badge amarillo** "Transferencias en menos de 48 h", 2 botones (**WhatsApp** + **"Calcula tu precio"** que baje a la calculadora) y una lista con ✓. |
 | 3 | **Barra de confianza** | Franja fina con 4 puntos (48 h · presupuesto · WhatsApp · Toledo y toda España). |
-| 4 | **🧮 Calculadora** | **Insertar HTML** → pega **`calculadora-embed.html`**. Alto ~720 px (algo más en móvil). |
+| 4 | **🧮 Calculadora** | **Insertar HTML** → pega **`calculadora-embed.html`**. Alto ~960 px en escritorio (más en móvil, porque los campos se apilan). Si ves barra de scroll dentro del recuadro, dale más alto. |
 | 5 | **Trámites (4)** | Repetidor o 4 cajas: icono + título + texto + botón WhatsApp. **Enlaza cada uno a su página de trámite.** |
 | 6 | **Todo digital + vídeo** | 2 columnas: texto + lista a la izquierda; **vídeo** (Wix Video o YouTube) a la derecha. |
 | 7 | **Cómo funciona (3 pasos)** | 3 columnas numeradas (1·2·3). |

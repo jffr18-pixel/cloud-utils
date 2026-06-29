@@ -293,7 +293,11 @@
   .calc-field{display:flex;flex-direction:column;gap:.3rem}
   .calc-field label{font-size:.85rem;font-weight:600;color:var(--accent)}
   .calc-field label span{font-weight:500;color:var(--muted)}
-  .calc-field select,.calc-field input{font:inherit;padding:.65rem .75rem;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);width:100%;margin-top:auto;height:48px}
+  .calc-field select,.calc-field input:not([type=checkbox]){font:inherit;padding:.65rem .75rem;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);width:100%;margin-top:auto;height:48px}
+  .calc-checks{justify-content:center;gap:.5rem}
+  .calc-check{display:flex;align-items:center;gap:.5rem;font-size:.88rem;font-weight:600;color:var(--accent);cursor:pointer}
+  .calc-check input[type=checkbox]{width:18px;height:18px;margin:0;flex:0 0 auto}
+  .calc-base{font-size:.82rem;color:var(--muted);max-width:520px;margin:.55rem auto 0;line-height:1.45;text-align:center}
   .calc-field select:focus,.calc-field input:focus{outline:2px solid var(--brand-lav);border-color:var(--brand-lav)}
   .calc-breakdown{max-width:520px;margin:0 auto;background:var(--bg-soft);border:1px solid var(--line);border-radius:12px;padding:.4rem 1rem}
   .cb-row{display:flex;justify-content:space-between;align-items:baseline;gap:1rem;padding:.55rem 0;border-top:1px solid var(--line);text-align:left}
@@ -455,7 +459,7 @@
     <div class="section-head">
       <span class="eyebrow">Precio al instante</span>
       <h2>Calcula tu transferencia</h2>
-      <p class="lead">Elige tu vehículo y tu comunidad y te desglosamos el precio: <strong>honorarios</strong>, <strong>tasa de la DGT</strong> y una <strong>estimación del ITP</strong>.</p>
+      <p class="lead">Indica tu vehículo, tu comunidad y los datos del coche: calculamos el precio con las <strong>tablas oficiales 2026</strong> y te desglosamos <strong>honorarios</strong>, <strong>tasa de la DGT</strong> y una <strong>estimación del ITP</strong>.</p>
     </div>
     <div class="calc-card">
       <p class="lead-min">1 · ¿Qué vehículo quieres transferir?</p>
@@ -466,8 +470,38 @@
           <select id="calcCCAA"></select>
         </div>
         <div class="calc-field">
-          <label for="calcValor">3 · Valor del vehículo <span>(orientativo, €)</span></label>
-          <input id="calcValor" type="number" min="0" step="100" inputmode="numeric" placeholder="Ej. 6000">
+          <label for="calcAnio">3 · Año de 1ª matriculación</label>
+          <select id="calcAnio"></select>
+        </div>
+      </div>
+      <div class="calc-fields" id="calcRowModelo">
+        <div class="calc-field">
+          <label for="calcMarca">4 · Marca</label>
+          <select id="calcMarca"></select>
+        </div>
+        <div class="calc-field">
+          <label for="calcModelo">5 · Modelo</label>
+          <select id="calcModelo"></select>
+        </div>
+      </div>
+      <div class="calc-fields" id="calcRowManual" style="display:none">
+        <div class="calc-field">
+          <label for="calcCC">Cilindrada <span>(cc)</span></label>
+          <input id="calcCC" type="number" min="0" step="1" inputmode="numeric" placeholder="Ej. 1498">
+        </div>
+        <div class="calc-field">
+          <label for="calcPM">Precio medio orientativo <span>(€, opcional)</span></label>
+          <input id="calcPM" type="number" min="0" step="100" inputmode="numeric" placeholder="Ej. 6000">
+        </div>
+      </div>
+      <div class="calc-fields">
+        <div class="calc-field">
+          <label for="calcPrecio">6 · Precio en el contrato <span>(€)</span></label>
+          <input id="calcPrecio" type="number" min="0" step="100" inputmode="numeric" placeholder="Ej. 9000">
+        </div>
+        <div class="calc-field calc-checks">
+          <label class="calc-check"><input type="checkbox" id="calcElec"> Es eléctrico / etiqueta 0</label>
+          <label class="calc-check"><input type="checkbox" id="calcTaxi"> Fue taxi, autoescuela o alquiler</label>
         </div>
       </div>
       <div class="calc-breakdown">
@@ -476,6 +510,7 @@
         <div class="cb-row"><span>ITP estimado <small id="cbItpLabel">impuesto de transmisiones</small></span><b><span id="cbItp">—</span> €</b></div>
         <div class="cb-row cb-total"><span>Total estimado</span><b><span id="cbTotal">—</span> €</b></div>
       </div>
+      <p class="calc-base" id="calcBaseNote"></p>
       <div class="calc-stats">
         <span><b data-field="numTransferencias">+5.000</b> trámites</span>
         <span><b>Gestoría colegiada</b> · nº 0146</span>
@@ -921,28 +956,13 @@
     calcNota:        "El ITP es solo orientativo. El importe real depende del valor fiscal del vehículo (tablas de Hacienda con depreciación por antigüedad), del tipo de tu comunidad y de casos especiales: cuotas fijas en vehículos antiguos, 0% o tipos reducidos en coches eléctricos/0 emisiones en algunas comunidades, e IGIC en Canarias. Te calculamos el importe exacto al revisar tu caso.",
     calculadora: {
       activa: true,
-      // Honorarios (IVA incluido) y tasa de la DGT, en €, por tipo de vehículo.
-      // Para añadir más tipos, copia una línea (ciclomotor, furgoneta, remolque...).
-      vehiculos: {
-        "Coche / turismo": { honorarios: 66.55, tasaDGT: 55.70 },
-        "Moto":            { honorarios: 48.40, tasaDGT: 27.85 }
-      }
-    },
-
-    // --- ITP (impuesto de transmisiones) para la calculadora ---
-    // Tipos GENERALES 2026 (Orden HAC/1501/2025), alineados con la calculadora interna de
-    // Burocracia Zero. Es el tipo general por comunidad; los casos especiales (cuotas fijas en
-    // vehículos antiguos, 0% en eléctricos, exenciones, IGIC en Canarias) se resuelven en la
-    // herramienta interna de Carmen. En la web es una estimación orientativa.
-    itp: {
-      tiposPorCCAA: {
-        "Andalucía": 4, "Aragón": 4, "Asturias": 4, "Baleares": 4,
-        "Canarias": 5.5, "Cantabria": 8, "Castilla-La Mancha": 6,
-        "Castilla y León": 5, "Cataluña": 5, "Ceuta": 4,
-        "Comunidad Valenciana": 6, "Extremadura": 6, "Galicia": 3,
-        "La Rioja": 4, "Madrid": 4, "Melilla": 4, "Murcia": 4,
-        "Navarra": 4, "País Vasco": 4
-      }
+      // Honorarios (IVA incluido) por tipo de vehículo. Edita aquí tus precios.
+      honorarios: { turismo: 66.55, moto: 48.40 },
+      // Tasa oficial de la DGT por cambio de titularidad (2026).
+      tasaDGT:    { turismo: 55.70, moto: 55.70, ciclomotor: 27.85 }
+      // Los tipos de ITP por comunidad, las tablas de precios medios, la depreciación
+      // y las reglas (tramo 8%, 0 emisiones, cuotas fijas, exenciones, IGIC, Ceuta/Melilla)
+      // van dentro del motor de la calculadora, igual que en la hoja interna de Carmen.
     },
 
     // --- URGENCIA Y VÍDEO ---
@@ -1103,54 +1123,197 @@
       });
     }
 
-    // 4f) Calculadora de transferencia (gestión + ITP estimado por comunidad)
+    // 4f) Calculadora de transferencia — motor estilo hoja interna (tablas + depreciación + ITP 2026)
     (function(){
-      var cfg = CONFIG.calculadora;
-      var itp = CONFIG.itp || {};
+      var cfgC = CONFIG.calculadora || {};
+      if (cfgC.activa === false) return;
       var typesEl = document.getElementById("calcTypes");
-      var ccaaEl  = document.getElementById("calcCCAA");
-      var valorEl = document.getElementById("calcValor");
-      var cbG = document.getElementById("cbGestion"), cbI = document.getElementById("cbItp"),
-          cbT = document.getElementById("cbTotal"), cbItpLabel = document.getElementById("cbItpLabel");
+      if (!typesEl) return;
+      var honor = cfgC.honorarios || { turismo: 66.55, moto: 48.40 };
+      var tasaC = cfgC.tasaDGT || { turismo: 55.70, moto: 55.70, ciclomotor: 27.85 };
+
+        var MODELOS = {
+          "SEAT": [["Ibiza 1.0 TSI",999,11,17000],["Arona 1.0 TSI",999,11,20000],["León 1.5 TSI",1498,13,24000],["León 2.0 TDI",1968,16,27000],["Ateca 1.5 TSI",1498,13,27000]],
+          "Cupra": [["Formentor 1.5 TSI",1498,13,32000],["Born (eléctrico)",0,0,38000,1]],
+          "Volkswagen": [["Polo 1.0 TSI",999,11,19000],["T-Roc 1.5 TSI",1498,13,28000],["Golf 1.5 TSI",1498,13,27000],["Golf 2.0 TDI",1968,16,30000],["Tiguan 2.0 TDI",1968,16,35000],["Passat 2.0 TDI",1968,16,38000],["ID.3 (eléctrico)",0,0,38000,1]],
+          "Renault": [["Clio 1.0 TCe",999,11,17000],["Captur 1.3 TCe",1333,12,22000],["Mégane 1.3 TCe",1333,12,24000],["Arkana 1.6 E-Tech",1598,13,30000],["Austral 1.3 TCe",1332,12,30000]],
+          "Peugeot": [["208 1.2 PureTech",1199,11,18000],["2008 1.2 PureTech",1199,11,23000],["308 1.2 PureTech",1199,11,25000],["3008 1.5 BlueHDi",1499,13,32000],["5008 1.5 BlueHDi",1499,13,36000]],
+          "Citroën": [["C3 1.2 PureTech",1199,11,16000],["C4 1.2 PureTech",1199,11,23000],["C5 Aircross 1.5 BlueHDi",1499,13,30000]],
+          "Ford": [["Fiesta 1.0 EcoBoost",999,11,18000],["Focus 1.0 EcoBoost",999,11,23000],["Puma 1.0 EcoBoost",999,11,24000],["Kuga 1.5 EcoBoost",1499,13,30000]],
+          "Opel": [["Corsa 1.2",1199,11,17000],["Crossland 1.2",1199,11,22000],["Astra 1.2",1199,11,24000],["Mokka 1.2",1199,11,25000]],
+          "Toyota": [["Yaris 1.5 Hybrid",1490,12,21000],["Yaris Cross 1.5 Hybrid",1490,12,25000],["Corolla 1.8 Hybrid",1798,14,27000],["C-HR 1.8 Hybrid",1798,14,30000],["RAV4 2.5 Hybrid",2487,17,40000]],
+          "Nissan": [["Micra 1.0",999,11,17000],["Juke 1.0 DIG-T",999,11,23000],["Qashqai 1.3 DIG-T",1332,12,28000],["X-Trail 1.5 e-Power",1497,13,36000]],
+          "Hyundai": [["i20 1.2",1197,11,17000],["i30 1.5",1482,13,23000],["Kona 1.0 TGDi",998,11,24000],["Tucson 1.6 TGDi",1598,13,30000]],
+          "Kia": [["Picanto 1.0",998,10,14000],["Ceed 1.5 TGDi",1482,13,23000],["Niro 1.6 HEV",1580,13,30000],["Sportage 1.6 TGDi",1598,13,30000]],
+          "Dacia": [["Sandero 1.0 TCe",999,11,13000],["Jogger 1.0 TCe",999,11,19000],["Duster 1.3 TCe",1333,12,18000]],
+          "Fiat": [["Panda 1.0 Hybrid",999,10,14000],["500 1.0 Hybrid",999,10,16000],["500e (eléctrico)",0,0,30000,1]],
+          "BMW": [["Serie 1 118i",1499,13,32000],["Serie 2 218d",1995,16,38000],["Serie 3 320d",1995,16,45000],["X1 sDrive18d",1995,16,40000],["X3 xDrive20d",1995,16,50000]],
+          "Mercedes-Benz": [["Clase A 180d",1461,12,35000],["CLA 200",1332,12,42000],["GLA 200",1332,12,40000],["Clase C 220d",1993,16,48000],["GLC 220d",1993,16,55000]],
+          "Audi": [["A1 25 TFSI",999,11,24000],["A3 30 TDI",1968,16,33000],["Q3 35 TFSI",1498,13,38000],["A4 35 TDI",1968,16,42000],["Q5 40 TDI",1968,16,50000]],
+          "Mazda": [["Mazda2 1.5",1496,12,18000],["Mazda3 2.0",1998,16,26000],["CX-30 2.0",1998,16,28000],["CX-5 2.0",1998,16,32000]],
+          "Skoda": [["Fabia 1.0 TSI",999,11,18000],["Kamiq 1.0 TSI",999,11,22000],["Octavia 1.5 TSI",1498,13,26000],["Karoq 1.5 TSI",1498,13,28000],["Kodiaq 2.0 TDI",1968,16,38000]],
+          "Volvo": [["XC40 B4",1969,16,42000],["XC60 B4",1969,16,52000]],
+        };
+        var CCAA = {
+          "Andalucía": { g:4.0, c:1,tc:1.0, rt:"CVf",ta:8.0,u:15.0, r:"estatal" },
+          "Aragón": { g:4.0, r:"propia" },
+          "Asturias": { g:4.0, rt:"CVf",ta:8.0,u:15.0, r:"estatal" },
+          "Baleares": { g:4.0, rt:"CVf",ta:8.0,u:15.0, r:"estatal" },
+          "Canarias": { g:5.5, r:"no" },
+          "Cantabria": { g:8.0, r:"propia" },
+          "Castilla-La Mancha": { g:6.0, r:"estatal" },
+          "Castilla y León": { g:5.0, rt:"CVf",ta:8.0,u:15.0, r:"estatal" },
+          "Cataluña": { g:5.0, c:1,tc:0.0, exA:10.0,exV:40000.0, r:"estatal" },
+          "Comunidad Valenciana": { g:6.0, rt:"valencia",ta:8.0,u:0, r:"estatal" },
+          "Extremadura": { g:6.0, r:"estatal" },
+          "Galicia": { g:3.0, c:1,tc:0.0, r:"propia" },
+          "La Rioja": { g:4.0, r:"estatal" },
+          "Madrid": { g:4.0, r:"estatal" },
+          "Murcia": { g:4.0, r:"propia" },
+          "Navarra": { g:4.0, exA:10.0,exV:40000.0, r:"estatal" },
+          "País Vasco": { g:4.0, r:"estatal" },
+          "Ceuta": { g:4.0, b:0.5, r:"estatal" },
+          "Melilla": { g:4.0, b:0.5, r:"estatal" },
+        };
+        var DEPRE = [1,0.84,0.67,0.56,0.47,0.39,0.34,0.28,0.24,0.19,0.17,0.13,0.10];
+
+      var ccaaEl = document.getElementById("calcCCAA"), anioEl = document.getElementById("calcAnio"),
+          marcaEl = document.getElementById("calcMarca"), modeloEl = document.getElementById("calcModelo"),
+          rowModelo = document.getElementById("calcRowModelo"), rowManual = document.getElementById("calcRowManual"),
+          ccEl = document.getElementById("calcCC"), pmEl = document.getElementById("calcPM"),
+          precioEl = document.getElementById("calcPrecio"), elecEl = document.getElementById("calcElec"),
+          taxiEl = document.getElementById("calcTaxi");
+      var cbG = document.getElementById("cbGestion"), cbTa = document.getElementById("cbTasa"),
+          cbI = document.getElementById("cbItp"), cbT = document.getElementById("cbTotal"),
+          cbItpLabel = document.getElementById("cbItpLabel"), baseNote = document.getElementById("calcBaseNote");
       var cta = document.querySelector('[data-wa="calc"]');
-      if (!cfg || cfg.activa === false || !typesEl) return;
-      var tipos = itp.tiposPorCCAA || {};
-      var vehs = cfg.vehiculos || {};
-      var vehKeys = Object.keys(vehs);
-      var ccaaKeys = Object.keys(tipos);
-      var state = { veh: vehKeys[0], ccaa: ccaaKeys[0] || null };
-      function eur(n){ return n.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-      function paint(){
-        var vv = vehs[state.veh] || {};
-        var hon = parseFloat(vv.honorarios) || 0;
-        var tasa = parseFloat(vv.tasaDGT) || 0;
-        var rate = (state.ccaa && tipos[state.ccaa] != null) ? tipos[state.ccaa] : null;
-        var valor = parseFloat(valorEl && valorEl.value) || 0;
-        var itpEur = (rate != null && valor > 0) ? valor * rate / 100 : 0;
-        if (cbG) cbG.textContent = eur(hon);
-        var cbTa = document.getElementById("cbTasa"); if (cbTa) cbTa.textContent = eur(tasa);
-        if (cbI) cbI.textContent = (rate != null && valor > 0) ? eur(itpEur) : "—";
-        if (cbItpLabel) cbItpLabel.textContent = state.ccaa ? (state.ccaa + " · ~" + (rate != null ? rate : "?") + "%") : "impuesto de transmisiones";
-        if (cbT) cbT.textContent = eur(hon + tasa + itpEur);
-        Array.prototype.forEach.call(typesEl.children, function(b){ b.classList.toggle("active", b.getAttribute("data-k") === state.veh); });
-        if (cta) {
-          var msg = "Hola, quiero hacer una transferencia de " + state.veh + (state.ccaa ? (" en " + state.ccaa) : "") + ". ¿Me confirmáis el precio total con el ITP?";
-          cta.setAttribute("href", "https://wa.me/" + CONFIG.whatsapp + "?text=" + enc(msg));
-          cta.setAttribute("target", "_blank"); cta.setAttribute("rel", "noopener noreferrer");
-        }
-      }
-      vehKeys.forEach(function(k){
-        var btn = document.createElement("button");
-        btn.type = "button"; btn.className = "calc-type"; btn.textContent = k; btn.setAttribute("data-k", k);
-        btn.addEventListener("click", function(){ state.veh = k; paint(); });
-        typesEl.appendChild(btn);
+
+      var TYPES = [ { k:"T", label:"Coche / todoterreno" }, { k:"M", label:"Moto" } ];
+      var state = { tipo:"T", ccaa:null, anio:null, marca:"", modelo:"", elecManual:false };
+      var thisYear = (new Date()).getFullYear();
+      function eur(n){ var s=n<0?"-":""; var p=Math.abs(n).toFixed(2).split("."); return s+p[0].replace(/\B(?=(\d{3})+(?!\d))/g,".")+","+p[1]; }
+      function miles(n){ return (Math.round(Math.abs(n))+"").replace(/\B(?=(\d{3})+(?!\d))/g,"."); }
+      function pct(n){ return (n + "").replace(".", ","); }
+
+      TYPES.forEach(function(t){
+        var b = document.createElement("button");
+        b.type = "button"; b.className = "calc-type"; b.textContent = t.label; b.setAttribute("data-k", t.k);
+        b.addEventListener("click", function(){ state.tipo = t.k; state.elecManual = false; if (elecEl) elecEl.checked = false; syncRows(); paint(); });
+        typesEl.appendChild(b);
       });
-      if (ccaaEl) {
-        ccaaKeys.forEach(function(c){ var o = document.createElement("option"); o.value = c; o.textContent = c; ccaaEl.appendChild(o); });
-        ccaaEl.addEventListener("change", function(){ state.ccaa = ccaaEl.value; paint(); });
+      Object.keys(CCAA).forEach(function(c){ var o = document.createElement("option"); o.value = c; o.textContent = c; ccaaEl.appendChild(o); });
+      state.ccaa = ccaaEl.value;
+      ccaaEl.addEventListener("change", function(){ state.ccaa = ccaaEl.value; paint(); });
+
+      var od = document.createElement("option"); od.value = ""; od.textContent = "Elige el año"; anioEl.appendChild(od);
+      for (var y = thisYear; y >= 1990; y--){ var oy = document.createElement("option"); oy.value = y; oy.textContent = y; anioEl.appendChild(oy); }
+      anioEl.addEventListener("change", function(){ state.anio = anioEl.value ? parseInt(anioEl.value, 10) : null; paint(); });
+
+      var om = document.createElement("option"); om.value = ""; om.textContent = "Elige la marca"; marcaEl.appendChild(om);
+      Object.keys(MODELOS).forEach(function(m){ var o = document.createElement("option"); o.value = m; o.textContent = m; marcaEl.appendChild(o); });
+      var oo = document.createElement("option"); oo.value = "__OTRA__"; oo.textContent = "Otra / no está en la lista"; marcaEl.appendChild(oo);
+      marcaEl.addEventListener("change", function(){ state.marca = marcaEl.value; fillModelos(); syncRows(); paint(); });
+      modeloEl.addEventListener("change", function(){ state.modelo = modeloEl.value; applyModelElec(); paint(); });
+      ccEl.addEventListener("input", paint); pmEl.addEventListener("input", paint); precioEl.addEventListener("input", paint);
+      elecEl.addEventListener("change", function(){ state.elecManual = true; paint(); });
+      taxiEl.addEventListener("change", paint);
+
+      function fillModelos(){
+        modeloEl.innerHTML = "";
+        var list = MODELOS[state.marca] || [];
+        var d = document.createElement("option"); d.value = ""; d.textContent = list.length ? "Elige el modelo" : "—"; modeloEl.appendChild(d);
+        list.forEach(function(it, idx){ var o = document.createElement("option"); o.value = idx; o.textContent = it[0]; modeloEl.appendChild(o); });
+        state.modelo = "";
       }
-      if (valorEl) valorEl.addEventListener("input", paint);
-      paint();
+      function currentModel(){
+        if (state.tipo !== "T") return null;
+        if (!state.marca || state.marca === "__OTRA__") return null;
+        var list = MODELOS[state.marca] || [], idx = parseInt(state.modelo, 10);
+        return (state.modelo !== "" && !isNaN(idx) && list[idx]) ? list[idx] : null;
+      }
+      function applyModelElec(){
+        var m = currentModel();
+        if (!m) return;
+        if (m[4] === 1) { elecEl.checked = true; }
+        else if (!state.elecManual) { elecEl.checked = false; }
+      }
+      function syncRows(){
+        var manual = (state.tipo !== "T") || (state.marca === "__OTRA__");
+        rowModelo.style.display = (state.tipo === "T") ? "" : "none";
+        rowManual.style.display = manual ? "" : "none";
+      }
+      function vehData(){
+        var m = currentModel();
+        if (m) return { cc: m[1], cvf: m[2], precioMedio: m[3] };
+        return { cc: parseFloat(ccEl.value) || 0, cvf: 0, precioMedio: parseFloat(pmEl.value) || 0 };
+      }
+      function cuotaFijaEstatal(tipo, cc, anios){
+        cc = cc || 0;
+        if (tipo === "T"){ if (anios > 12) return cc <= 1500 ? 40 : (cc <= 2000 ? 60 : 140); if (anios > 5) return cc <= 1500 ? 120 : (cc <= 2000 ? 180 : 280); return null; }
+        if (anios > 12) return cc <= 250 ? 10 : (cc <= 550 ? 20 : (cc <= 750 ? 35 : 55));
+        if (anios > 5) return cc <= 250 ? 30 : (cc <= 550 ? 60 : (cc <= 750 ? 90 : 140));
+        return null;
+      }
+      function paint(){
+        Array.prototype.forEach.call(typesEl.children, function(b){ b.classList.toggle("active", b.getAttribute("data-k") === state.tipo); });
+        var isT = state.tipo === "T";
+        var hon = isT ? honor.turismo : honor.moto;
+        var tasa = isT ? tasaC.turismo : tasaC.moto;
+        cbG.textContent = eur(hon); cbTa.textContent = eur(tasa);
+
+        var c = CCAA[state.ccaa], v = vehData(), dec = parseFloat(precioEl.value) || 0;
+        if (!c || !state.anio){
+          cbI.textContent = "—"; cbItpLabel.textContent = "elige comunidad y año";
+          cbT.textContent = eur(hon + tasa); baseNote.textContent = ""; updateCta(null); return;
+        }
+        var anios = thisYear - state.anio; if (anios < 0) anios = 0;
+        var dep = DEPRE[Math.min(12, Math.floor(anios))];
+        var uso = taxiEl.checked ? 0.7 : 1;
+        var vf = (v.precioMedio || 0) * dep * uso;
+        var base = Math.max(dec, vf);
+        var aplicaCero = elecEl.checked && c.c;
+        var aplicaTramo = false;
+        if (c.rt === "CVf"){ if (isT && (v.cvf || 0) >= (c.u || 0)) aplicaTramo = true; }
+        else if (c.rt === "valencia"){ if ((anios <= 5 && (v.cc || 0) > 2000) || base >= 20000) aplicaTramo = true; }
+        var tipo = aplicaCero ? c.tc : (aplicaTramo ? c.ta : c.g);
+        var exencion = (c.exV || 0) > 0 && anios > (c.exA || 0) && (v.precioMedio || 0) < (c.exV || 0);
+        var posibleFija = anios > 5 && base < 20000;
+        var cf = cuotaFijaEstatal(state.tipo, v.cc, anios);
+        var regimen, cuota;
+        if (exencion){ regimen = "exencion"; cuota = 0; }
+        else if (posibleFija && c.r === "estatal" && typeof cf === "number"){ regimen = "fija"; cuota = cf; }
+        else { regimen = (posibleFija && c.r === "propia") ? "propia" : "porcentual"; cuota = base * tipo / 100; }
+        var bonif = cuota * (c.b || 0), ing = cuota - bonif, total = ing + tasa + hon;
+
+        cbI.textContent = eur(ing); cbT.textContent = eur(total);
+        var lbl;
+        if (regimen === "exencion") lbl = "exento por antigüedad · " + state.ccaa;
+        else if (regimen === "fija") lbl = "cuota fija · " + (isT ? "coche" : "moto") + " de " + anios + " años";
+        else if (state.ccaa === "Canarias") lbl = "Canarias · IGIC " + pct(tipo) + "%";
+        else {
+          lbl = state.ccaa + " · " + pct(tipo) + "% s/ " + miles(base) + " €";
+          if (c.b) lbl += " (−" + (c.b * 100) + "%)";
+          if (regimen === "propia") lbl += " · cuota fija propia (a confirmar)";
+        }
+        cbItpLabel.textContent = lbl;
+        var note = "Base imponible estimada: " + miles(base) + " € (la mayor entre el precio del contrato y el valor fiscal de tablas: " + miles(vf) + " €).";
+        if (regimen === "fija") note += " Coche/moto de más de 5 años y bajo valor: se aplica la cuota fija estatal.";
+        if (regimen === "propia") note += " En tu comunidad la cuota puede ser una cantidad fija propia; te confirmamos el importe exacto.";
+        if (regimen === "exencion") note += " Vehículo de más de 10 años de bajo valor: exento de ITP en tu comunidad.";
+        baseNote.textContent = note;
+        updateCta({ total: total });
+      }
+      function updateCta(r){
+        if (!cta) return;
+        var partes = [ (state.tipo === "T" ? "un coche" : "una moto") ];
+        if (state.ccaa) partes.push("en " + state.ccaa);
+        if (state.anio) partes.push("del " + state.anio);
+        var msg = "Hola, quiero transferir " + partes.join(" ") + "." + (r ? (" Vuestra calculadora me estima unos " + eur(r.total) + " € en total. ¿Me lo confirmáis?") : " ¿Me confirmáis el precio total con el ITP?");
+        cta.setAttribute("href", "https://wa.me/" + CONFIG.whatsapp + "?text=" + enc(msg));
+        cta.setAttribute("target", "_blank"); cta.setAttribute("rel", "noopener noreferrer");
+      }
+
+      fillModelos(); syncRows(); paint();
     })();
 
     // 4g) Vídeo (si defines CONFIG.videoUrl)
