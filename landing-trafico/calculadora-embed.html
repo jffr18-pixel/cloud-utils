@@ -201,8 +201,9 @@
     var TYPES=[{k:"T",label:"Coche / todoterreno"},{k:"M",label:"Moto"},{k:"C",label:"Ciclomotor"}];
     var state={tipo:"T",ccaa:null,anio:null,marca:"",modelo:"",elecManual:false};
     var thisYear=(new Date()).getFullYear();
-    function eur(n){ var s=n<0?"-":""; var p=Math.abs(n).toFixed(2).split("."); return s+p[0].replace(/\B(?=(\d{3})+(?!\d))/g,".")+","+p[1]; }
-    function miles(n){ return (Math.round(Math.abs(n))+"").replace(/\B(?=(\d{3})+(?!\d))/g,"."); }
+    function grp(t){ var o="",c=0,i; for(i=t.length-1;i>=0;i--){ o=t.charAt(i)+o; if(++c%3===0&&i>0)o="."+o; } return o; }
+    function eur(n){ var s=n<0?"-":""; var p=Math.abs(n).toFixed(2).split("."); return s+grp(p[0])+","+p[1]; }
+    function miles(n){ return grp(Math.round(Math.abs(n))+""); }
     function pct(n){return (n+"").replace(".",",");}
 
     TYPES.forEach(function(t){
