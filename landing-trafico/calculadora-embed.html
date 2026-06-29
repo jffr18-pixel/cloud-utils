@@ -130,7 +130,7 @@
     garantiaTexto: "Garantía: si no podemos tramitarlo, te devolvemos el importe",
     calcNota: "Estimación orientativa con las tablas oficiales 2026 (Orden HAC/1501/2025). El importe definitivo lo confirmamos al revisar tu caso: valor fiscal exacto, casos especiales y posibles cuotas autonómicas propias.",
     // Honorarios (IVA incluido) por tipo de vehículo. Edita aquí tus precios.
-    honorarios: { turismo: 66.55, moto: 48.40 },
+    honorarios: { turismo: 66.55, moto: 48.40, ciclomotor: 48.40 },
     // Tasa oficial de la DGT por cambio de titularidad (2026).
     tasaDGT:    { turismo: 55.70, moto: 55.70, ciclomotor: 27.85 }
   };
@@ -201,7 +201,7 @@
     document.getElementById("garTxt").textContent=CONFIG.garantiaTexto;
     document.getElementById("calcNota").textContent=CONFIG.calcNota;
 
-    var TYPES=[{k:"T",label:"Coche / todoterreno"},{k:"M",label:"Moto"}];
+    var TYPES=[{k:"T",label:"Coche / todoterreno"},{k:"M",label:"Moto"},{k:"C",label:"Ciclomotor"}];
     var state={tipo:"T",ccaa:null,anio:null,marca:"",modelo:"",elecManual:false};
     var thisYear=(new Date()).getFullYear();
     function eur(n){ var s=n<0?"-":""; var p=Math.abs(n).toFixed(2).split("."); return s+p[0].replace(/\B(?=(\d{3})+(?!\d))/g,".")+","+p[1]; }
@@ -264,7 +264,7 @@
     function paint(){
       Array.prototype.forEach.call(typesEl.children,function(b){b.classList.toggle("active",b.getAttribute("data-k")===state.tipo);});
       var isT=state.tipo==="T";
-      var hon=isT?honor.turismo:honor.moto, tasa=isT?tasaC.turismo:tasaC.moto;
+      var hon=isT?honor.turismo:(state.tipo==="C"?(honor.ciclomotor||honor.moto):honor.moto), tasa=isT?tasaC.turismo:(state.tipo==="C"?tasaC.ciclomotor:tasaC.moto);
       cbG.textContent=eur(hon);cbTa.textContent=eur(tasa);
       var c=CCAA[state.ccaa], v=vehData(), dec=parseFloat(precioEl.value)||0;
       if(!c||!state.anio){cbI.textContent="—";cbItpLabel.textContent="elige comunidad y año";cbT.textContent=eur(hon+tasa);baseNote.textContent="";updateCta(null);return;}
@@ -289,7 +289,7 @@
       cbI.textContent=eur(ing);cbT.textContent=eur(total);
       var lbl;
       if(regimen==="exencion")lbl="exento por antigüedad · "+state.ccaa;
-      else if(regimen==="fija")lbl="cuota fija · "+(isT?"coche":"moto")+" de "+anios+" años";
+      else if(regimen==="fija")lbl="cuota fija · "+(isT?"coche":(state.tipo==="C"?"ciclomotor":"moto"))+" de "+anios+" años";
       else if(state.ccaa==="Canarias")lbl="Canarias · IGIC "+pct(tipo)+"%";
       else {lbl=state.ccaa+" · "+pct(tipo)+"% s/ "+miles(base)+" €";if(c.b)lbl+=" (−"+(c.b*100)+"%)";if(regimen==="propia")lbl+=" · cuota fija propia (a confirmar)";}
       cbItpLabel.textContent=lbl;
@@ -301,7 +301,7 @@
       updateCta({total:total});
     }
     function updateCta(r){
-      var partes=[(state.tipo==="T"?"un coche":"una moto")];
+      var partes=[(state.tipo==="T"?"un coche":(state.tipo==="C"?"un ciclomotor":"una moto"))];
       if(state.ccaa)partes.push("en "+state.ccaa);
       if(state.anio)partes.push("del "+state.anio);
       var msg="Hola, quiero transferir "+partes.join(" ")+"."+(r?(" Vuestra calculadora me estima unos "+eur(r.total)+" € en total. ¿Me lo confirmáis?"):" ¿Me confirmáis el precio total con el ITP?");

@@ -298,6 +298,20 @@
   .calc-check{display:flex;align-items:center;gap:.5rem;font-size:.88rem;font-weight:600;color:var(--accent);cursor:pointer}
   .calc-check input[type=checkbox]{width:18px;height:18px;margin:0;flex:0 0 auto}
   .calc-base{font-size:.82rem;color:var(--muted);max-width:520px;margin:.55rem auto 0;line-height:1.45;text-align:center}
+  .doc-card{max-width:760px;margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-lg);padding:1.7rem 1.5rem}
+  .doc-pick{max-width:520px;margin:0 auto 1.1rem;display:flex;flex-direction:column;gap:.3rem;text-align:left}
+  .doc-pick label{font-size:.85rem;font-weight:600;color:var(--accent)}
+  .doc-pick select{font:inherit;padding:.65rem .75rem;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);width:100%;height:48px}
+  .doc-pick select:focus{outline:2px solid var(--brand-lav);border-color:var(--brand-lav)}
+  .doc-meta{display:flex;flex-wrap:wrap;justify-content:center;gap:.5rem;margin-bottom:1.3rem}
+  .doc-badge{display:inline-flex;align-items:center;gap:.4rem;background:var(--bg-soft);border:1px solid var(--line);border-radius:999px;padding:.4rem .85rem;font-size:.82rem;font-weight:700;color:var(--accent)}
+  .doc-badge span{color:var(--muted);font-weight:500}
+  .doc-h{font-size:1.05rem;margin:0 auto .7rem;text-align:left;max-width:560px}
+  .doc-list{list-style:none;max-width:560px;margin:0 auto;display:grid;gap:.6rem;padding:0}
+  .doc-list li{display:flex;align-items:flex-start;gap:.6rem;text-align:left;font-size:.95rem;line-height:1.45}
+  .doc-list li svg{width:20px;height:20px;flex:0 0 auto;color:#0f7a4f;margin-top:.12rem}
+  .doc-note{font-size:.85rem;color:var(--muted);max-width:560px;margin:1.1rem auto 0;line-height:1.5;text-align:left;background:var(--bg-soft);border-radius:12px;padding:.85rem 1rem}
+  #documentacion .btn-wa{display:flex;width:100%;max-width:560px;justify-content:center;margin:1.4rem auto 0}
   .calc-field select:focus,.calc-field input:focus{outline:2px solid var(--brand-lav);border-color:var(--brand-lav)}
   .calc-breakdown{max-width:520px;margin:0 auto;background:var(--bg-soft);border:1px solid var(--line);border-radius:12px;padding:.4rem 1rem}
   .cb-row{display:flex;justify-content:space-between;align-items:baseline;gap:1rem;padding:.55rem 0;border-top:1px solid var(--line);text-align:left}
@@ -581,6 +595,28 @@
         <div class="card-cta"><a data-wa="card_otros" href="https://wa.me/34674573447"><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64h.01c6.1 0 11.04-4.93 11.04-11.04C27.09 8.93 22.15 4 16.04 4z"/></svg>Consultar mi trámite →</a></div>
       </article>
 
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ DOCUMENTACIÓN POR TRÁMITE ══════════════ -->
+<section class="block why" id="documentacion">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Sin sorpresas</span>
+      <h2>¿Qué documentación necesitas?</h2>
+      <p class="lead">Elige tu trámite y te decimos <strong>exactamente</strong> qué tienes que aportarnos. De la cita previa, los impresos oficiales y la tasa nos encargamos nosotros: tú solo firmas la autorización.</p>
+    </div>
+    <div class="doc-card">
+      <div class="doc-pick">
+        <label for="docSel">Elige el trámite</label>
+        <select id="docSel"></select>
+      </div>
+      <div class="doc-meta" id="docMeta"></div>
+      <h3 class="doc-h">Lo que necesitas aportarnos</h3>
+      <ul class="doc-list" id="docList"></ul>
+      <p class="doc-note" id="docNote"></p>
+      <a class="btn btn-wa" id="docCta"><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64C22.15 26.08 27.09 21.15 27.09 15.04 27.09 8.93 22.15 4 16.04 4z"/></svg>Pídenos este trámite</a>
     </div>
   </div>
 </section>
@@ -957,7 +993,7 @@
     calculadora: {
       activa: true,
       // Honorarios (IVA incluido) por tipo de vehículo. Edita aquí tus precios.
-      honorarios: { turismo: 66.55, moto: 48.40 },
+      honorarios: { turismo: 66.55, moto: 48.40, ciclomotor: 48.40 },
       // Tasa oficial de la DGT por cambio de titularidad (2026).
       tasaDGT:    { turismo: 55.70, moto: 55.70, ciclomotor: 27.85 }
       // Los tipos de ITP por comunidad, las tablas de precios medios, la depreciación
@@ -1188,7 +1224,7 @@
           cbItpLabel = document.getElementById("cbItpLabel"), baseNote = document.getElementById("calcBaseNote");
       var cta = document.querySelector('[data-wa="calc"]');
 
-      var TYPES = [ { k:"T", label:"Coche / todoterreno" }, { k:"M", label:"Moto" } ];
+      var TYPES = [ { k:"T", label:"Coche / todoterreno" }, { k:"M", label:"Moto" }, { k:"C", label:"Ciclomotor" } ];
       var state = { tipo:"T", ccaa:null, anio:null, marca:"", modelo:"", elecManual:false };
       var thisYear = (new Date()).getFullYear();
       function eur(n){ var s=n<0?"-":""; var p=Math.abs(n).toFixed(2).split("."); return s+p[0].replace(/\B(?=(\d{3})+(?!\d))/g,".")+","+p[1]; }
@@ -1257,8 +1293,8 @@
       function paint(){
         Array.prototype.forEach.call(typesEl.children, function(b){ b.classList.toggle("active", b.getAttribute("data-k") === state.tipo); });
         var isT = state.tipo === "T";
-        var hon = isT ? honor.turismo : honor.moto;
-        var tasa = isT ? tasaC.turismo : tasaC.moto;
+        var hon = isT ? honor.turismo : (state.tipo === "C" ? (honor.ciclomotor || honor.moto) : honor.moto);
+        var tasa = isT ? tasaC.turismo : (state.tipo === "C" ? tasaC.ciclomotor : tasaC.moto);
         cbG.textContent = eur(hon); cbTa.textContent = eur(tasa);
 
         var c = CCAA[state.ccaa], v = vehData(), dec = parseFloat(precioEl.value) || 0;
@@ -1288,7 +1324,7 @@
         cbI.textContent = eur(ing); cbT.textContent = eur(total);
         var lbl;
         if (regimen === "exencion") lbl = "exento por antigüedad · " + state.ccaa;
-        else if (regimen === "fija") lbl = "cuota fija · " + (isT ? "coche" : "moto") + " de " + anios + " años";
+        else if (regimen === "fija") lbl = "cuota fija · " + (isT ? "coche" : (state.tipo === "C" ? "ciclomotor" : "moto")) + " de " + anios + " años";
         else if (state.ccaa === "Canarias") lbl = "Canarias · IGIC " + pct(tipo) + "%";
         else {
           lbl = state.ccaa + " · " + pct(tipo) + "% s/ " + miles(base) + " €";
@@ -1305,7 +1341,7 @@
       }
       function updateCta(r){
         if (!cta) return;
-        var partes = [ (state.tipo === "T" ? "un coche" : "una moto") ];
+        var partes = [ (state.tipo === "T" ? "un coche" : (state.tipo === "C" ? "un ciclomotor" : "una moto")) ];
         if (state.ccaa) partes.push("en " + state.ccaa);
         if (state.anio) partes.push("del " + state.anio);
         var msg = "Hola, quiero transferir " + partes.join(" ") + "." + (r ? (" Vuestra calculadora me estima unos " + eur(r.total) + " € en total. ¿Me lo confirmáis?") : " ¿Me confirmáis el precio total con el ITP?");
@@ -1314,6 +1350,129 @@
       }
 
       fillModelos(); syncRows(); paint();
+    })();
+
+    // 4f2) Documentación por trámite (lo que el cliente aporta; el resto lo gestiona la gestoría)
+    (function(){
+      var sel = document.getElementById("docSel");
+      if (!sel) return;
+      var metaEl = document.getElementById("docMeta"), listEl = document.getElementById("docList"),
+          noteEl = document.getElementById("docNote"), cta = document.getElementById("docCta");
+      var TRAMITES = [
+        { n:"Transferencia (cambio de titularidad)", q:"El comprador", pl:"30 días desde la firma", t:"55,70 € + ITP",
+          d:["Contrato de compraventa firmado por comprador y vendedor en todas las hojas (o factura, si el vendedor es una empresa).",
+             "DNI/NIE del comprador (y una copia del DNI del vendedor).",
+             "Permiso de circulación y ficha técnica (ITV) del vehículo.",
+             "Justificante del pago o exención del ITP (modelo 620/621): te lo calculamos y presentamos nosotros."],
+          nota:"El vehículo debe estar de alta, con el IVTM al día, la ITV en vigor y libre de reservas de dominio, embargos o precintos. La cita previa, los impresos oficiales y la tasa los gestionamos nosotros." },
+        { n:"Transferencia de ciclomotor", q:"El comprador", pl:"30 días desde la firma", t:"27,85 € + ITP",
+          d:["Contrato de compraventa o factura firmada.",
+             "DNI/NIE del comprador (y copia del DNI del vendedor).",
+             "Permiso de circulación y ficha técnica del ciclomotor.",
+             "Justificante del pago o exención del ITP."],
+          nota:"Mismas condiciones que una transferencia normal; cambia solo el importe de la tasa de la DGT." },
+        { n:"Notificación de venta", q:"El vendedor", pl:"Nada más vender", t:"8,67 €",
+          d:["Contrato de compraventa o factura que acredite la venta.",
+             "DNI/NIE del vendedor.",
+             "Datos del comprador (nombre y DNI/NIE)."],
+          nota:"Te libera de las multas y del IVTM posteriores a la venta. No sustituye a la transferencia: el comprador debe ponerla a su nombre." },
+        { n:"Matriculación (vehículo nuevo o importado)", q:"El titular", pl:"Antes de circular", t:"99,77 € (ciclomotores 27,85 €)",
+          d:["Ficha técnica / tarjeta ITV (eITV).",
+             "Factura o documento de propiedad.",
+             "Justificante del impuesto de matriculación (IEDMT, modelo 576/06/05) o su exención.",
+             "Justificante del IVTM del ayuntamiento.",
+             "Importados de la UE: COC (certificado de conformidad) y ficha técnica española tras la ITV.",
+             "DNI/NIE del titular."],
+          nota:"Después de matricular se fabrican las placas y se contrata el seguro obligatorio." },
+        { n:"Baja temporal (y prórroga)", q:"El titular", pl:"Recomendable antes de fin de año", t:"8,67 €",
+          d:["DNI/NIE del titular.",
+             "Permiso de circulación y ficha técnica (ITV), si los conservas."],
+          nota:"Mientras está de baja no se puede circular. Duración máxima 1 año, prorrogable. Conserva el resguardo para tu aseguradora." },
+        { n:"Alta de un vehículo en baja temporal", q:"El titular", pl:"Antes de volver a circular", t:"8,67 €",
+          d:["DNI/NIE del titular.",
+             "Tarjeta ITV (con la ITV en vigor)."],
+          nota:"Necesitas la ITV en vigor y el seguro contratado antes de circular." },
+        { n:"Baja definitiva (desguace)", q:"El titular (en un Centro Autorizado de Tratamiento)", pl:"Al final de la vida útil del vehículo", t:"Gratuita en el CAT",
+          d:["El vehículo, para entregarlo en el desguace (CAT).",
+             "Permiso de circulación y ficha técnica originales (si se han perdido, declaración responsable).",
+             "DNI/NIE."],
+          nota:"El desguace emite el certificado de destrucción y tramita la baja. Guarda ese certificado." },
+        { n:"Baja por exportación (otro país)", q:"El titular", pl:"Antes del traslado", t:"Consultar",
+          d:["DNI/NIE.",
+             "Permiso de circulación y ficha técnica.",
+             "Acreditación del traslado o exportación."],
+          nota:"Se pueden obtener placas verdes temporales para circular durante el traslado." },
+        { n:"Duplicado del permiso de circulación", q:"El titular", pl:"Al perderlo, deteriorarse o sustraerse", t:"20,81 €",
+          d:["DNI/NIE del titular.",
+             "Matrícula del vehículo.",
+             "Motivo (pérdida, robo o deterioro)."],
+          nota:"Se entrega un permiso provisional hasta recibir el definitivo." },
+        { n:"Duplicado de la ficha técnica (ITV)", q:"El titular", pl:"Al perderla o deteriorarse", t:"Consultar",
+          d:["DNI/NIE.",
+             "Solicitud del duplicado."],
+          nota:"También puede gestionarse en la propia estación ITV." },
+        { n:"Cambio de domicilio fiscal del vehículo", q:"El titular", pl:"15 días desde el cambio", t:"Gratuito (Canarias/Ceuta/Melilla: 8,67 €)",
+          d:["DNI/NIE actualizado con el nuevo domicilio (o certificado de empadronamiento)."],
+          nota:"Determina el ayuntamiento que cobra el IVTM. El nuevo permiso de circulación es gratuito." },
+        { n:"Renovación del permiso (reforma, servicio o datos)", q:"El titular", pl:"Tras la reforma o el cambio", t:"20,81 € (otros datos: 8,67 €)",
+          d:["Ficha ITV con los nuevos datos (si hay cambio técnico o de servicio).",
+             "Justificante del cambio (DNI o tarjeta fiscal ya modificada).",
+             "DNI/NIE."],
+          nota:"Puede requerir una inspección ITV previa. Si cambia el CIF o es por fusión, se hace una transferencia." },
+        { n:"Rehabilitación de un vehículo", q:"El titular", pl:"—", t:"99,77 € (ciclomotores 27,85 €)",
+          d:["Solicitud indicando el supuesto (por ejemplo, vuelta de una baja por exportación).",
+             "DNI/NIE."],
+          nota:"Requiere la ITV en vigor antes de volver a circular." },
+        { n:"Entrega a un compraventa", q:"El titular que entrega el vehículo", pl:"Tras la entrega", t:"8,67 €",
+          d:["Documento firmado por ambas partes acreditando la entrega.",
+             "DNI/NIE."],
+          nota:"El vehículo pasa automáticamente a situación de baja temporal." },
+        { n:"Vehículo histórico (catalogación)", q:"El titular", pl:"—", t:"Consultar",
+          d:["Resolución de catalogación como histórico (laboratorio oficial + comunidad autónoma).",
+             "Tarjeta ITV de histórico.",
+             "Justificación de ITP / IEDMT / IVTM.",
+             "Si no estaba matriculado en España: 4 fotos a color y prueba notarial de propiedad.",
+             "DNI/NIE."],
+          nota:"Antigüedad mínima 30 años. Se asigna una matrícula histórica tipo H." },
+        { n:"Patinete / Vehículo de Movilidad Personal (VMP)", q:"El titular (menores: su tutor)", pl:"Antes de circular", t:"8,67 €",
+          d:["Certificado de circulación emitido por un laboratorio autorizado por la DGT.",
+             "Ficha técnica del VMP.",
+             "Una fotografía del vehículo.",
+             "DNI/NIE."],
+          nota:"Sin ITP ni IVTM. Después se obtiene la etiqueta identificativa en un fabricante de placas." },
+        { n:"Informe del vehículo", q:"Cualquiera (reducido) o el titular (detallado)", pl:"En cualquier momento", t:"Reducido gratis · detallado 8,67 €",
+          d:["Matrícula del vehículo."],
+          nota:"Muy recomendable antes de comprar: muestra cargas, embargos, reserva de dominio, ITV e historial." },
+        { n:"Casos especiales de transferencia", q:"Según el caso", pl:"30 días (herencia: 90 días)", t:"Habitualmente 55,70 €",
+          d:["Donación: documento de donación + justificante del Impuesto de Sucesiones y Donaciones (ISD), en lugar del ITP.",
+             "Herencia: documento que designe al nuevo titular + ISD de la comunidad del fallecido.",
+             "Separación o divorcio: convenio regulador + resolución judicial, o documento notarial de adjudicación.",
+             "Vehículo financiado (reserva de dominio): cancelación o subrogación en el Registro de Bienes Muebles.",
+             "Renting: factura + contrato de renting con autorización para figurar como titular.",
+             "Subasta: certificado de adjudicación o de subasta.",
+             "Desde Canarias, Ceuta o Melilla: certificado de importación H1 (despacho en Aduana)."],
+          nota:"Cuéntanos tu caso y te decimos exactamente qué necesitas y cuánto cuesta." }
+      ];
+      var CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+      TRAMITES.forEach(function(t, i){ var o = document.createElement("option"); o.value = i; o.textContent = t.n; sel.appendChild(o); });
+      function render(){
+        var t = TRAMITES[parseInt(sel.value, 10) || 0];
+        metaEl.innerHTML = "";
+        [["Quién", t.q], ["Plazo", t.pl], ["Tasa DGT", t.t]].forEach(function(p){
+          var s = document.createElement("span"); s.className = "doc-badge";
+          s.innerHTML = p[0] + " <span>" + p[1] + "</span>"; metaEl.appendChild(s);
+        });
+        listEl.innerHTML = "";
+        t.d.forEach(function(doc){ var li = document.createElement("li"); li.innerHTML = CHECK + "<span>" + doc + "</span>"; listEl.appendChild(li); });
+        noteEl.textContent = t.nota;
+        if (cta) {
+          var msg = "Hola, quiero información sobre el trámite: " + t.n + ". ¿Me decís qué necesito y cuánto cuesta?";
+          cta.setAttribute("href", "https://wa.me/" + CONFIG.whatsapp + "?text=" + enc(msg));
+          cta.setAttribute("target", "_blank"); cta.setAttribute("rel", "noopener noreferrer");
+        }
+      }
+      sel.addEventListener("change", render);
+      render();
     })();
 
     // 4g) Vídeo (si defines CONFIG.videoUrl)
