@@ -41,16 +41,16 @@
   :root{
     /* ====== COLORES DE MARCA · Burocracia Zero ====== */
     --accent:      #15141c;   /* negro de marca: textos, botones, footer */
-    --accent-soft: #1c3a63;   /* variante para degradados/hover */
-    --brand-lav:   #BCD4F2;   /* lila corporativo */
+    --accent-soft: #2c2550;   /* variante para degradados/hover */
+    --brand-lav:   #C9C8FC;   /* lila corporativo */
     --brand-yellow:#FFEA63;   /* amarillo corporativo (resaltados) */
     --wa:          #25D366;   /* verde WhatsApp (no lo cambies) */
-    --wa-dark:     #3566a8;
+    --wa-dark:     #9272b0;
     --ink:         #15141c;   /* texto principal */
     --muted:       #5d5b6b;   /* texto secundario */
-    --line:        #dde6f3;   /* líneas/bordes */
+    --line:        #e7e6f2;   /* líneas/bordes */
     --bg:          #ffffff;
-    --bg-soft:     #eef4fc;   /* fondo lila muy suave para secciones alternas */
+    --bg-soft:     #f3f2fe;   /* fondo lila muy suave para secciones alternas */
     --radius:      18px;
     --maxw:        1120px;
     --shadow:      0 6px 24px rgba(21,20,28,.07);
@@ -82,8 +82,8 @@
     padding:.95rem 1.5rem;border-radius:999px;cursor:pointer;border:2px solid transparent;
     transition:transform .12s ease,box-shadow .2s ease,background .2s ease;white-space:nowrap}
   .btn:active{transform:translateY(1px)}
-  .btn-wa{background:var(--wa-dark);color:#fff;box-shadow:0 8px 22px rgba(53,102,168,.30)}
-  .btn-wa:hover{background:#28528c;box-shadow:0 10px 26px rgba(53,102,168,.34)}
+  .btn-wa{background:var(--wa-dark);color:#fff;box-shadow:0 8px 22px rgba(146,114,176,.30)}
+  .btn-wa:hover{background:#7c5f9b;box-shadow:0 10px 26px rgba(146,114,176,.34)}
   .btn-ghost{background:transparent;color:var(--accent);border-color:var(--line)}
   .btn-ghost:hover{border-color:var(--accent);background:var(--bg-soft)}
   .btn-light{background:#fff;color:var(--accent)}
@@ -105,7 +105,7 @@
 
   /* ====== HERO ====== */
   .hero{padding:clamp(2.6rem,6vw,4.6rem) 0 clamp(2.2rem,5vw,3.6rem);
-    background:radial-gradient(1200px 480px at 78% -12%,#E4EEFB 0,transparent 62%)}
+    background:radial-gradient(1200px 480px at 78% -12%,#ECEBFE 0,transparent 62%)}
   .hero-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:clamp(1.6rem,4vw,3.2rem);align-items:center}
   @media(max-width:880px){.hero-grid{grid-template-columns:1fr}}
   .hero h1{margin:.7rem 0 .9rem}
@@ -131,6 +131,18 @@
   .hero-card .row b{display:block;font-size:.97rem}
   .hero-card .row small{color:var(--muted)}
   .hero-card .btn{width:100%;justify-content:center;margin-top:1.1rem}
+  /* ===== Hero centrado (distribución propia de extranjería) ===== */
+  .hero-center{max-width:880px;margin:0 auto;text-align:center}
+  .hero-center .lead{max-width:62ch;margin-left:auto;margin-right:auto}
+  .hero-center .hero-cta{justify-content:center}
+  .hero-center .hero-trust{justify-content:center}
+  .hero-feat{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-top:2.4rem;text-align:left}
+  @media(max-width:760px){.hero-feat{grid-template-columns:1fr}}
+  .hf{background:#fff;border:1px solid var(--line);border-radius:14px;padding:1.1rem 1.15rem;box-shadow:var(--shadow)}
+  .hf .ic{width:40px;height:40px;border-radius:10px;background:var(--bg-soft);display:grid;place-items:center;color:var(--accent);margin-bottom:.6rem}
+  .hf .ic svg{width:22px;height:22px}
+  .hf b{display:block;font-size:1rem;margin-bottom:.15rem}
+  .hf small{color:var(--muted);font-size:.9rem;line-height:1.4}
 
   /* ====== BARRA DE CONFIANZA ====== */
   .trustbar{border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--bg-soft)}
@@ -141,11 +153,12 @@
 
   /* ====== SECCIONES ====== */
   section.block{padding:clamp(2.8rem,6vw,4.6rem) 0}
-  .section-head{max-width:62ch;margin:0 auto clamp(1.8rem,4vw,2.6rem);text-align:center}
+  .section-head{max-width:64ch;margin:0 0 clamp(1.8rem,4vw,2.6rem);text-align:left}
+  .section-head h2::after{content:"";display:block;width:56px;height:4px;background:var(--brand-yellow);border-radius:3px;margin-top:.85rem}
   .section-head h2{margin:.5rem 0 .6rem}
 
   /* ====== TRÁMITES (grid de tarjetas) ====== */
-  .cards{display:grid;grid-template-columns:repeat(2,1fr);gap:1.1rem}
+  .cards{display:grid;grid-template-columns:1fr;gap:1rem;max-width:880px;margin:0 auto}
   @media(max-width:760px){.cards{grid-template-columns:1fr}}
   .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:1.5rem;
     box-shadow:var(--shadow);display:flex;flex-direction:column;transition:transform .15s ease,box-shadow .2s ease,border-color .2s}
@@ -163,6 +176,11 @@
   .card .card-cta{margin-top:auto}
   .card .card-cta a{display:inline-flex;align-items:center;gap:.4rem;font-weight:600;color:var(--wa-dark)}
   .card .card-cta svg{width:18px;height:18px}
+  /* ===== Tarjetas horizontales (icono a la izquierda) ===== */
+  #tramites .card{display:grid;grid-template-columns:auto 1fr;column-gap:1.3rem;row-gap:.2rem;align-items:start;text-align:left}
+  #tramites .card .ic{grid-row:1 / -1;align-self:start}
+  #tramites .card>*:not(.ic){grid-column:2}
+  #tramites .card .card-cta{margin-top:.4rem}
 
   /* ====== CÓMO FUNCIONA (pasos) ====== */
   .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:1.4rem;counter-reset:step}
@@ -257,7 +275,7 @@
   .form-consent{text-align:left;margin:.2rem 0 .4rem}
   .consent-check{display:flex;align-items:flex-start;gap:.5rem;font-size:.88rem;color:var(--ink);cursor:pointer}
   .consent-check input{margin-top:.2rem;flex:0 0 auto;width:18px;height:18px}
-  .consent-check a{color:#2f5e9e;text-decoration:underline}
+  .consent-check a{color:#5b54c9;text-decoration:underline}
   #bzConsentErr{display:none;color:#c0392b;font-size:.82rem;margin-top:.35rem}
   .consent-info{font-size:.78rem;color:var(--muted);margin-top:.55rem;line-height:1.45}
   /* ====== BARRA CTA FIJA EN MÓVIL ====== */
@@ -272,7 +290,7 @@
     body{padding-bottom:70px}
   }
   /* ====== CALCULADORA DE PRECIO ====== */
-  .calc{background:linear-gradient(135deg,#eef4fc,#e4eefb)}
+  .calc{background:linear-gradient(135deg,#f3f2fe,#ecebfe)}
   .calc-card{max-width:760px;margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-lg);padding:1.9rem 1.6rem;text-align:center}
   .calc-card .lead-min{font-weight:600;color:var(--muted);margin-bottom:.2rem}
   .calc-types{display:flex;flex-wrap:wrap;justify-content:center;gap:.5rem;margin:1rem 0 1.3rem}
@@ -393,7 +411,7 @@
   /* ====== BOTÓN FLOTANTE WHATSAPP ====== */
   .wa-float{position:fixed;right:18px;bottom:18px;z-index:60;display:inline-flex;align-items:center;gap:.6rem;
     background:var(--wa-dark);color:#fff;font-weight:700;padding:.85rem 1.1rem;border-radius:999px;
-    box-shadow:0 10px 28px rgba(53,102,168,.45);transition:transform .15s ease,box-shadow .2s}
+    box-shadow:0 10px 28px rgba(146,114,176,.45);transition:transform .15s ease,box-shadow .2s}
   .wa-float:hover{transform:translateY(-2px);background:var(--wa-dark)}
   .wa-float svg{width:26px;height:26px}
   @media(max-width:520px){.wa-float .label{display:none}.wa-float{padding:.95rem;border-radius:50%}}
@@ -408,45 +426,29 @@
 
 <!-- ══════════════ HERO ══════════════ -->
 <section class="hero" id="inicio">
-  <div class="wrap hero-grid">
-    <div>
-      <span class="hero-badge"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11l-1 8.5L19.5 10H13z"/></svg><span data-field="eslogan">Extranjería sin colas ni esperas</span></span>
-      <span class="eyebrow" style="display:block;margin-top:.7rem">Gestoría en Toledo · Online en toda España</span>
-      <h1>Tus trámites de extranjería, hechos por nosotros. Tú, sin colas.</h1>
-      <p class="lead">NIE, TIE, residencia, arraigo, reagrupación familiar, renovaciones y nacionalidad. Trabajamos de forma <strong>100% digital</strong> y por eso podemos ayudarte <strong>en toda España</strong>: nos envías la documentación por WhatsApp y nosotros pedimos la cita, preparamos los formularios y presentamos tu solicitud.</p>
-      <div class="hero-cta">
-        <a class="btn btn-wa" href="https://wa.me/34674573447" data-wa="hero_main"><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64h.01c6.1 0 11.04-4.93 11.04-11.04C27.09 8.93 22.15 4 16.04 4zm0 20.2c-1.12 0-2.22-.3-3.18-.86l-.23-.14-3.79.99 1.01-3.7-.15-.24a8.99 8.99 0 0 1-1.39-4.86c0-5.02 4.09-9.1 9.12-9.1 2.44 0 4.73.95 6.46 2.67a9.02 9.02 0 0 1 2.67 6.43c0 5.03-4.09 9.11-9.13 9.11zm5.01-6.82c-.27-.14-1.62-.8-1.87-.89-.25-.09-.43-.14-.62.14-.18.27-.71.89-.87 1.07-.16.18-.32.2-.59.07-.27-.14-1.16-.43-2.2-1.36-.81-.72-1.36-1.62-1.52-1.89-.16-.27-.02-.42.12-.55.12-.12.27-.32.41-.48.14-.16.18-.27.27-.46.09-.18.05-.34-.02-.48-.07-.14-.62-1.5-.85-2.05-.22-.53-.45-.46-.62-.47l-.53-.01c-.18 0-.48.07-.73.34-.25.27-.96.94-.96 2.3s.98 2.66 1.12 2.85c.14.18 1.93 2.95 4.68 4.14.65.28 1.16.45 1.56.58.66.21 1.25.18 1.72.11.52-.08 1.62-.66 1.85-1.3.23-.64.23-1.18.16-1.3-.07-.11-.25-.18-.52-.32z"/></svg>Consulta gratis por WhatsApp</a>
-        <a class="btn btn-ghost" data-tel href="tel:+34674573447">Llámanos</a>
-      </div>
-      <p class="hero-urgency"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span data-field="urgenciaTexto">Escríbenos antes de las 14:00 y empezamos tu trámite hoy mismo.</span></p>
-      <ul class="hero-trust">
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Sin desplazamientos</li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Gestión 100% online</li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Toda España</li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Te conseguimos la cita</li>
-      </ul>
+  <div class="wrap hero-center">
+    <span class="hero-badge"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11l-1 8.5L19.5 10H13z"/></svg><span data-field="eslogan">Extranjería sin colas ni esperas</span></span>
+    <span class="eyebrow" style="display:block;margin-top:.9rem">Gestoría en Toledo · Online en toda España</span>
+    <h1>Tus trámites de extranjería, hechos por nosotros. Tú, sin colas.</h1>
+    <p class="lead">NIE, TIE, residencia, arraigo, reagrupación familiar, renovaciones y nacionalidad. Trabajamos de forma <strong>100% digital</strong> y por eso podemos ayudarte <strong>en toda España</strong>: nos envías la documentación por WhatsApp y nosotros pedimos la cita, preparamos los formularios y presentamos tu solicitud.</p>
+    <div class="hero-cta">
+      <a class="btn btn-wa" href="https://wa.me/34674573447" data-wa="hero_main"><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64h.01c6.1 0 11.04-4.93 11.04-11.04C27.09 8.93 22.15 4 16.04 4z"/></svg>Consulta gratis por WhatsApp</a>
+      <a class="btn btn-ghost" data-tel href="tel:+34674573447">Llámanos</a>
     </div>
-
-    <aside class="hero-card" aria-label="Resumen de contacto">
-      <h3>¿Qué trámite necesitas?</h3>
-      <p class="sub">Te damos presupuesto cerrado y te decimos qué papeles hacen falta. Sin compromiso.</p>
-      <div class="row">
-        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0z"/><path d="M12 7v5l3 2"/></svg></span>
-        <div><b>Rápido</b><small>Empezamos en cuanto recibimos los documentos</small></div>
-      </div>
-      <div class="row">
-        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5z"/><path d="m9 12 2 2 4-4"/></svg></span>
-        <div><b>Seguro y legal</b><small>Gestores profesionales revisan tu trámite</small></div>
-      </div>
-      <div class="row">
-        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18M3 12h18M3 17h12"/></svg></span>
-        <div><b>Sin papeleo para ti</b><small>Pedimos la cita y presentamos tu solicitud</small></div>
-      </div>
-      <a class="btn btn-wa" href="https://wa.me/34674573447" data-wa="hero_card"><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64h.01c6.1 0 11.04-4.93 11.04-11.04C27.09 8.93 22.15 4 16.04 4zm0 20.2c-1.12 0-2.22-.3-3.18-.86l-.23-.14-3.79.99 1.01-3.7-.15-.24a8.99 8.99 0 0 1-1.39-4.86c0-5.02 4.09-9.1 9.12-9.1 2.44 0 4.73.95 6.46 2.67a9.02 9.02 0 0 1 2.67 6.43c0 5.03-4.09 9.11-9.13 9.11z"/></svg>Pedir presupuesto</a>
-    </aside>
+    <p class="hero-urgency"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span data-field="urgenciaTexto">Escríbenos antes de las 14:00 y empezamos tu trámite hoy mismo.</span></p>
+    <ul class="hero-trust">
+      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Sin desplazamientos</li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Gestión 100% online</li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Toda España</li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Te conseguimos la cita</li>
+    </ul>
+    <div class="hero-feat">
+      <div class="hf"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0z"/><path d="M12 7v5l3 2"/></svg></span><b>Rápido</b><small>Empezamos en cuanto recibimos los documentos.</small></div>
+      <div class="hf"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5z"/><path d="m9 12 2 2 4-4"/></svg></span><b>Seguro y legal</b><small>Gestores profesionales revisan tu expediente.</small></div>
+      <div class="hf"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18M3 12h18M3 17h12"/></svg></span><b>Sin papeleo para ti</b><small>Pedimos la cita y presentamos tu solicitud.</small></div>
+    </div>
   </div>
 </section>
-
 <!-- ══════════════ BARRA DE CONFIANZA ══════════════ -->
 <div class="trustbar">
   <div class="wrap">
@@ -539,6 +541,25 @@
       <p class="doc-note" id="docNote"></p>
       <p class="doc-tax"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5z"/><path d="m9 12 2 2 4-4"/></svg><span><strong>De la cita, los formularios y la presentación nos encargamos nosotros.</strong> Pedimos tu cita de extranjería o policía, preparamos los formularios oficiales (EX-…) y presentamos tu solicitud. Cuando hay tasas (modelo 790), te las calculamos y gestionamos. Tú solo aportas tu documentación y firmas.</span></p>
       <a class="btn btn-wa" id="docCta"><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64C22.15 26.08 27.09 21.15 27.09 15.04 27.09 8.93 22.15 4 16.04 4z"/></svg>Pídenos este trámite</a>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ QUIÉNES SOMOS ══════════════ -->
+<section class="block why" id="quienes-somos">
+  <div class="wrap">
+    <div class="team-grid">
+      <div>
+        <img class="team-photo" alt="Carmen García, gestora de Burocracia Zero" style="display:none">
+        <div class="team-photo team-photo-ph" id="teamPhPlaceholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></div>
+      </div>
+      <div>
+        <span class="team-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5z"/><path d="m9 12 2 2 4-4"/></svg>Gestora Administrativa colegiada</span>
+        <h2>Detrás de Burocracia Zero hay personas, no una web anónima</h2>
+        <p class="lead" data-field="bioGestor">Soy gestor administrativo colegiado y llevo años ayudando a particulares y empresas con sus trámites de tráfico. Tú me cuentas lo que necesitas y yo me encargo de todo, con trato cercano y precio claro.</p>
+        <p style="margin-top:.9rem"><b data-field="nombreGestor">José · Burocracia Zero</b><br><span style="color:var(--muted)" data-field="cargoGestor">Gestor Administrativo colegiado nº 0146 · Colegio de Toledo</span></p>
+        <a class="btn btn-wa" data-wa="quienes" style="margin-top:1rem"><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64C22.15 26.08 27.09 21.15 27.09 15.04 27.09 8.93 22.15 4 16.04 4z"/></svg>Habla directamente conmigo</a>
+      </div>
     </div>
   </div>
 </section>
@@ -644,25 +665,6 @@
         </tbody>
         <tfoot><tr><td colspan="3"><a class="btn btn-wa" data-wa="comparativa"><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64C22.15 26.08 27.09 21.15 27.09 15.04 27.09 8.93 22.15 4 16.04 4z"/></svg>Quiero una gestoría de verdad</a></td></tr></tfoot>
       </table>
-    </div>
-  </div>
-</section>
-
-<!-- ══════════════ QUIÉNES SOMOS ══════════════ -->
-<section class="block why" id="quienes-somos">
-  <div class="wrap">
-    <div class="team-grid">
-      <div>
-        <img class="team-photo" alt="Carmen García, gestora de Burocracia Zero" style="display:none">
-        <div class="team-photo team-photo-ph" id="teamPhPlaceholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></div>
-      </div>
-      <div>
-        <span class="team-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5z"/><path d="m9 12 2 2 4-4"/></svg>Gestora Administrativa colegiada</span>
-        <h2>Detrás de Burocracia Zero hay personas, no una web anónima</h2>
-        <p class="lead" data-field="bioGestor">Soy gestor administrativo colegiado y llevo años ayudando a particulares y empresas con sus trámites de tráfico. Tú me cuentas lo que necesitas y yo me encargo de todo, con trato cercano y precio claro.</p>
-        <p style="margin-top:.9rem"><b data-field="nombreGestor">José · Burocracia Zero</b><br><span style="color:var(--muted)" data-field="cargoGestor">Gestor Administrativo colegiado nº 0146 · Colegio de Toledo</span></p>
-        <a class="btn btn-wa" data-wa="quienes" style="margin-top:1rem"><svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.04 4C9.93 4 5 8.93 5 15.04c0 2.12.59 4.1 1.62 5.8L5 28l7.34-1.92a11 11 0 0 0 3.7.64C22.15 26.08 27.09 21.15 27.09 15.04 27.09 8.93 22.15 4 16.04 4z"/></svg>Habla directamente conmigo</a>
-      </div>
     </div>
   </div>
 </section>
