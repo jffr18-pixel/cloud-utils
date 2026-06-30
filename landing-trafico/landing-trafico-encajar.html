@@ -353,6 +353,15 @@
   .compare .no{color:#c0392b;opacity:.55}
   .compare .yes svg,.compare .no svg{width:22px;height:22px}
   .compare tfoot td{text-align:center;padding:1.1rem}
+  @media(max-width:560px){
+    .compare table{min-width:0}
+    .compare th,.compare td{padding:.6rem .45rem}
+    .compare tbody td:first-child{font-size:.88rem;line-height:1.3}
+    .compare thead th{font-size:.72rem;line-height:1.2}
+    .compare .yes svg,.compare .no svg{width:18px;height:18px}
+    .compare tfoot td{padding:1rem .4rem}
+    .compare tfoot .btn-wa{font-size:.88rem;padding:.85rem 1rem;white-space:normal;width:100%;justify-content:center}
+  }
   /* burbuja whatsapp */
   .wa-bubble{position:fixed;right:18px;bottom:88px;z-index:61;max-width:260px;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-lg);padding:.85rem 1.1rem;display:none}
   .wa-bubble.show{display:block;animation:bubbleIn .3s ease}
