@@ -61,7 +61,9 @@ Cliente en la web
 
 **Casilla 2 (obligatoria) — autorización de representación:**
 
-> Autorizo a **Burocracia Zero S.L.P.** a actuar como mi representante y a presentar los trámites en mi nombre ante la Administración competente.
+> Autorizo a **Burocracia Zero S.L.P.** a actuar como mi representante ante la Administración competente. Para formalizarlo, recibiré el **mandato de representación** y lo firmaré por **SMS (firma electrónica)**, que queda validada para los trámites.
+
+> **Nota:** el formulario ya **no** recoge una firma dibujada. El **mandato** se firma aparte con **A9 Firma** (firma electrónica por SMS/OTP) — ver sección "El mandato de representación (A9 Firma)".
 
 ---
 
@@ -104,6 +106,20 @@ En Jotform → **Settings → Emails**:
 - **Autoresponder email** → al cliente (a su email): *"Hemos recibido tu documentación para tu expediente de [Trámite]. La revisamos y te contamos los siguientes pasos. — Burocracia Zero"*.
 
 ---
+
+## PASO 4.5 · El mandato de representación (A9 Firma)
+
+La **autorización/mandato** para representar al cliente ante la Administración **no** se firma en el formulario: se firma con **A9 Firma** (firma electrónica avanzada por **SMS/OTP**), que da validez legal y evidencias.
+
+**Flujo:**
+1. El cliente envía el formulario (documentos + consentimiento + acepta que recibirá el mandato para firmarlo).
+2. Recibes el aviso de Jotform con sus datos (incluido el **teléfono**, clave para el SMS).
+3. Preparas el **mandato de representación** (plantilla en A9 Firma) y lo **envías al cliente** a su móvil → firma por **SMS (OTP)** → A9 valida y te devuelve el **PDF firmado + el informe de evidencias**.
+4. Guardas ese mandato firmado en el **expediente** (SharePoint), junto con la documentación.
+
+**Contenido mínimo del mandato:** representante (Burocracia Zero S.L.P., colegiada nº 0146), representado (cliente con DNI/NIE), y el/los trámites y administración para los que se otorga. Conserva **siempre** el PDF firmado + el informe de evidencias de A9 (es tu prueba de la representación).
+
+**¿Se puede automatizar el envío del mandato?** Si A9 Firma ofrece **API, webhook o conector (Make/Power Automate)**, se puede lanzar el sobre de firma automáticamente al recibir el formulario (usando el teléfono del cliente). Si no lo ofrece, el envío manual desde el panel de A9 es rápido. *(Conviene confirmar con A9 qué integración tiene.)*
 
 ## PASO 5 · Poner el formulario en la web (Wix)
 
