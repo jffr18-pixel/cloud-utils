@@ -69,24 +69,28 @@ Cliente en la web
 
 > **Importante sobre costes:** en Power Automate, el **conector de Jotform es "premium"** (requiere plan de pago ~14 €/usuario/mes). Los conectores de SharePoint/Outlook sí van incluidos en Microsoft 365, pero el de Jotform no. **Por eso NO usamos Power Automate.** Aquí tienes las vías gratis, de mejor a más simple.
 
-### ✅ Vía A (recomendada, gratis) · Integración nativa Jotform → OneDrive for Business
-1. En Jotform, abre tu formulario → **Settings → Integrations** → busca **Microsoft OneDrive** (elige *OneDrive for Business*, tu cuenta de Microsoft 365).
-2. Elige la **carpeta destino** (p. ej. `Expedientes`).
-3. En la opción de **nombre de carpeta/subcarpeta**, usa los campos del formulario para que cree una **carpeta por expediente** (p. ej. `{Área} - {Nombre} - {Trámite}`).
-4. Listo: cada envío guarda los archivos **solos** en tu nube de Microsoft. OneDrive for Business es la misma tecnología que SharePoint; comparte esa carpeta con tu equipo.
-- **Coste:** 0 € en Power Automate. (Solo dependes de los límites del plan de Jotform.)
+> **Nota clave:** Jotform tiene integración **nativa con OneDrive**, pero **no** con una biblioteca de un sitio de **SharePoint**. Como quieres SharePoint, usa la **Vía A (Make)** o la **Vía B (OneDrive + Power Automate estándar)** — las dos gratis.
 
-### ✅ Vía B (gratis) · Make (Integromat), si quieres una biblioteca de SharePoint concreta
-Usa **Make** (plan gratuito, 1.000 operaciones/mes) en vez de Power Automate:
-1. Escenario: **Jotform → "Watch submissions"**.
-2. **SharePoint → Create a folder** (`Expedientes/{Área}/{Apellido}_{fecha}`).
-3. **Iterar archivos → SharePoint → Upload a file** en esa carpeta.
+### ✅ Vía A (recomendada para SharePoint, gratis) · Make (Integromat)
+Make (plan gratuito, 1.000 operaciones/mes) coge cada envío de Jotform y lo sube a tu **biblioteca de SharePoint**:
+1. Escenario: **Jotform → "Watch submissions"** (conecta tu cuenta de Jotform y elige el formulario).
+2. **Microsoft SharePoint → Create a folder** (`Expedientes/{Área}/{Nombre}_{fecha}`).
+3. **Iterador de archivos → Microsoft SharePoint → Upload a file** en esa carpeta.
 4. (Opcional) **SharePoint → Create item** en una lista `Registro de expedientes`.
 5. **Microsoft 365 Email → Send an email** avisándote.
-- **Coste:** 0 € (dentro del plan gratuito de Make).
+- **Coste:** 0 € (los conectores de Make no son "premium" como en Power Automate).
 
-### ⚙️ Vía C (avanzada, de pago) · Power Automate
-Solo si ya tienes Power Automate **Premium**: mismo flujo que la Vía B pero con el conector de Jotform (premium). No la necesitas si usas A o B.
+### ✅ Vía B (todo Microsoft, gratis) · Jotform → OneDrive → Power Automate → SharePoint
+La clave para que **no cueste**: Power Automate cobra por el conector de **Jotform** (premium), pero **NO** por los de **OneDrive** y **SharePoint** (estándar, incluidos en tu Microsoft 365).
+1. En Jotform → **Settings → Integrations → Microsoft OneDrive** (OneDrive for Business): guarda los archivos en una carpeta `Bandeja-expedientes`, con **subcarpeta por expediente** usando los campos del formulario.
+2. En **Power Automate**, crea un flujo con **solo conectores estándar** (gratis):
+   - Desencadenador: **OneDrive for Business → "Cuando se crea un archivo"** (carpeta `Bandeja-expedientes`).
+   - Acción: **SharePoint → "Crear archivo"** en tu biblioteca `Expedientes` (misma ruta/subcarpeta).
+   - (Opcional) **Outlook → Enviar correo** avisándote.
+- **Coste:** 0 € (no se usa ningún conector premium).
+
+### 🗂️ Vía C (la más simple, gratis) · Solo OneDrive
+Si te vale con OneDrive for Business (es tecnología SharePoint y se comparte con el equipo), usa **solo la integración nativa Jotform → OneDrive** y no montes nada más. Cero pasos técnicos.
 
 ### 🐢 Vía D (la más simple, gratis) · Manual
 Jotform ya **almacena y organiza** todos los envíos y archivos y te avisa por email. Descargas y los subes tú a SharePoint. Cero automatización, cero coste.
