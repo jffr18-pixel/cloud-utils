@@ -2,7 +2,7 @@
 
 **Objetivo:** que el cliente suba su documentación desde la web, que llegue **ordenada a SharePoint** (una carpeta por expediente), que se te avise y que el cliente reciba confirmación — todo con la **protección de datos (RGPD)** incluida.
 
-**Herramientas:** Jotform (formulario público con subida de archivos) + Microsoft 365 (SharePoint + Power Automate + Outlook).
+**Herramientas:** Jotform (formulario público con subida de archivos) + Microsoft 365 (OneDrive for Business / SharePoint + Outlook). **Sin Power Automate de pago** (ver Paso 3).
 
 ```
 Cliente en la web
@@ -10,9 +10,8 @@ Cliente en la web
       ▼
   FORMULARIO JOTFORM  ──►  aviso a ti (email) + confirmación al cliente (email)
       │
-      ▼  (Power Automate)
-  SHAREPOINT: /Expedientes/<Área>/<Apellido_Nombre_Fecha>/  (archivos)
-                     + fila en la lista "Registro de expedientes"
+      ▼  (integración nativa de Jotform, o Make — ambas GRATIS)
+  ONEDRIVE/SHAREPOINT: /Expedientes/<Área>/<Nombre_Trámite>/  (archivos)
 ```
 
 > ¿Por qué Jotform y no Microsoft Forms? Porque el cliente es **externo** (no tiene cuenta de tu Microsoft 365). La subida de archivos de Microsoft Forms obliga a iniciar sesión con cuenta de la organización, así que no sirve para clientes. Jotform es **público** y luego mandamos los archivos a tu SharePoint.
@@ -66,21 +65,31 @@ Cliente en la web
 
 ---
 
-## PASO 3 · Guardar los archivos en SharePoint (con Power Automate)
+## PASO 3 · Guardar los archivos en tu Microsoft 365 (SIN pagar)
 
-**Preparación en SharePoint (una vez):**
-1. En tu sitio de SharePoint, crea una **biblioteca de documentos** llamada `Expedientes`.
-2. (Opcional pero recomendable) crea una **lista** llamada `Registro de expedientes` con columnas: Fecha, Área, Trámite, Nombre, DNI/NIE, Teléfono, Email, Carpeta.
+> **Importante sobre costes:** en Power Automate, el **conector de Jotform es "premium"** (requiere plan de pago ~14 €/usuario/mes). Los conectores de SharePoint/Outlook sí van incluidos en Microsoft 365, pero el de Jotform no. **Por eso NO usamos Power Automate.** Aquí tienes las vías gratis, de mejor a más simple.
 
-**Flujo en Power Automate (make.powerautomate.com):**
-1. **Desencadenador:** Jotform → *"When a new submission is received"* (conector de Jotform; conéctalo con tu cuenta de Jotform y elige el formulario).
-2. **Redactar (Compose)** el nombre de carpeta: `@{Área}/@{Apellido_Nombre}_@{utcNow('yyyy-MM-dd')}`.
-3. **SharePoint → Crear nueva carpeta** en la biblioteca `Expedientes` con ese nombre.
-4. Por cada archivo subido: **HTTP GET** a la URL del archivo de Jotform → **SharePoint → Crear archivo** dentro de la carpeta (nombre y contenido del archivo).
-5. **SharePoint → Crear elemento** en la lista `Registro de expedientes` con los datos del formulario.
-6. **Outlook → Enviar un correo** a jose@burocraciazero.es avisándote (con el enlace a la carpeta).
+### ✅ Vía A (recomendada, gratis) · Integración nativa Jotform → OneDrive for Business
+1. En Jotform, abre tu formulario → **Settings → Integrations** → busca **Microsoft OneDrive** (elige *OneDrive for Business*, tu cuenta de Microsoft 365).
+2. Elige la **carpeta destino** (p. ej. `Expedientes`).
+3. En la opción de **nombre de carpeta/subcarpeta**, usa los campos del formulario para que cree una **carpeta por expediente** (p. ej. `{Área} - {Nombre} - {Trámite}`).
+4. Listo: cada envío guarda los archivos **solos** en tu nube de Microsoft. OneDrive for Business es la misma tecnología que SharePoint; comparte esa carpeta con tu equipo.
+- **Coste:** 0 € en Power Automate. (Solo dependes de los límites del plan de Jotform.)
 
-> Alternativa más rápida (sin carpeta por expediente): usa la integración nativa **Jotform → OneDrive for Business**; los archivos caen en una carpeta de OneDrive (que también es SharePoint). Menos ordenado, pero se monta en 2 clics.
+### ✅ Vía B (gratis) · Make (Integromat), si quieres una biblioteca de SharePoint concreta
+Usa **Make** (plan gratuito, 1.000 operaciones/mes) en vez de Power Automate:
+1. Escenario: **Jotform → "Watch submissions"**.
+2. **SharePoint → Create a folder** (`Expedientes/{Área}/{Apellido}_{fecha}`).
+3. **Iterar archivos → SharePoint → Upload a file** en esa carpeta.
+4. (Opcional) **SharePoint → Create item** en una lista `Registro de expedientes`.
+5. **Microsoft 365 Email → Send an email** avisándote.
+- **Coste:** 0 € (dentro del plan gratuito de Make).
+
+### ⚙️ Vía C (avanzada, de pago) · Power Automate
+Solo si ya tienes Power Automate **Premium**: mismo flujo que la Vía B pero con el conector de Jotform (premium). No la necesitas si usas A o B.
+
+### 🐢 Vía D (la más simple, gratis) · Manual
+Jotform ya **almacena y organiza** todos los envíos y archivos y te avisa por email. Descargas y los subes tú a SharePoint. Cero automatización, cero coste.
 
 ---
 
