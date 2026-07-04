@@ -412,6 +412,43 @@
   /* accesibilidad: foco visible */
   a:focus-visible,.btn:focus-visible,summary:focus-visible{outline:3px solid #9cc2ff;outline-offset:2px;border-radius:8px}
 </style>
+
+<!-- Google Analytics 4 · mide los clics dentro del recuadro, sin duplicar visitas -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XC4DRZ0G5J"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag("js", new Date());
+  gtag("config", "G-XC4DRZ0G5J", { send_page_view: false });
+  (function(){
+    var PAGINA = "trafico";
+    function has(h,s){ return h.indexOf(s) !== -1; }
+    function ev(n,p){ try{ gtag("event", n, p||{}); }catch(e){} }
+    document.addEventListener("click", function(e){
+      var a = e.target && e.target.closest ? e.target.closest("a,button") : null;
+      if(!a) return;
+      var href = (a.getAttribute && a.getAttribute("href")) || "";
+      var secEl = a.closest ? a.closest("section") : null;
+      var sec = (secEl && secEl.id) || "";
+      if(has(href,"wa.me") || has(href,"api.whatsapp") || has(href,"whatsapp.com")){
+        ev("whatsapp_click", { pagina: PAGINA, seccion: sec });
+      } else if(href.indexOf("tel:") === 0){
+        ev("llamar_click", { pagina: PAGINA, seccion: sec });
+      } else if(has(href,"jotform.com")){
+        ev("subir_documentacion", { pagina: PAGINA, seccion: sec });
+      }
+    }, true);
+    document.addEventListener("submit", function(e){
+      ev("presupuesto_enviado", { pagina: PAGINA });
+    }, true);
+    var calcHecho = false;
+    document.addEventListener("change", function(e){
+      if(calcHecho) return;
+      var t = e.target;
+      if(t && t.closest && t.closest("#calculadora")){ calcHecho = true; ev("calculadora_uso", { pagina: PAGINA }); }
+    }, true);
+  })();
+</script>
 </head>
 <body>
 
