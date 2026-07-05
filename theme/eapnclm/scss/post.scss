@@ -1,0 +1,272 @@
+// ==========================================================================
+// EAPN-CLM · Gestión Social CLM — Componentes (post.scss)
+// Se inyecta DESPUÉS de Bootstrap/Boost, así que gana la cascada.
+// Reestiliza la DOM real de Moodle (Boost 4.x): barra superior, navegación
+// secundaria, tarjetas de curso, cabeceras, listas de actividad y login,
+// para reproducir el diseño del aula virtual.
+// ==========================================================================
+
+$eapn-teal:      #286782;
+$eapn-teal-navy: #1f4b5f;
+$eapn-granate:   #801d43;
+$eapn-accent:    #b01e54;
+$eapn-navy:      #0f172a;
+$eapn-pink-50:   #fbeaf0;
+$eapn-blue-50:   #eef4f7;
+$eapn-green:     #1e8e5a;
+$eapn-shadow:    0 1px 2px rgba(15,23,42,.04), 0 8px 24px rgba(15,23,42,.06);
+
+// --------------------------------------------------------------------------
+// Barra superior del aula (navbar)
+// --------------------------------------------------------------------------
+.navbar {
+    background-color: $eapn-teal !important;
+    box-shadow: none;
+    border-bottom: none;
+
+    .navbar-brand,
+    .navbar-nav .nav-link,
+    .navbar-nav .nav-link:hover,
+    #usernavigation .nav-link {
+        color: #fff !important;
+    }
+    .navbar-nav .nav-link { font-family: 'Poppins', sans-serif; font-weight: 600; }
+
+    // Píldora de página activa en la barra.
+    .primary-navigation .nav-link.active,
+    .primary-navigation .active > .nav-link {
+        background: rgba(255,255,255,.16);
+        border-radius: 50rem;
+        color: #fff !important;
+    }
+}
+
+// Botón A- / A+ y avatares en la barra.
+.navbar .badge,
+.navbar .btn-outline-secondary {
+    border-radius: 50rem;
+}
+
+// --------------------------------------------------------------------------
+// Navegación secundaria (pestañas Curso / Notas / etc.) como píldoras
+// --------------------------------------------------------------------------
+.secondary-navigation .navigation .nav-tabs {
+    border-bottom: none;
+    gap: .25rem;
+
+    .nav-link {
+        font-family: 'Poppins', sans-serif;
+        font-weight: 600;
+        border: none;
+        border-radius: 50rem;
+        color: #5b6b7a;
+        padding: .5rem 1.1rem;
+
+        &:hover { background: $eapn-blue-50; color: $eapn-teal; }
+        &.active {
+            background: $eapn-teal;
+            color: #fff;
+            border: none;
+        }
+    }
+}
+
+// --------------------------------------------------------------------------
+// Botones
+// --------------------------------------------------------------------------
+.btn-primary {
+    background-color: $eapn-teal;
+    border-color: $eapn-teal;
+    &:hover, &:focus, &:active { background-color: darken($eapn-teal, 6%); border-color: darken($eapn-teal, 6%); }
+}
+// El "secundario" de Boost pasa a ser el granate de acción.
+.btn-secondary {
+    background-color: $eapn-granate;
+    border-color: $eapn-granate;
+    color: #fff;
+    &:hover, &:focus, &:active { background-color: darken($eapn-granate, 6%); border-color: darken($eapn-granate, 6%); color: #fff; }
+}
+.btn-outline-primary {
+    color: $eapn-teal; border-color: $eapn-teal; border-width: 2px;
+    &:hover { background: $eapn-blue-50; color: $eapn-teal; }
+}
+// Utilidad de marca para la CTA granate ("Apuntarme", "Seguir por donde iba").
+.btn-eapn-accent {
+    background-color: $eapn-granate;
+    border-color: $eapn-granate;
+    color: #fff;
+    border-radius: 50rem;
+    &:hover { background-color: darken($eapn-granate, 6%); color: #fff; }
+}
+
+// --------------------------------------------------------------------------
+// Tarjetas y superficies
+// --------------------------------------------------------------------------
+.card {
+    border-radius: 1rem;
+    border-color: #e2e8ef;
+    box-shadow: 0 1px 2px rgba(15,23,42,.05);
+}
+
+// Tarjetas de curso del Dashboard / "Mis cursos" (block_myoverview).
+.block_myoverview,
+.course-cards,
+.courses-view {
+    .card.dashboard-card,
+    .card.course-card {
+        border-radius: 1rem;
+        overflow: hidden;
+        box-shadow: $eapn-shadow;
+        transition: transform .15s, box-shadow .15s;
+
+        &:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(15,23,42,.10); }
+
+        .dashboard-card-img,
+        .course-card-img {
+            min-height: 120px;
+            background-color: $eapn-blue-50;
+        }
+        .coursename,
+        .course-card-title a { font-family: 'Poppins', sans-serif; font-weight: 700; color: $eapn-navy; }
+    }
+}
+
+// Barra de progreso de curso.
+.progress {
+    background-color: #dcecf2;
+    border-radius: 50rem;
+    height: .6rem;
+}
+.progress-bar { background-color: $eapn-teal; border-radius: 50rem; }
+
+// --------------------------------------------------------------------------
+// Cabecera de página / de curso (banda de color)
+// --------------------------------------------------------------------------
+#page-header {
+    .page-context-header .page-header-headings h1,
+    h1.h2 { font-family: 'Poppins', sans-serif; }
+}
+
+// En páginas de curso damos a la cabecera una banda petróleo.
+body.pagelayout-course #page-header,
+body.path-course-view #page-header {
+    background: $eapn-teal;
+    color: #fff;
+    border-radius: 1rem;
+    padding: 1.6rem 1.8rem;
+    margin-bottom: 1.2rem;
+
+    h1, .page-context-header, .breadcrumb, .breadcrumb a, .activity-header { color: #fff !important; }
+    .breadcrumb a { text-decoration: underline; }
+}
+
+// --------------------------------------------------------------------------
+// Índice de curso (course index) — formato "temas"
+// --------------------------------------------------------------------------
+.courseindex {
+    .courseindex-item {
+        border-radius: .7rem;
+        &.pageitem, &:hover { background: $eapn-blue-50; }
+        &.pageitem .courseindex-link { color: $eapn-teal; font-weight: 700; }
+    }
+    // Círculo de estado completado.
+    .completioninfo .icon,
+    .courseindex-item-content .completioninfo { color: $eapn-teal; }
+}
+
+// --------------------------------------------------------------------------
+// Actividades dentro del tema
+// --------------------------------------------------------------------------
+.course-content {
+    .section .activity {
+        border: 1px solid #e2e8ef;
+        border-radius: .8rem;
+        padding: .55rem .9rem;
+        margin-bottom: .6rem;
+        background: #fff;
+
+        .activityname a,
+        .instancename { font-weight: 500; color: #1f2a37; }
+    }
+
+    // Nombre del tema.
+    .section .sectionname,
+    .course-section-header .sectionname { font-family: 'Poppins', sans-serif; color: $eapn-navy; }
+}
+
+// Marca de finalización completada en verde.
+.completion-dropdown .badge,
+.btn.btn-icon.completion-icon .icon,
+[data-region="completion-info"] .badge-success {
+    background-color: $eapn-green !important;
+    color: #fff;
+}
+
+// --------------------------------------------------------------------------
+// Etiquetas / badges
+// --------------------------------------------------------------------------
+.badge {
+    font-family: 'Poppins', sans-serif;
+    font-weight: 700;
+    border-radius: 50rem;
+    padding: .35em .8em;
+}
+.badge-primary   { background-color: $eapn-teal; }
+.badge-secondary { background-color: $eapn-granate; color: #fff; }
+.badge-info      { background-color: $eapn-blue-50; color: $eapn-teal; }
+.badge-success   { background-color: #e6f4ec; color: $eapn-green; }
+
+// --------------------------------------------------------------------------
+// Drawer de navegación lateral izquierdo
+// --------------------------------------------------------------------------
+.drawer {
+    border-right: 1px solid #e2e8ef;
+    .list-group-item.active { background: $eapn-blue-50; color: $eapn-teal; border-color: transparent; }
+}
+
+// --------------------------------------------------------------------------
+// Página de acceso (login)
+// --------------------------------------------------------------------------
+body#page-login-index,
+body.pagelayout-login {
+    background: #eaedf0;
+
+    #region-main { border: none; background: transparent; box-shadow: none; }
+
+    .login-container,
+    .card.login-card {
+        border-radius: 1.2rem;
+        overflow: hidden;
+        box-shadow: $eapn-shadow;
+        border: none;
+    }
+
+    // Franja petróleo de bienvenida sobre el formulario.
+    .login-heading,
+    .card.login-card .card-body::before {
+        content: "Esta es tu aula";
+        display: block;
+        font-family: 'Poppins', sans-serif;
+        font-weight: 700;
+        font-size: 1.4rem;
+        color: #fff;
+        background: $eapn-teal;
+        margin: -1.25rem -1.25rem 1.25rem;
+        padding: 1.2rem 1.4rem;
+    }
+
+    .btn-primary { width: 100%; padding: .9rem; font-size: 1.05rem; }
+    input.form-control { border-radius: .7rem; padding: .8rem .9rem; }
+}
+
+// --------------------------------------------------------------------------
+// Diplomas / certificados (mod_customcert imprime en el navegador)
+// --------------------------------------------------------------------------
+.path-mod-customcert .info { border-radius: 1rem; }
+
+// --------------------------------------------------------------------------
+// Detalles finos
+// --------------------------------------------------------------------------
+a { color: $eapn-teal; }
+h1, h2, h3, h4, h5 { font-family: 'Poppins', sans-serif; color: $eapn-navy; }
+.text-primary { color: $eapn-teal !important; }

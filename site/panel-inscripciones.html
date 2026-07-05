@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inscripciones · Panel EAPN-CLM</title>
+<link rel="stylesheet" href="assets/eapnclm.css">
+</head>
+<body>
+<div class="wrap" style="padding-top:26px;padding-bottom:40px">
+
+  <div class="preview-tag"><span class="id">6b</span><span class="t">Panel de gestión · Inscripciones y justificantes</span><span class="d">validación en lote y recordatorios automáticos</span></div>
+
+  <div class="admin">
+    <aside class="admin-side">
+      <div class="brand"><span class="logo" style="width:38px;height:38px;font-size:10px">E<b>A</b><br>P<b>N</b></span><span class="t">Panel de<br>gestión</span></div>
+      <nav class="admin-menu">
+        <a href="#">Inicio</a>
+        <a href="panel-convocatorias.html">Convocatorias</a>
+        <a class="active" href="panel-inscripciones.html">Inscripciones</a>
+        <a href="#">Justificantes</a>
+        <a href="#">Diplomas</a>
+        <a href="#">Comunicaciones</a>
+        <a href="#">Informes</a>
+      </nav>
+      <div class="admin-user"><span class="avatar">A</span><span class="meta"><b>Adelina Román</b>EAPN-CLM · admin</span></div>
+    </aside>
+    <main class="admin-main">
+      <div style="display:flex;align-items:start;justify-content:space-between">
+        <div><h1 style="font-size:28px">Inscripciones</h1><p class="muted mb0">Curso de Empoderamiento · convocatoria de julio</p></div>
+        <div style="display:flex;gap:10px"><button class="btn btn-ghost-teal btn-sm">Exportar CSV</button><button class="btn btn-granate btn-sm">Recordatorio a 3 pendientes</button></div>
+      </div>
+
+      <div class="chips" style="margin:18px 0 16px"><span class="chip active">Todas · 16</span><span class="chip">Justificante pendiente · 3</span><span class="chip">Validadas · 11</span><span class="chip">Lista de espera · 2</span></div>
+
+      <table class="table">
+        <thead><tr><th style="width:30px"><input type="checkbox"></th><th>Participante</th><th>Entidad</th><th>Avance</th><th>Justificante</th><th></th></tr></thead>
+        <tbody>
+          <tr><td><input type="checkbox"></td><td><b>Carmen Ruiz</b><div class="sub">Toledo</div></td><td>Cáritas Toledo</td><td><b class="pct">60%</b></td><td><span class="badge badge-green">VALIDADO</span></td><td><a class="link-strong" href="#">Ver ficha</a></td></tr>
+          <tr><td><input type="checkbox" checked></td><td><b>Antonio Mora</b><div class="sub">Albacete</div></td><td>Cruz Roja Albacete</td><td><b class="pct">35%</b></td><td><span class="badge badge-granate">PENDIENTE</span></td><td><a class="link-strong" href="#">Ver ficha</a></td></tr>
+          <tr><td><input type="checkbox"></td><td><b>Fátima Ben Alí</b><div class="sub">Ciudad Real</div></td><td>Fundación Secretariado Gitano</td><td><b class="pct">100%</b></td><td><span class="badge badge-green">VALIDADO</span></td><td><a class="link-strong" href="#">Ver ficha</a></td></tr>
+          <tr><td><input type="checkbox" checked></td><td><b>Jorge Luengo</b><div class="sub">Cuenca</div></td><td>Accem Cuenca</td><td><b class="pct">10%</b></td><td><span class="badge badge-granate">PENDIENTE</span></td><td><a class="link-strong" href="#">Ver ficha</a></td></tr>
+          <tr><td><input type="checkbox"></td><td><b>Lucía Peña</b><div class="sub">Guadalajara</div></td><td>Cáritas Sigüenza-Guadalajara</td><td><b class="pct">80%</b></td><td><span class="badge badge-outline">SUBIDO · revisar</span></td><td><a class="link-strong" href="#">Ver ficha</a></td></tr>
+        </tbody>
+      </table>
+
+      <div style="display:flex;align-items:center;gap:16px;margin-top:22px">
+        <div class="auto-note" style="flex:1"><span class="tag">AUTO</span> Correo de bienvenida al inscribirse · recordatorio a los 7 días sin entrar · diploma automático al aprobar.</div>
+        <button class="btn btn-teal">Validar 2 seleccionadas ✓</button>
+      </div>
+    </main>
+  </div>
+
+</div>
+</body>
+</html>
