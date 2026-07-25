@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRM WhatsApp · Gestoría</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>">
+</head>
+<body>
+  <div class="app">
+    <nav class="sidebar">
+      <div class="brand">
+        <span class="brand-icon">💬</span>
+        <div>
+          <div class="brand-title">CRM Gestoría</div>
+          <div class="brand-sub" id="connection-badge">…</div>
+        </div>
+      </div>
+      <button class="nav-btn active" data-view="dashboard">📊 Panel</button>
+      <button class="nav-btn" data-view="inbox">💬 WhatsApp <span class="badge hidden" id="nav-unread"></span></button>
+      <button class="nav-btn" data-view="clients">👥 Clientes</button>
+      <button class="nav-btn" data-view="cases">📁 Expedientes</button>
+      <button class="nav-btn" data-view="templates">📝 Plantillas</button>
+      <button class="nav-btn" data-view="reminders">⏰ Recordatorios</button>
+    </nav>
+
+    <main class="main">
+      <!-- Panel -->
+      <section id="view-dashboard" class="view">
+        <h1>Panel</h1>
+        <div class="cards" id="dash-cards"></div>
+        <h2>Conversaciones recientes</h2>
+        <div id="dash-recent" class="list"></div>
+      </section>
+
+      <!-- WhatsApp -->
+      <section id="view-inbox" class="view hidden">
+        <div class="inbox">
+          <div class="conv-list-panel">
+            <div class="panel-head">
+              <h1>WhatsApp</h1>
+              <button class="btn small" id="btn-simulate" title="Simular un mensaje entrante (modo demo)">＋ Simular entrada</button>
+            </div>
+            <div id="conv-list" class="list"></div>
+          </div>
+          <div class="chat-panel">
+            <div id="chat-empty" class="chat-empty">Selecciona una conversación</div>
+            <div id="chat" class="hidden">
+              <div class="chat-head">
+                <div>
+                  <div class="chat-name" id="chat-name"></div>
+                  <div class="chat-phone" id="chat-phone"></div>
+                </div>
+                <button class="btn small" id="btn-open-client">Ver ficha</button>
+              </div>
+              <div class="chat-messages" id="chat-messages"></div>
+              <div class="chat-compose">
+                <select id="tpl-select" title="Insertar plantilla">
+                  <option value="">📝 Plantilla…</option>
+                </select>
+                <textarea id="chat-input" rows="2" placeholder="Escribe un mensaje…"></textarea>
+                <button class="btn primary" id="btn-send">Enviar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Clientes -->
+      <section id="view-clients" class="view hidden">
+        <div class="panel-head">
+          <h1>Clientes</h1>
+          <button class="btn primary" id="btn-new-client">＋ Nuevo cliente</button>
+        </div>
+        <input type="search" id="client-search" class="search" placeholder="Buscar por nombre, teléfono, NIF, etiqueta…">
+        <div id="client-list" class="list"></div>
+      </section>
+
+      <!-- Expedientes -->
+      <section id="view-cases" class="view hidden">
+        <div class="panel-head">
+          <h1>Expedientes</h1>
+          <button class="btn primary" id="btn-new-case">＋ Nuevo expediente</button>
+        </div>
+        <div class="filters" id="case-filters">
+          <button class="chip active" data-status="">Todos</button>
+          <button class="chip" data-status="pendiente">Pendientes</button>
+          <button class="chip" data-status="en_curso">En curso</button>
+          <button class="chip" data-status="esperando_documentacion">Esperando documentación</button>
+          <button class="chip" data-status="completado">Completados</button>
+        </div>
+        <div id="case-list" class="list"></div>
+      </section>
+
+      <!-- Plantillas -->
+      <section id="view-templates" class="view hidden">
+        <div class="panel-head">
+          <h1>Plantillas de respuesta</h1>
+          <button class="btn primary" id="btn-new-template">＋ Nueva plantilla</button>
+        </div>
+        <p class="hint">Usa <code>{nombre}</code> en el texto para insertar automáticamente el nombre del cliente al enviar.</p>
+        <div id="template-list" class="list"></div>
+      </section>
+
+      <!-- Recordatorios -->
+      <section id="view-reminders" class="view hidden">
+        <div class="panel-head">
+          <h1>Recordatorios</h1>
+          <button class="btn primary" id="btn-new-reminder">＋ Nuevo recordatorio</button>
+        </div>
+        <div id="reminder-list" class="list"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Diálogo genérico -->
+  <dialog id="dialog">
+    <form method="dialog" id="dialog-form">
+      <h2 id="dialog-title"></h2>
+      <div id="dialog-fields"></div>
+      <div class="dialog-actions">
+        <button type="button" class="btn" id="dialog-cancel">Cancelar</button>
+        <button type="submit" class="btn primary" id="dialog-ok">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
