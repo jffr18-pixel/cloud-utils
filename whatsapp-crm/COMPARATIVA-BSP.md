@@ -22,7 +22,8 @@ prácticamente cero salvo que hagas campañas.
 
 | Opción | Precio orientativo | Coexistence | Encaja con este CRM | Observaciones |
 | --- | --- | --- | --- | --- |
-| **360dialog** ⭐ recomendado | ~49 €/mes por número, sin recargo por mensaje | ✅ documentado | ✅ soporte integrado en el CRM (solo pegar la API key) | API «en crudo», la más parecida a la de Meta. Sin bandeja propia: tu pantalla es este CRM. |
+| **YCloud** ⭐ ya contratado | Según plan contratado | ✅ documentado | ✅ soporte integrado en el CRM (`YCLOUD_API_KEY`) | El proveedor que ya usa la gestoría. API y webhooks propios, soportados de serie por este CRM (ver README). |
+| **360dialog** | ~49 €/mes por número, sin recargo por mensaje | ✅ documentado | ✅ soporte integrado en el CRM (solo pegar la API key) | API «en crudo», la más parecida a la de Meta. Sin bandeja propia: tu pantalla es este CRM. |
 | **Meta directo** (proveedor técnico propio) | 0 €/mes (solo tarifas de Meta) | ✅ | ⚠️ requiere desarrollo extra | Hay que implementar el Embedded Signup, pasar verificación de empresa y gestionar tokens. La opción más barata si se asume ese trabajo técnico. |
 | **Twilio** | Sin cuota fija; ~0,005 $ por mensaje (además de Meta) | ✅ | ⚠️ requiere adaptador (API propia) | Interesante con poco volumen (2.000 msg/mes ≈ 10 $). Orientado a desarrolladores, soporte en inglés. |
 | **respond.io** | Desde ~79 $/mes | ✅ | ➖ redundante | Sin recargo por mensaje, pero es una plataforma completa con su propia bandeja: duplicaría lo que ya hace este CRM. |

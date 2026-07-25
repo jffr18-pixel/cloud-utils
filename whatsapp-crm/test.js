@@ -57,12 +57,15 @@ async function main() {
     assert(status.data.whatsappConfigured === false, 'sin credenciales → modo demo');
     assert(status.data.provider === null, 'sin credenciales → sin proveedor');
 
-    console.log('Detección de proveedor (360dialog)');
+    console.log('Detección de proveedor');
     const wa = require('./lib/whatsapp');
     process.env.WHATSAPP_360DIALOG_API_KEY = 'clave-de-prueba';
     assert(wa.provider() === '360dialog', 'API key de 360dialog → proveedor 360dialog');
-    assert(wa.isConfigured() === true, 'API key de 360dialog → configurado');
+    process.env.YCLOUD_API_KEY = 'otra-clave';
+    assert(wa.provider() === 'ycloud', 'API key de YCloud → tiene prioridad');
+    assert(wa.isConfigured() === true, 'API key de YCloud → configurado');
     delete process.env.WHATSAPP_360DIALOG_API_KEY;
+    delete process.env.YCLOUD_API_KEY;
     assert(wa.provider() === null, 'sin credenciales de nuevo → sin proveedor');
 
     console.log('Clientes');
@@ -140,6 +143,64 @@ async function main() {
     const msgsLucia3 = await req('GET', `/api/messages?clientId=${lucia.clientId}`);
     assert(msgsLucia3.data.length === msgsLucia2.data.length, 'ecos duplicados ignorados');
 
+    console.log('Webhooks de YCloud');
+    const ycIn = await req('POST', '/webhook', {
+      id: 'evt_1', type: 'whatsapp.inbound_message.received', apiVersion: 'v2',
+      createTime: '2026-07-25T10:00:00.000Z',
+      whatsappInboundMessage: {
+        id: 'yc_msg_1', wamid: 'wamid.YC1', wabaId: 'waba1',
+        from: '+34677111222', customerProfile: { name: 'Ana Torres' },
+        to: '+34911222333', sendTime: '2026-07-25T10:00:00.000Z',
+        type: 'text', text: { body: 'Hola, necesito cita para la renta' },
+      },
+    });
+    assert(ycIn.status === 200, 'evento entrante de YCloud aceptado');
+    const convsYc = await req('GET', '/api/conversations');
+    const ana = convsYc.data.find((c) => c.clientName === 'Ana Torres');
+    assert(Boolean(ana) && ana.phone === '34677111222', 'cliente creado desde webhook de YCloud');
+    assert(ana.unread === 1, 'mensaje de YCloud cuenta como no leído');
+    const anaMsgs = await req('GET', `/api/messages?clientId=${ana.clientId}`);
+    assert(anaMsgs.data[0].ycloudId === 'yc_msg_1', 'id interno de YCloud guardado (para markAsRead)');
+
+    const ycEcho = await req('POST', '/webhook', {
+      id: 'evt_2', type: 'whatsapp.smb.message.created', apiVersion: 'v2',
+      createTime: '2026-07-25T10:05:00.000Z',
+      whatsappMessage: {
+        id: 'yc_msg_2', wamid: 'wamid.YC2', from: '+34911222333', to: '+34677111222',
+        type: 'text', text: { body: 'Claro, ¿te viene bien el martes?' },
+        createTime: '2026-07-25T10:05:00.000Z',
+      },
+    });
+    assert(ycEcho.status === 200, 'eco de la app (YCloud Coexistence) aceptado');
+    const anaMsgs2 = await req('GET', `/api/messages?clientId=${ana.clientId}`);
+    const ycEchoMsg = anaMsgs2.data.find((m) => m.waMessageId === 'wamid.YC2');
+    assert(ycEchoMsg && ycEchoMsg.direction === 'out' && ycEchoMsg.viaApp === true,
+      'eco de YCloud registrado como saliente desde la app');
+
+    const ycStatus = await req('POST', '/webhook', {
+      id: 'evt_3', type: 'whatsapp.message.updated', apiVersion: 'v2',
+      createTime: '2026-07-25T10:06:00.000Z',
+      whatsappMessage: { id: 'yc_msg_2', wamid: 'wamid.YC2', status: 'read' },
+    });
+    assert(ycStatus.status === 200, 'evento de estado de YCloud aceptado');
+    const anaMsgs3 = await req('GET', `/api/messages?clientId=${ana.clientId}`);
+    assert(anaMsgs3.data.find((m) => m.waMessageId === 'wamid.YC2').status === 'read',
+      'estado actualizado a leído vía webhook de YCloud');
+
+    const ycHist = await req('POST', '/webhook', {
+      id: 'evt_4', type: 'whatsapp.smb.history', apiVersion: 'v2',
+      createTime: '2026-07-25T10:07:00.000Z',
+      whatsappInboundMessage: {
+        id: 'yc_msg_3', wamid: 'wamid.YC3', from: '+34677111222',
+        to: '+34911222333', sendTime: '2026-01-10T09:00:00.000Z',
+        type: 'text', text: { body: 'Mensaje antiguo del historial' },
+      },
+    });
+    assert(ycHist.status === 200, 'evento de historial de YCloud aceptado');
+    const anaMsgs4 = await req('GET', `/api/messages?clientId=${ana.clientId}`);
+    const histMsg = anaMsgs4.data.find((m) => m.waMessageId === 'wamid.YC3');
+    assert(histMsg && histMsg.read === true, 'historial importado no cuenta como no leído');
+
     console.log('Expedientes');
     const kase = await req('POST', '/api/cases', {
       clientId, title: 'Declaración renta 2025', type: 'fiscal', dueDate: '2026-06-30',
@@ -156,7 +217,7 @@ async function main() {
 
     console.log('Panel');
     const dash = await req('GET', '/api/dashboard');
-    assert(dash.data.totalClients === 3, 'panel: 3 clientes');
+    assert(dash.data.totalClients === 4, 'panel: 4 clientes');
     assert(dash.data.openCases === 1, 'panel: 1 expediente abierto');
 
     console.log('Borrado en cascada');

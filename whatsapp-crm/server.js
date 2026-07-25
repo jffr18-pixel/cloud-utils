@@ -136,7 +136,9 @@ function handleWebhookPayload(db, body) {
       timestamp: inMsg.timestamp,
       status: 'received',
       waMessageId: inMsg.waMessageId,
-      read: false,
+      ycloudId: inMsg.ycloudId || null,
+      // El historial importado (Coexistence) no debe contar como "sin leer".
+      read: Boolean(inMsg.historic),
     });
   }
   // Coexistence: mensajes que la gestoría envió desde la app del móvil.
@@ -158,9 +160,10 @@ function handleWebhookPayload(db, body) {
     });
   }
   for (const st of statuses) {
-    const msg = db.messages.find((m) => m.waMessageId === st.waMessageId);
-    if (msg && ['sent', 'delivered', 'read'].includes(st.status)) {
+    const msg = db.messages.find((m) => m.waMessageId && st.ids.includes(m.waMessageId));
+    if (msg && ['sent', 'delivered', 'read', 'error'].includes(st.status)) {
       msg.status = st.status;
+      if (st.error) msg.error = st.error;
     }
   }
   if (incoming.length || echoes.length || statuses.length) save();
@@ -276,7 +279,7 @@ async function handleApi(req, res, url) {
       const toMark = db.messages.filter((m) => m.clientId === b.clientId && m.direction === 'in' && !m.read);
       for (const m of toMark) {
         m.read = true;
-        wa.markAsRead(m.waMessageId);
+        wa.markAsRead({ waMessageId: m.waMessageId, ycloudId: m.ycloudId });
       }
       if (toMark.length) save();
       return json(res, 200, { marked: toMark.length });

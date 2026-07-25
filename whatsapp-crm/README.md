@@ -30,6 +30,33 @@ Abre <http://localhost:3000>. Sin credenciales de WhatsApp la app arranca en
 **modo demo**: todo funciona igual, pero los envíos no salen de verdad y puedes
 usar el botón «Simular entrada» para probar mensajes entrantes.
 
+## Conectar con YCloud
+
+Si tu número de WhatsApp ya está dado de alta en [YCloud](https://www.ycloud.com)
+(como BSP oficial de Meta, soporta también el modo Coexistence con la app del
+móvil), la conexión es directa:
+
+1. En la consola de YCloud, ve a **Developers → API Keys** y copia tu API key.
+2. Arranca el CRM con la clave y el número del negocio:
+
+   ```bash
+   YCLOUD_API_KEY="tu_api_key" \
+   YCLOUD_WHATSAPP_FROM="+34XXXXXXXXX" \
+   node server.js
+   ```
+
+3. En **Developers → Webhooks** de YCloud, crea un endpoint apuntando a
+   `https://tu-dominio/webhook` (el servidor debe ser accesible por HTTPS
+   desde Internet) y suscríbelo a estos eventos:
+   - `whatsapp.inbound_message.received` (mensajes de clientes)
+   - `whatsapp.message.updated` (estados: enviado/entregado/leído/fallido)
+   - `whatsapp.smb.message.created` (Coexistence: ecos de la app del móvil)
+   - `whatsapp.smb.history` (Coexistence: historial sincronizado)
+
+Con eso, los mensajes de tus clientes entran en el CRM, los envíos salen por
+YCloud, y si tienes Coexistence activado, lo que respondas desde la app del
+móvil aparece marcado con 📱.
+
 ## Conectar con WhatsApp de verdad (API oficial de Meta)
 
 El CRM usa la **WhatsApp Business Cloud API**, la vía oficial de Meta (gratuita
@@ -95,7 +122,9 @@ Puntos clave:
 | Variable | Descripción | Por defecto |
 | --- | --- | --- |
 | `PORT` | Puerto del servidor | `3000` |
-| `WHATSAPP_360DIALOG_API_KEY` | API key de 360dialog (BSP recomendado para Coexistence; tiene prioridad si está definida) | *(vacío)* |
+| `YCLOUD_API_KEY` | API key de YCloud (Developers → API Keys en su consola; máxima prioridad si está definida) | *(vacío)* |
+| `YCLOUD_WHATSAPP_FROM` | Número del negocio en YCloud, formato internacional (ej. `+34612345678`) | *(vacío)* |
+| `WHATSAPP_360DIALOG_API_KEY` | API key de 360dialog | *(vacío)* |
 | `WHATSAPP_TOKEN` | Token de acceso de la Cloud API (Meta directo) | *(vacío → modo demo)* |
 | `WHATSAPP_PHONE_NUMBER_ID` | ID del número de WhatsApp Business (Meta directo) | *(vacío → modo demo)* |
 | `WEBHOOK_VERIFY_TOKEN` | Token que verifica el webhook de Meta | `gestoria-crm` |

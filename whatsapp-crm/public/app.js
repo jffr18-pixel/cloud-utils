@@ -552,7 +552,8 @@ async function init() {
   const status = await api('status');
   const badge = $('#connection-badge');
   if (status.whatsappConfigured) {
-    badge.textContent = `● Conectado (${status.provider === '360dialog' ? '360dialog' : 'Meta'})`;
+    const names = { ycloud: 'YCloud', '360dialog': '360dialog', meta: 'Meta' };
+    badge.textContent = `● Conectado (${names[status.provider] || status.provider})`;
     badge.style.color = '#7CFC98';
     $('#btn-simulate').classList.add('hidden');
   } else {
