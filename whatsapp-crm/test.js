@@ -623,6 +623,20 @@ async function main() {
     const badLink = await req('PUT', `/api/messages/${fileMsg.data.id}`, { caseId: 'exp_inexistente' });
     assert(badLink.status === 404, 'vínculo a expediente inexistente rechazado');
 
+    console.log('Stickers');
+    const stickers = await req('GET', '/api/stickers');
+    assert(stickers.status === 200 && stickers.data.length >= 8, 'catálogo de stickers disponible');
+    assert(stickers.data.some((s) => s.id === 'completado' && s.file.endsWith('.webp')),
+      'incluye el sticker «completado» en webp');
+    const stFile = await fetch(`${BASE}/stickers/${stickers.data[0].file}`);
+    assert(stFile.status === 200 && stFile.headers.get('content-type') === 'image/webp',
+      'el fichero del sticker se sirve como image/webp');
+    const stSend = await req('POST', '/api/messages', { clientId, stickerId: 'gracias' });
+    assert(stSend.status === 201 && stSend.data.media?.kind === 'sticker'
+      && stSend.data.media.stickerUrl === '/stickers/gracias.webp', 'sticker enviado como mensaje');
+    const stBad = await req('POST', '/api/messages', { clientId, stickerId: 'no-existe' });
+    assert(stBad.status === 404, 'sticker inexistente rechazado');
+
     console.log('Microsoft 365');
     const msgraph = require('./lib/msgraph');
     const evt = msgraph.buildEventPayload(

@@ -130,6 +130,38 @@ body {
   stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
 }
 #btn-note-mode.active .ui-ico { stroke: var(--amber); }
+
+/* Paneles emergentes de emojis y stickers */
+.chat-compose { position: relative; }
+.pop-panel {
+  position: absolute; bottom: calc(100% + 8px); left: 12px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--r-md); box-shadow: var(--shadow-3);
+  padding: 10px; z-index: 20; width: min(340px, calc(100% - 24px));
+  max-height: 260px; overflow-y: auto;
+}
+#emoji-panel { display: flex; flex-wrap: wrap; gap: 2px; }
+.emoji-cat { width: 100%; font-size: 11px; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .4px; margin: 6px 2px 2px; }
+.emoji-btn {
+  border: none; background: none; cursor: pointer; font-size: 22px;
+  width: 36px; height: 36px; border-radius: 8px; line-height: 1;
+}
+.emoji-btn:hover { background: var(--accent-light); }
+.sticker-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.sticker-btn {
+  border: 1px solid var(--border); background: var(--panel); border-radius: 10px;
+  padding: 5px; cursor: pointer; transition: border-color .12s, transform .12s;
+}
+.sticker-btn:hover { border-color: var(--accent); transform: translateY(-1px); }
+.sticker-btn img { width: 100%; display: block; border-radius: 7px; }
+
+/* Sticker dentro del chat: sin fondo de burbuja, tamaño contenido */
+.chat-messages .msg.sticker {
+  background: none; box-shadow: none; padding: 0; max-width: 150px; border-radius: 0;
+}
+.chat-messages .msg.sticker img { width: 100%; display: block; }
+.chat-messages .msg.sticker .msg-meta { text-align: right; margin-top: 2px; }
 .nav-btn:hover { background: rgba(255, 255, 255, .08); color: #fff; }
 .nav-btn.active {
   background: linear-gradient(90deg, rgba(156, 134, 201, .28), rgba(156, 134, 201, .14));

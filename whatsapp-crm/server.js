@@ -17,6 +17,16 @@ const security = require('./lib/security');
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const UPLOADS_DIR = path.join(path.dirname(DB_FILE), 'uploads');
+const STICKERS_DIR = path.join(PUBLIC_DIR, 'stickers');
+
+// Catálogo de stickers de Burocracia Zero (se lee del manifiesto generado).
+function loadStickers() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(STICKERS_DIR, 'manifest.json'), 'utf8'));
+  } catch {
+    return [];
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Autenticación
@@ -132,6 +142,10 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
+  '.webp': 'image/webp',
+  '.json': 'application/json; charset=utf-8',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
 };
 
 function json(res, status, data) {
@@ -257,6 +271,8 @@ async function sendMessageToClient(db, client, text, opts = {}) {
       filename: opts.media.filename,
       caption: opts.media.caption || '',
       localPath: opts.media.localPath || null,
+      // Los stickers del catálogo se muestran desde su fichero estático.
+      stickerUrl: opts.media.stickerUrl || null,
       link: null,
       metaMediaId: null,
     } : null,
@@ -646,6 +662,35 @@ async function handleApi(req, res, url) {
         return json(res, 201, noteMsg);
       }
 
+      // Envío de un sticker de Burocracia Zero (por id del catálogo).
+      if (b.stickerId) {
+        const sticker = loadStickers().find((s) => s.id === b.stickerId);
+        if (!sticker) return json(res, 404, { error: 'Sticker no encontrado' });
+        const file = path.join(STICKERS_DIR, sticker.file);
+        if (!fs.existsSync(file)) return json(res, 404, { error: 'Fichero del sticker no disponible' });
+        const data = fs.readFileSync(file);
+        let mediaId = null;
+        if (wa.isConfigured()) {
+          try {
+            mediaId = await wa.uploadMedia(data, sticker.file, 'image/webp');
+          } catch (err) {
+            return json(res, 502, { error: err.message });
+          }
+        }
+        const msg = await sendMessageToClient(db, client, sticker.emoji || '🎟️', {
+          media: {
+            kind: 'sticker',
+            mime: 'image/webp',
+            filename: sticker.file,
+            caption: '',
+            mediaId,
+            // Se reutiliza el fichero estático del catálogo para mostrarlo.
+            stickerUrl: `/stickers/${sticker.file}`,
+          },
+        });
+        return json(res, 201, msg);
+      }
+
       if (b.file && b.file.data) {
         const data = Buffer.from(b.file.data, 'base64');
         if (data.length > 16_000_000) return json(res, 400, { error: 'El archivo supera los 16 MB de WhatsApp' });
@@ -883,6 +928,11 @@ async function handleApi(req, res, url) {
   // --- Usuarios del equipo (para asignar conversaciones) --------------------
   if (req.method === 'GET' && resource === 'users') {
     return json(res, 200, [...authUsers().keys()]);
+  }
+
+  // --- Catálogo de stickers de la gestoría ----------------------------------
+  if (req.method === 'GET' && resource === 'stickers') {
+    return json(res, 200, loadStickers());
   }
 
   // --- Estadísticas del panel ----------------------------------------------

@@ -1,0 +1,62 @@
+[
+  {
+    "id": "presentado",
+    "file": "presentado.webp",
+    "label": "Presentado",
+    "emoji": "✅"
+  },
+  {
+    "id": "en-tramite",
+    "file": "en-tramite.webp",
+    "label": "En trámite",
+    "emoji": "⏳"
+  },
+  {
+    "id": "falta-docu",
+    "file": "falta-docu.webp",
+    "label": "Falta documentación",
+    "emoji": "📄"
+  },
+  {
+    "id": "completado",
+    "file": "completado.webp",
+    "label": "¡Completado!",
+    "emoji": "🎉"
+  },
+  {
+    "id": "recibido",
+    "file": "recibido.webp",
+    "label": "Recibido",
+    "emoji": "📥"
+  },
+  {
+    "id": "cita-confirmada",
+    "file": "cita-confirmada.webp",
+    "label": "Cita confirmada",
+    "emoji": "📅"
+  },
+  {
+    "id": "pago-pendiente",
+    "file": "pago-pendiente.webp",
+    "label": "Pago pendiente",
+    "emoji": "💶"
+  },
+  {
+    "id": "en-camino",
+    "file": "en-camino.webp",
+    "label": "Lo estamos gestionando",
+    "emoji": "🚀"
+  },
+  {
+    "id": "gracias",
+    "file": "gracias.webp",
+    "label": "¡Gracias!",
+    "emoji": "🙏"
+  },
+  {
+    "id": "bienvenido",
+    "file": "bienvenido.webp",
+    "label": "¡Hola! Burocracia Zero",
+    "emoji": "👋"
+  }
+]

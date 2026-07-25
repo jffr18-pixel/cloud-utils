@@ -333,6 +333,13 @@ async function openConversation(clientId) {
       return `<div class="msg note">🗒️ ${esc(m.text)}
         <span class="msg-meta">${esc(m.author || 'equipo')} · ${fmtTime(m.timestamp)} · solo interno</span></div>`;
     }
+    // Sticker del catálogo: se muestra desde su fichero estático, sin burbuja.
+    if (m.media && m.media.kind === 'sticker' && m.media.stickerUrl) {
+      return `<div class="msg ${m.direction} sticker">
+        <img src="${esc(m.media.stickerUrl)}" alt="sticker">
+        <span class="msg-meta">${m.auto ? '🤖 · ' : ''}${fmtTime(m.timestamp)} ${MSG_STATUS[m.status] || ''}</span>
+      </div>`;
+    }
     let mediaHtml = '';
     if (m.media) {
       const src = `/api/media/${encodeURIComponent(m.id)}`;
@@ -437,6 +444,89 @@ $('#btn-open-client').addEventListener('click', () => {
 
 $('#btn-back-conv').addEventListener('click', () => {
   document.querySelector('.inbox').classList.remove('mobile-chat');
+});
+
+// --- Selector de emojis ---
+const EMOJIS = {
+  'Caras': ['😀','😊','😉','😍','🥰','😎','🤔','😅','😂','🙂','😌','😇','🤗','😴','😢','😮','🙃','😉','🥳','😐'],
+  'Gestos': ['👍','👏','🙏','🙌','👌','✌️','🤝','💪','👋','☝️','✅','❌','⭐','🔥','💯','❤️','💜','✨','🎉','🎊'],
+  'Gestoría': ['📋','📄','📁','📎','🗂️','✍️','🖊️','📝','📅','⏰','💶','💰','🧾','🏦','⚖️','🏛️','🚗','🌍','👨‍💼','📲'],
+};
+let emojiBuilt = false;
+function buildEmojiPanel() {
+  if (emojiBuilt) return;
+  const panel = $('#emoji-panel');
+  panel.innerHTML = '';
+  for (const [cat, list] of Object.entries(EMOJIS)) {
+    const h = document.createElement('div');
+    h.className = 'emoji-cat';
+    h.textContent = cat;
+    panel.appendChild(h);
+    for (const e of list) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'emoji-btn';
+      b.textContent = e;
+      b.addEventListener('click', () => insertAtCursor($('#chat-input'), e));
+      panel.appendChild(b);
+    }
+  }
+  emojiBuilt = true;
+}
+function insertAtCursor(el, text) {
+  const start = el.selectionStart ?? el.value.length;
+  const end = el.selectionEnd ?? el.value.length;
+  el.value = el.value.slice(0, start) + text + el.value.slice(end);
+  el.focus();
+  const pos = start + text.length;
+  el.setSelectionRange(pos, pos);
+}
+function closePanels(except) {
+  if (except !== 'emoji') $('#emoji-panel').classList.add('hidden');
+  if (except !== 'sticker') $('#sticker-panel').classList.add('hidden');
+}
+$('#btn-emoji').addEventListener('click', (e) => {
+  e.stopPropagation();
+  buildEmojiPanel();
+  const p = $('#emoji-panel');
+  p.classList.toggle('hidden');
+  closePanels('emoji');
+});
+
+// --- Panel de stickers de la gestoría ---
+let stickersCache = null;
+async function buildStickerPanel() {
+  if (!stickersCache) stickersCache = await api('stickers');
+  const panel = $('#sticker-panel');
+  panel.innerHTML = stickersCache.map((s) =>
+    `<button type="button" class="sticker-btn" data-sticker="${esc(s.id)}" title="${esc(s.label)}">
+      <img src="/stickers/${esc(s.file)}" alt="${esc(s.label)}" loading="lazy"></button>`).join('')
+    || '<p class="hint" style="grid-column:1/-1">No hay stickers disponibles.</p>';
+  panel.querySelectorAll('.sticker-btn').forEach((btn) => {
+    btn.addEventListener('click', () => sendSticker(btn.dataset.sticker));
+  });
+}
+$('#btn-sticker').addEventListener('click', async (e) => {
+  e.stopPropagation();
+  const p = $('#sticker-panel');
+  const willShow = p.classList.contains('hidden');
+  closePanels('sticker');
+  if (willShow) { await buildStickerPanel(); p.classList.remove('hidden'); }
+  else p.classList.add('hidden');
+});
+async function sendSticker(stickerId) {
+  if (!state.activeClientId) return;
+  $('#sticker-panel').classList.add('hidden');
+  try {
+    await api('messages', { method: 'POST', body: { clientId: state.activeClientId, stickerId } });
+    await openConversation(state.activeClientId);
+  } catch (err) {
+    alert(err.message);
+  }
+}
+// Cerrar paneles al hacer clic fuera.
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.chat-compose')) closePanels();
 });
 
 // Adjuntar documento o imagen.
