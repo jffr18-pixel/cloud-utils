@@ -265,6 +265,32 @@ async function main() {
     assert(anaMsgs3.data.find((m) => m.waMessageId === 'wamid.YC2').status === 'read',
       'estado actualizado a leído vía webhook de YCloud');
 
+    // Mensaje enviado desde la plataforma de YCloud (automatización propia).
+    const ycExternal = await req('POST', '/webhook', {
+      id: 'evt_ext1', type: 'whatsapp.message.updated', apiVersion: 'v2',
+      createTime: '2026-07-25T10:10:00.000Z',
+      whatsappMessage: {
+        id: 'yc_msg_ext', wamid: 'wamid.EXT1', from: '+34911222333', to: '+34655443322',
+        type: 'text', text: { body: 'Respuesta del bot de YCloud' },
+        status: 'sent', createTime: '2026-07-25T10:10:00.000Z',
+      },
+    });
+    assert(ycExternal.status === 200, 'envío externo de YCloud aceptado');
+    let luciaExt = (await req('GET', `/api/messages?clientId=${lucia.clientId}`)).data;
+    const extMsg = luciaExt.find((m) => m.waMessageId === 'wamid.EXT1');
+    assert(extMsg && extMsg.direction === 'out' && extMsg.viaProvider === true,
+      'mensaje de automatización de YCloud registrado en la conversación');
+    await req('POST', '/webhook', {
+      id: 'evt_ext2', type: 'whatsapp.message.updated', apiVersion: 'v2',
+      createTime: '2026-07-25T10:11:00.000Z',
+      whatsappMessage: { id: 'yc_msg_ext', wamid: 'wamid.EXT1', to: '+34655443322', type: 'text', text: { body: 'Respuesta del bot de YCloud' }, status: 'read' },
+    });
+    luciaExt = (await req('GET', `/api/messages?clientId=${lucia.clientId}`)).data;
+    assert(luciaExt.filter((m) => m.waMessageId === 'wamid.EXT1').length === 1,
+      'los cambios de estado posteriores no duplican el mensaje externo');
+    assert(luciaExt.find((m) => m.waMessageId === 'wamid.EXT1').status === 'read',
+      'el estado del mensaje externo se actualiza');
+
     const ycHist = await req('POST', '/webhook', {
       id: 'evt_4', type: 'whatsapp.smb.history', apiVersion: 'v2',
       createTime: '2026-07-25T10:07:00.000Z',

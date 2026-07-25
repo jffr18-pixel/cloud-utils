@@ -313,6 +313,24 @@ async function handleWebhookPayload(db, body) {
     if (msg && ['sent', 'delivered', 'read', 'error'].includes(st.status)) {
       msg.status = st.status;
       if (st.error) msg.error = st.error;
+      continue;
+    }
+    // Mensaje saliente que no envió el CRM (automatización o bandeja de
+    // YCloud): se registra para que la conversación esté completa.
+    if (!msg && st.to && st.ids.length && ['sent', 'delivered', 'read'].includes(st.status)) {
+      const phone = normalizePhone(st.to);
+      const client = ensureClientForPhone(db, phone, '');
+      db.messages.push({
+        id: newId('msg'),
+        clientId: client.id,
+        direction: 'out',
+        text: st.text || '[mensaje de YCloud]',
+        timestamp: st.timestamp || Date.now(),
+        status: st.status,
+        viaProvider: true, // enviado desde la plataforma de YCloud
+        waMessageId: st.ids[0],
+        read: true,
+      });
     }
   }
   if (incoming.length || echoes.length || statuses.length) save();

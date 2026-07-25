@@ -326,6 +326,12 @@ function parseYCloudEvent(ev) {
       ids: [om.wamid, om.id].filter(Boolean),
       status,
       error: om.errorMessage || null,
+      // Con estos datos, el servidor puede registrar mensajes enviados desde
+      // la propia plataforma de YCloud (automatizaciones, su bandeja…) que
+      // no salieron del CRM, para que la conversación se vea completa.
+      to: om.to || null,
+      text: extractText(om) || (om.template ? `[plantilla ${om.template.name || ''}]`.trim() : ''),
+      timestamp: Date.parse(om.createTime || om.sendTime) || Date.now(),
     });
   }
   return { incoming, echoes, statuses };
