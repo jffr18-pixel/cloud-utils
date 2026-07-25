@@ -451,8 +451,8 @@ dialog h2 { font-family: var(--font-brand); font-size: 19px; font-weight: 700; m
   .brand { padding: 0 0 12px; text-align: center; }
   .brand-logo, .brand-tagline, .brand-sub { display: none; }
   .brand::before {
-    content: "bZ"; font-family: var(--font-brand); font-weight: 800;
-    font-size: 21px; color: var(--accent); display: block;
+    content: "BZ"; font-family: var(--font-brand); font-weight: 800;
+    font-size: 21px; color: #fff; display: block;
   }
   .nav-label { display: none; }
   .nav-btn { justify-content: center; padding: 11px 0; font-size: 16px; }
