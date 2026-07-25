@@ -625,7 +625,7 @@ async function main() {
 
     console.log('Fichas de trámite');
     const fichas = await req('GET', '/api/fichas');
-    assert(fichas.status === 200 && fichas.data.length >= 18, 'fichas predefinidas precargadas (ejemplos + tráfico + extranjería)');
+    assert(fichas.status === 200 && fichas.data.length >= 19, 'fichas predefinidas precargadas (ejemplos + tráfico + extranjería)');
     assert(fichas.data.some((f) => f.title === 'Arraigo social' && f.area === 'extranjeria'),
       'incluye la ficha de Arraigo social en extranjería');
     // Pack de tráfico (DGT).
@@ -637,7 +637,7 @@ async function main() {
       'ficha de canje de permiso extranjero con el informe psicofísico');
     // Pack de extranjería (RD 1155/2024 / Instrucción SEM 1/2025).
     const extranjeria = fichas.data.filter((f) => f.area === 'extranjeria');
-    assert(extranjeria.length >= 8, 'el pack de extranjería añade sus fichas');
+    assert(extranjeria.length >= 9, 'el pack de extranjería añade sus fichas');
     assert(extranjeria.some((f) => f.title === 'Arraigo sociolaboral' && f.docs.includes('20 horas')),
       'arraigo sociolaboral con el contrato de 20 horas');
     assert(extranjeria.some((f) => f.title === 'Arraigo socioformativo' && f.docs.includes('50% presencial')),
@@ -646,6 +646,9 @@ async function main() {
       'reagrupación familiar con el modelo EX-02');
     assert(extranjeria.some((f) => f.notes.includes('SEM 1/2025')),
       'las fichas citan la Instrucción SEM 1/2025');
+    assert(extranjeria.some((f) => f.title.startsWith('Modificación por razones humanitarias')
+      && f.docs.includes('EX-03') && f.notes.includes('316/2026')),
+      'ficha de modificación por razones humanitarias con formularios y RD 316/2026');
 
     // Idempotencia: volver a pedir las fichas no las duplica.
     const fichas2 = await req('GET', '/api/fichas');

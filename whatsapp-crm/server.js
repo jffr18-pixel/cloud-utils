@@ -149,6 +149,16 @@ const FICHA_PACKS = {
       notes: 'Puedes renovar hasta 90 días antes de la caducidad (y hasta 90 días después). ⚠️ Confirmamos la documentación según tu tipo de tarjeta.',
     },
   ],
+  // Modificación de la residencia por razones humanitarias a residencia y
+  // trabajo, reactivada por el RD 316/2026 (art. 191.7, en vigor 16/04/2026).
+  'extranjeria-humanitarias-v1': [
+    {
+      title: 'Modificación por razones humanitarias (a residencia y trabajo)', area: 'extranjeria',
+      intro: 'Hola {nombre} 👋 Para modificar tu residencia por razones humanitarias a residencia y trabajo necesitamos:',
+      docs: '• Solicitud en el modelo oficial (EX-03 si es por cuenta ajena, EX-07 si es por cuenta propia)\n• Pasaporte completo en vigor\n• TIE de tu residencia por razones humanitarias en vigor\n• Por cuenta ajena: contrato de trabajo firmado (jornada y salario según convenio o SMI) y datos de la empresa\n• Por cuenta propia: plan de negocio, inversiones previstas y licencias/permisos de la actividad\n• Antecedentes penales si te los requieren\n• Justificante de la tasa',
+      notes: 'Posible desde el 16/04/2026 (RD 316/2026, art. 191.7) para titulares de residencia humanitaria anual por protección internacional. ⚠️ Confirmamos tu documentación exacta según tu caso (cuenta ajena o propia).',
+    },
+  ],
 };
 
 // Aplica los packs de fichas que aún no se hayan cargado en esta base de datos.
