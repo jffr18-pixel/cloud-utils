@@ -136,6 +136,7 @@ async function refreshView() {
     if (state.view === 'cases') await renderCases();
     if (state.view === 'templates') await renderTemplates();
     if (state.view === 'reminders') await renderReminders();
+    if (state.view === 'campaigns') await renderCampaigns();
     if (state.view === 'automations') await renderAutomations();
     await updateUnreadBadge();
   } catch (err) {
@@ -202,6 +203,7 @@ function bindConvRows(container, jumpToInbox) {
 }
 
 async function renderInbox() {
+  if ($('#conv-search').value.trim()) return renderConvSearch();
   const [convs, templates] = await Promise.all([api('conversations'), api('templates')]);
   state.templates = templates;
   $('#conv-list').innerHTML = convs.map(convRowHtml).join('')
@@ -325,6 +327,28 @@ $('#file-input').addEventListener('change', async () => {
   }
 });
 
+// Búsqueda dentro de todas las conversaciones.
+async function renderConvSearch() {
+  const q = $('#conv-search').value.trim();
+  if (!q) return renderInbox();
+  const results = await api('search-messages?q=' + encodeURIComponent(q));
+  $('#conv-list').innerHTML = results.map((r) => `
+    <div class="row conv-row" data-client-id="${esc(r.clientId)}">
+      <div class="grow">
+        <div class="title">${esc(r.clientName)}</div>
+        <div class="sub">${r.direction === 'out' ? '↗ ' : ''}${esc(r.text)}</div>
+      </div>
+      <div class="meta">${fmtTime(r.timestamp)}</div>
+    </div>`).join('') || '<p class="hint">Sin resultados.</p>';
+  bindConvRows($('#conv-list'), false);
+}
+
+let convSearchTimer = null;
+$('#conv-search').addEventListener('input', () => {
+  clearTimeout(convSearchTimer);
+  convSearchTimer = setTimeout(renderConvSearch, 300);
+});
+
 $('#btn-simulate').addEventListener('click', () => {
   openDialog('Simular mensaje entrante (pruebas)', [
     { name: 'name', label: 'Nombre del remitente', value: 'Cliente de prueba' },
@@ -398,6 +422,9 @@ $('#btn-new-client').addEventListener('click', () => {
     await renderClients();
   });
 });
+
+$('#btn-export-clients').addEventListener('click', () => { location.href = '/api/export/clients.csv'; });
+$('#btn-export-cases').addEventListener('click', () => { location.href = '/api/export/cases.csv'; });
 
 async function openClientDetail(id) {
   const [client, cases] = await Promise.all([
@@ -599,6 +626,62 @@ $('#btn-new-reminder').addEventListener('click', async () => {
 });
 
 // ---------------------------------------------------------------------------
+// Campañas por etiqueta
+// ---------------------------------------------------------------------------
+
+async function renderCampaigns() {
+  const [clients, campaigns] = await Promise.all([api('clients'), api('campaigns')]);
+  const tagCounts = new Map();
+  for (const c of clients) {
+    for (const t of c.tags || []) tagCounts.set(t, (tagCounts.get(t) || 0) + 1);
+  }
+  const sel = $('#camp-tag');
+  const current = sel.value;
+  sel.innerHTML = [...tagCounts.keys()].sort()
+    .map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join('')
+    || '<option value="">(no hay etiquetas)</option>';
+  if (current && tagCounts.has(current)) sel.value = current;
+  updateCampCount(tagCounts);
+  sel.onchange = () => updateCampCount(tagCounts);
+
+  $('#camp-list').innerHTML = campaigns.map((c) => `
+    <div class="row" style="cursor:default">
+      <div class="grow">
+        <div class="title"><span class="tag">${esc(c.tag)}</span> ${esc(c.text)}</div>
+        <div class="sub">${new Date(c.sentAt).toLocaleString('es-ES')} · ${c.total} destinatarios · ${c.ok} enviados${c.errors ? ` · <span style="color:var(--danger)">${c.errors} errores</span>` : ''}</div>
+      </div>
+    </div>`).join('') || '<p class="hint">Todavía no has enviado ninguna campaña.</p>';
+}
+
+function updateCampCount(tagCounts) {
+  const n = tagCounts.get($('#camp-tag').value) || 0;
+  $('#camp-count').textContent = n
+    ? (n === 1 ? '1 cliente recibirá el mensaje' : `${n} clientes recibirán el mensaje`)
+    : '';
+}
+
+$('#btn-camp-send').addEventListener('click', async () => {
+  const tag = $('#camp-tag').value;
+  const text = $('#camp-text').value.trim();
+  if (!tag || !text) return alert('Elige una etiqueta y escribe el mensaje.');
+  if (!confirm(`Se enviará este mensaje a todos los clientes con la etiqueta «${tag}». ¿Continuar?`)) return;
+  const btn = $('#btn-camp-send');
+  btn.disabled = true;
+  btn.textContent = '⏳ Enviando…';
+  try {
+    const result = await api('campaigns', { method: 'POST', body: { tag, text } });
+    $('#camp-text').value = '';
+    alert(`Campaña enviada: ${result.ok} de ${result.total} mensajes correctos${result.errors ? `, ${result.errors} con error` : ''}.`);
+    await renderCampaigns();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📣 Enviar campaña';
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Automatizaciones
 // ---------------------------------------------------------------------------
 
@@ -690,7 +773,10 @@ async function init() {
     $('#login-password').focus();
     return; // el resto se carga tras iniciar sesión
   }
-  if (authState.required) $('#btn-logout').classList.remove('hidden');
+  if (authState.required) {
+    $('#btn-logout').classList.remove('hidden');
+    if (authState.user) $('#btn-logout').textContent = `🚪 Cerrar sesión (${authState.user})`;
+  }
 
   const status = await api('status');
   const badge = $('#connection-badge');
@@ -732,6 +818,7 @@ setInterval(async () => {
   try {
     await updateUnreadBadge();
     if (state.view === 'inbox') {
+      if ($('#conv-search').value.trim()) return; // no pisar los resultados de búsqueda
       const convs = await api('conversations');
       $('#conv-list').innerHTML = convs.map(convRowHtml).join('')
         || '<p class="hint">No hay conversaciones.</p>';

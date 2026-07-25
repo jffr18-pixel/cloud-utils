@@ -3,19 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CRM WhatsApp · Gestoría</title>
+  <title>Burocracia Zero · CRM WhatsApp</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;600;700;800&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23211e26'/><text x='50' y='62' font-family='Arial,sans-serif' font-size='46' font-weight='bold' fill='%239c86c9' text-anchor='middle'>bZ</text></svg>">
 </head>
 <body>
   <div class="app">
     <nav class="sidebar">
       <div class="brand">
-        <span class="brand-icon">💬</span>
-        <div>
-          <div class="brand-title">CRM Gestoría</div>
-          <div class="brand-sub" id="connection-badge">…</div>
-        </div>
+        <div class="brand-logo">Burocracia<span>Zero</span></div>
+        <div class="brand-tagline">Simplificamos tus trámites</div>
+        <div class="brand-sub" id="connection-badge">…</div>
       </div>
       <button class="nav-btn active" data-view="dashboard">📊 Panel</button>
       <button class="nav-btn" data-view="inbox">💬 WhatsApp <span class="badge hidden" id="nav-unread"></span></button>
@@ -23,6 +24,7 @@
       <button class="nav-btn" data-view="cases">📁 Expedientes</button>
       <button class="nav-btn" data-view="templates">📝 Plantillas</button>
       <button class="nav-btn" data-view="reminders">⏰ Recordatorios</button>
+      <button class="nav-btn" data-view="campaigns">📣 Campañas</button>
       <button class="nav-btn" data-view="automations">⚡ Automatizaciones</button>
       <div style="flex:1"></div>
       <button class="nav-btn hidden" id="btn-logout">🚪 Cerrar sesión</button>
@@ -45,6 +47,7 @@
               <h1>WhatsApp</h1>
               <button class="btn small" id="btn-simulate" title="Simular un mensaje entrante (modo demo)">＋ Simular entrada</button>
             </div>
+            <input type="search" id="conv-search" class="search conv-search" placeholder="Buscar en los mensajes…">
             <div id="conv-list" class="list"></div>
           </div>
           <div class="chat-panel">
@@ -76,7 +79,10 @@
       <section id="view-clients" class="view hidden">
         <div class="panel-head">
           <h1>Clientes</h1>
-          <button class="btn primary" id="btn-new-client">＋ Nuevo cliente</button>
+          <div>
+            <button class="btn small" id="btn-export-clients">📤 Exportar CSV</button>
+            <button class="btn primary" id="btn-new-client">＋ Nuevo cliente</button>
+          </div>
         </div>
         <input type="search" id="client-search" class="search" placeholder="Buscar por nombre, teléfono, NIF, etiqueta…">
         <div id="client-list" class="list"></div>
@@ -86,7 +92,10 @@
       <section id="view-cases" class="view hidden">
         <div class="panel-head">
           <h1>Expedientes</h1>
-          <button class="btn primary" id="btn-new-case">＋ Nuevo expediente</button>
+          <div>
+            <button class="btn small" id="btn-export-cases">📤 Exportar CSV</button>
+            <button class="btn primary" id="btn-new-case">＋ Nuevo expediente</button>
+          </div>
         </div>
         <div class="filters" id="case-filters">
           <button class="chip active" data-status="">Todos</button>
@@ -116,6 +125,23 @@
         </div>
         <div id="reminder-list" class="list"></div>
       </section>
+      <!-- Campañas -->
+      <section id="view-campaigns" class="view hidden">
+        <h1>Campañas por etiqueta</h1>
+        <p class="hint">Envía un mensaje a todos los clientes que tengan una etiqueta (ej. avisar del inicio de la campaña de la renta a la etiqueta «renta»). Si un cliente lleva más de 24 h sin escribir, se usa automáticamente la plantilla de Meta si está activada en Automatizaciones.</p>
+        <div class="auto-card">
+          <div class="auto-row">
+            <label>Etiqueta <select id="camp-tag"></select></label>
+            <span id="camp-count" class="hint" style="margin:0"></span>
+          </div>
+          <label>Mensaje (puedes usar <code>{nombre}</code>)</label>
+          <textarea id="camp-text" rows="4" placeholder="Hola {nombre}, ya ha empezado la campaña de la renta 2026. Escríbenos para pedir tu cita."></textarea>
+          <button class="btn primary" id="btn-camp-send">📣 Enviar campaña</button>
+        </div>
+        <h2>Campañas enviadas</h2>
+        <div id="camp-list" class="list"></div>
+      </section>
+
       <!-- Automatizaciones -->
       <section id="view-automations" class="view hidden">
         <div class="panel-head">
@@ -184,7 +210,8 @@
   <!-- Pantalla de acceso -->
   <div id="login-overlay" class="login-overlay hidden">
     <form id="login-form" class="login-box">
-      <div class="login-brand">💬 CRM Gestoría</div>
+      <div class="login-brand">Burocracia<span>Zero</span></div>
+      <div class="login-tagline">Simplificamos tus trámites · CRM</div>
       <div class="field">
         <label for="login-user">Usuario</label>
         <input id="login-user" type="text" autocomplete="username" value="admin">

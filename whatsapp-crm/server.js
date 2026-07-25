@@ -22,14 +22,25 @@ const UPLOADS_DIR = path.join(path.dirname(DB_FILE), 'uploads');
 // pruebas locales; NO desplegar así en Internet).
 // ---------------------------------------------------------------------------
 
-const AUTH_USER = process.env.CRM_USER || 'admin';
-const AUTH_PASSWORD = process.env.CRM_PASSWORD || '';
+// Un solo usuario: CRM_USER + CRM_PASSWORD.
+// Varios usuarios: CRM_USERS="carmen:clave1,juan:clave2" (tiene prioridad).
+function authUsers() {
+  const users = new Map();
+  for (const pair of (process.env.CRM_USERS || '').split(',')) {
+    const idx = pair.indexOf(':');
+    if (idx > 0) users.set(pair.slice(0, idx).trim(), pair.slice(idx + 1));
+  }
+  if (!users.size && process.env.CRM_PASSWORD) {
+    users.set(process.env.CRM_USER || 'admin', process.env.CRM_PASSWORD);
+  }
+  return users;
+}
 const SESSION_TTL_MS = 30 * 24 * 3600 * 1000; // 30 días
-const sessions = new Map(); // token -> { createdAt }
+const sessions = new Map(); // token -> { user, createdAt }
 const loginAttempts = new Map(); // ip -> { count, firstAt }
 
 function authRequired() {
-  return AUTH_PASSWORD.length > 0;
+  return authUsers().size > 0;
 }
 
 function parseCookies(req) {
@@ -287,7 +298,12 @@ async function handleApi(req, res, url) {
 
   // --- Autenticación (rutas públicas) -------------------------------------
   if (req.method === 'GET' && resource === 'auth') {
-    return json(res, 200, { required: authRequired(), authenticated: isAuthenticated(req) });
+    const session = sessions.get(parseCookies(req).crm_session);
+    return json(res, 200, {
+      required: authRequired(),
+      authenticated: isAuthenticated(req),
+      user: session?.user || null,
+    });
   }
   if (req.method === 'POST' && resource === 'login') {
     const ip = req.socket.remoteAddress || '?';
@@ -296,13 +312,14 @@ async function handleApi(req, res, url) {
     }
     const b = await readBody(req);
     if (!authRequired()) return json(res, 200, { ok: true });
-    if (!safeEqual(b.user || '', AUTH_USER) || !safeEqual(b.password || '', AUTH_PASSWORD)) {
+    const expected = authUsers().get(String(b.user || '').trim());
+    if (expected === undefined || !safeEqual(b.password || '', expected)) {
       recordAttempt(ip);
       return json(res, 401, { error: 'Usuario o contraseña incorrectos' });
     }
     loginAttempts.delete(ip);
     const token = crypto.randomBytes(32).toString('hex');
-    sessions.set(token, { createdAt: Date.now() });
+    sessions.set(token, { user: String(b.user).trim(), createdAt: Date.now() });
     res.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',
       'Set-Cookie': `crm_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL_MS / 1000}`,
@@ -602,6 +619,99 @@ async function handleApi(req, res, url) {
       db.templates = db.templates.filter((x) => x.id !== id);
       save();
       return json(res, 200, { ok: true });
+    }
+  }
+
+  // --- Búsqueda en conversaciones ------------------------------------------
+  if (req.method === 'GET' && resource === 'search-messages') {
+    const q = (url.searchParams.get('q') || '').toLowerCase().trim();
+    if (q.length < 2) return json(res, 200, []);
+    const results = [];
+    for (let i = db.messages.length - 1; i >= 0 && results.length < 50; i -= 1) {
+      const m = db.messages[i];
+      const hay = `${m.text || ''} ${m.media?.filename || ''}`.toLowerCase();
+      if (!hay.includes(q)) continue;
+      const client = db.clients.find((c) => c.id === m.clientId);
+      if (!client) continue;
+      results.push({
+        clientId: client.id,
+        clientName: client.name,
+        text: m.text,
+        direction: m.direction,
+        timestamp: m.timestamp,
+      });
+    }
+    return json(res, 200, results);
+  }
+
+  // --- Exportación CSV ------------------------------------------------------
+  if (req.method === 'GET' && resource === 'export' && id) {
+    const csvCell = (v) => `"${String(v ?? '').replaceAll('"', '""')}"`;
+    // BOM para que Excel abra el CSV con acentos correctos.
+    const toCsv = (headers, rows) => '\uFEFF' + [headers, ...rows]
+      .map((r) => r.map(csvCell).join(';')).join('\r\n');
+    const fmtDate = (ts) => (ts ? new Date(ts).toISOString().slice(0, 10) : '');
+    let csv = null;
+    let name = '';
+    if (id === 'clients.csv') {
+      name = 'clientes';
+      csv = toCsv(
+        ['Nombre', 'Teléfono', 'NIF', 'Email', 'Etiquetas', 'Notas', 'Alta'],
+        db.clients.map((c) => [c.name, '+' + c.phone, c.nif, c.email,
+          (c.tags || []).join(', '), c.notes, fmtDate(c.createdAt)]),
+      );
+    }
+    if (id === 'cases.csv') {
+      name = 'expedientes';
+      const clientName = (cid) => db.clients.find((c) => c.id === cid)?.name || '';
+      const STATUS = { pendiente: 'Pendiente', en_curso: 'En curso', esperando_documentacion: 'Esperando documentación', completado: 'Completado' };
+      csv = toCsv(
+        ['Cliente', 'Título', 'Tipo', 'Estado', 'Fecha límite', 'Documentación', 'Notas', 'Creado'],
+        db.cases.map((c) => [clientName(c.clientId), c.title, c.type,
+          STATUS[c.status] || c.status, c.dueDate || '', c.docs || '', c.notes, fmtDate(c.createdAt)]),
+      );
+    }
+    if (csv === null) return json(res, 404, { error: 'Exportación no disponible' });
+    res.writeHead(200, {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${name}-burocracia-zero.csv"`,
+    });
+    return res.end(csv);
+  }
+
+  // --- Campañas por etiqueta ------------------------------------------------
+  if (resource === 'campaigns') {
+    if (req.method === 'GET') {
+      return json(res, 200, db.campaigns.slice().reverse());
+    }
+    if (req.method === 'POST' && !id) {
+      const b = await readBody(req);
+      const tag = String(b.tag || '').trim();
+      const text = String(b.text || '').trim();
+      if (!tag || !text) return json(res, 400, { error: 'Etiqueta y mensaje son obligatorios' });
+      const recipients = db.clients.filter((c) => (c.tags || []).includes(tag));
+      if (!recipients.length) return json(res, 400, { error: 'Ningún cliente tiene esa etiqueta' });
+      let ok = 0;
+      let errors = 0;
+      for (const client of recipients) {
+        const filled = auto.fillTemplate(text, { nombre: (client.name || '').split(' ')[0] });
+        // auto:true → usa la plantilla de Meta si la ventana de 24 h está cerrada.
+        const msg = await sendMessageToClient(db, client, filled, { auto: true });
+        if (msg.status === 'error') errors += 1;
+        else ok += 1;
+      }
+      const campaign = {
+        id: newId('cam'),
+        tag,
+        text,
+        sentAt: Date.now(),
+        total: recipients.length,
+        ok,
+        errors,
+      };
+      db.campaigns.push(campaign);
+      save();
+      return json(res, 201, campaign);
     }
   }
 

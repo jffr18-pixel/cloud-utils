@@ -84,6 +84,40 @@ async function testAuthServer() {
     server.kill();
     fs.rmSync(authDataDir, { recursive: true, force: true });
   }
+
+  // Varios usuarios con CRM_USERS.
+  const MULTI_PORT = 3779;
+  const MULTI_BASE = `http://127.0.0.1:${MULTI_PORT}`;
+  const multiDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crm-multi-'));
+  const multiServer = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
+    env: {
+      ...process.env, PORT: String(MULTI_PORT), DATA_DIR: multiDataDir,
+      CRM_USERS: 'carmen:clave1,juan:clave2', CRM_PASSWORD: '',
+      WHATSAPP_TOKEN: '', WHATSAPP_PHONE_NUMBER_ID: '',
+    },
+    stdio: 'ignore',
+  });
+  try {
+    for (let i = 0; i < 50; i += 1) {
+      try { await fetch(MULTI_BASE + '/api/auth'); break; } catch { await new Promise((r) => setTimeout(r, 100)); }
+    }
+    const juanLogin = await fetch(MULTI_BASE + '/api/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user: 'juan', password: 'clave2' }),
+    });
+    assert(juanLogin.status === 200, 'CRM_USERS: segundo usuario puede entrar');
+    const juanCookie = (juanLogin.headers.get('set-cookie') || '').split(';')[0];
+    const whoami = await fetch(MULTI_BASE + '/api/auth', { headers: { Cookie: juanCookie } });
+    assert((await whoami.json()).user === 'juan', 'la sesión recuerda qué usuario es');
+    const cross = await fetch(MULTI_BASE + '/api/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user: 'carmen', password: 'clave2' }),
+    });
+    assert(cross.status === 401, 'la contraseña de un usuario no vale para otro');
+  } finally {
+    multiServer.kill();
+    fs.rmSync(multiDataDir, { recursive: true, force: true });
+  }
 }
 
 async function main() {
@@ -378,6 +412,36 @@ async function main() {
     const mariaLast = mariaMsgs[mariaMsgs.length - 1];
     assert(mariaLast.text.includes('Firma pendiente') && !mariaLast.viaTemplate,
       'con la ventana abierta se sigue usando texto libre');
+
+    console.log('Búsqueda en conversaciones');
+    const found = await req('GET', '/api/search-messages?q=nóminas');
+    assert(found.data.length >= 1 && found.data[0].clientName === 'Ana Torres',
+      'búsqueda encuentra mensajes por nombre de adjunto');
+    const shortQ = await req('GET', '/api/search-messages?q=a');
+    assert(shortQ.data.length === 0, 'consultas de menos de 2 letras no buscan');
+
+    console.log('Exportación CSV');
+    const csvClients = await fetch(`${BASE}/api/export/clients.csv`);
+    const csvClientsText = await csvClients.text();
+    assert(csvClients.status === 200 && csvClients.headers.get('content-type').includes('text/csv'),
+      'exportación de clientes responde CSV');
+    assert(csvClientsText.includes('María López') && csvClientsText.includes('"Nombre"'),
+      'el CSV de clientes incluye cabecera y datos');
+    const csvCases = await fetch(`${BASE}/api/export/cases.csv`);
+    assert((await csvCases.text()).includes('Declaración renta 2025'), 'el CSV de expedientes incluye datos');
+
+    console.log('Campañas por etiqueta');
+    const campBad = await req('POST', '/api/campaigns', { tag: 'inexistente', text: 'Hola' });
+    assert(campBad.status === 400, 'campaña con etiqueta sin clientes rechazada');
+    const camp = await req('POST', '/api/campaigns', { tag: 'renta', text: 'Hola {nombre}, ya está abierta la campaña de la renta.' });
+    assert(camp.status === 201 && camp.data.total === 1 && camp.data.ok === 1,
+      'campaña enviada a los clientes de la etiqueta');
+    const mariaCamp = (await req('GET', `/api/messages?clientId=${clientId}`)).data;
+    const campMsg = mariaCamp[mariaCamp.length - 1];
+    assert(campMsg.text.includes('María') && campMsg.auto === true,
+      'mensaje de campaña personalizado con {nombre}');
+    const campList = await req('GET', '/api/campaigns');
+    assert(campList.data.length === 1 && campList.data[0].tag === 'renta', 'histórico de campañas guardado');
 
     console.log('Autenticación');
     const authOff = await req('GET', '/api/auth');

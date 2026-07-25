@@ -1,7 +1,9 @@
-# CRM de WhatsApp para gestorías
+# CRM de WhatsApp · Burocracia Zero
 
-CRM sencillo y autocontenido pensado para gestorías que atienden a sus clientes
-por WhatsApp. Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
+CRM sencillo y autocontenido para la gestoría **Burocracia Zero**
+(*Simplificamos tus trámites*), pensado para atender a los clientes por
+WhatsApp. Con la identidad visual de la marca (negro carbón, crema y lila).
+Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
 
 ## Qué incluye
 
@@ -27,6 +29,16 @@ por WhatsApp. Sin dependencias externas: solo necesitas **Node.js 18 o superior*
   variable `{nombre}` que se sustituye por el nombre del cliente.
 - **⏰ Recordatorios**: seguimientos con fecha, opcionalmente ligados a un
   cliente, con opción de enviárselos por WhatsApp automáticamente ese día.
+- **📣 Campañas por etiqueta**: envío masivo a todos los clientes de una
+  etiqueta (ej. aviso de campaña de la renta a la etiqueta «renta»), con
+  personalización `{nombre}`, histórico de envíos y uso automático de la
+  plantilla de Meta si la ventana de 24 h está cerrada.
+- **🔍 Búsqueda en conversaciones**: busca cualquier texto (o nombre de
+  archivo adjunto) en todos los chats desde la bandeja.
+- **📤 Exportación CSV**: clientes y expedientes descargables en CSV listos
+  para Excel (separador `;` y codificación con BOM).
+- **👥 Varios usuarios**: `CRM_USERS="carmen:clave1,juan:clave2"` permite un
+  acceso por persona; la sesión muestra quién está conectado.
 - **⚡ Automatizaciones** (pestaña propia, todas configurables y desactivadas
   por defecto):
   - *Respuesta fuera de horario*: contesta automáticamente cuando un cliente
@@ -165,6 +177,7 @@ Puntos clave:
 | `PORT` | Puerto del servidor | `3000` |
 | `CRM_PASSWORD` | Contraseña de acceso a la interfaz (vacía → sin login, solo para pruebas locales) | *(vacío)* |
 | `CRM_USER` | Usuario de acceso | `admin` |
+| `CRM_USERS` | Varios usuarios: `nombre:clave,nombre2:clave2` (tiene prioridad sobre `CRM_USER`/`CRM_PASSWORD`) | *(vacío)* |
 | `YCLOUD_API_KEY` | API key de YCloud (Developers → API Keys en su consola; máxima prioridad si está definida) | *(vacío)* |
 | `YCLOUD_WHATSAPP_FROM` | Número del negocio en YCloud, formato internacional (ej. `+34612345678`) | *(vacío)* |
 | `WHATSAPP_360DIALOG_API_KEY` | API key de 360dialog | *(vacío)* |
