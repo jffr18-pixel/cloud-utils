@@ -379,6 +379,11 @@ async function handleApi(req, res, url) {
     });
   }
 
+  // Prueba real de conexión con el proveedor de WhatsApp.
+  if (req.method === 'GET' && resource === 'test-connection') {
+    return json(res, 200, await wa.testConnection());
+  }
+
   if (req.method === 'GET' && resource === 'dashboard') {
     const now = Date.now();
     const endOfToday = new Date();

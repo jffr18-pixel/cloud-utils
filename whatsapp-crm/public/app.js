@@ -812,6 +812,21 @@ $('#btn-logout').addEventListener('click', async () => {
   location.reload();
 });
 
+// Clic en la insignia de conexión → prueba real contra el proveedor.
+$('#connection-badge').addEventListener('click', async () => {
+  const badge = $('#connection-badge');
+  const original = badge.textContent;
+  badge.textContent = '⏳ Probando conexión…';
+  try {
+    const r = await api('test-connection');
+    alert(`${r.ok ? '✅' : '❌'} ${r.detail}`);
+  } catch (err) {
+    alert('❌ ' + err.message);
+  } finally {
+    badge.textContent = original;
+  }
+});
+
 // Sondeo cada 5 s: refresca la bandeja y el contador de no leídos
 // para que los mensajes entrantes del webhook aparezcan solos.
 setInterval(async () => {

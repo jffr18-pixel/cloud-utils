@@ -165,6 +165,66 @@ async function fetchInboundMedia(media) {
   throw new Error('Adjunto no disponible');
 }
 
+// Comprueba que las credenciales del proveedor funcionan de verdad.
+// Devuelve { ok, provider, detail } (ok=false con el motivo si falla).
+async function testConnection() {
+  const c = config();
+  const prov = provider();
+  if (!prov) {
+    return { ok: false, provider: null, detail: 'Sin credenciales: el CRM está en modo demo.' };
+  }
+  const timeout = AbortSignal.timeout(10_000);
+  try {
+    if (prov === 'ycloud') {
+      const res = await fetch(`${YCLOUD_BASE}/whatsapp/phoneNumbers?limit=10`, {
+        headers: { 'X-API-Key': c.ycloudApiKey },
+        signal: timeout,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401 || res.status === 403) {
+        return { ok: false, provider: prov, detail: 'La API key de YCloud no es válida o está revocada.' };
+      }
+      if (!res.ok) {
+        return { ok: false, provider: prov, detail: `YCloud respondió HTTP ${res.status}: ${data?.error?.message || 'error desconocido'}` };
+      }
+      const numbers = (data.items || []).map((n) => ({
+        phoneNumber: n.phoneNumber,
+        displayName: n.verifiedName || n.displayPhoneNumber || '',
+        status: n.status || '',
+      }));
+      if (!numbers.length) {
+        return { ok: false, provider: prov, detail: 'La API key es válida pero no hay ningún número de WhatsApp dado de alta en YCloud.' };
+      }
+      const fromOk = !c.ycloudFrom || numbers.some((n) => n.phoneNumber === c.ycloudFrom);
+      let detail = `Conexión correcta. Números en la cuenta: ${numbers.map((n) => `${n.phoneNumber}${n.displayName ? ` (${n.displayName})` : ''}`).join(', ')}.`;
+      if (!c.ycloudFrom) {
+        detail += ' ⚠️ Falta YCLOUD_WHATSAPP_FROM: configúralo con uno de esos números.';
+      } else if (!fromOk) {
+        detail += ` ⚠️ YCLOUD_WHATSAPP_FROM (${c.ycloudFrom}) no coincide con ninguno de ellos.`;
+      }
+      return { ok: fromOk && Boolean(c.ycloudFrom), provider: prov, detail, numbers };
+    }
+    if (prov === 'meta') {
+      const { headers } = endpoint();
+      const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${c.phoneNumberId}?fields=display_phone_number,verified_name,quality_rating`, {
+        headers, signal: timeout,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return { ok: false, provider: prov, detail: `Meta respondió: ${data?.error?.message || `HTTP ${res.status}`}` };
+      }
+      return { ok: true, provider: prov, detail: `Conexión correcta con ${data.display_phone_number || 'el número'} (${data.verified_name || 'sin nombre verificado'}).` };
+    }
+    // 360dialog no expone una consulta ligera equivalente en su API v2.
+    return { ok: true, provider: prov, detail: 'Credenciales de 360dialog configuradas. Envía un mensaje de prueba para confirmar el funcionamiento.' };
+  } catch (err) {
+    const reason = err.name === 'TimeoutError'
+      ? 'la petición superó los 10 segundos'
+      : err.message;
+    return { ok: false, provider: prov, detail: `No se pudo contactar con el proveedor (${reason}). Revisa la conexión a Internet o el cortafuegos del servidor.` };
+  }
+}
+
 // ref: { waMessageId, ycloudId } — YCloud usa su propio id interno del
 // mensaje entrante; Meta/360dialog usan el wamid.
 async function markAsRead(ref) {
@@ -324,6 +384,7 @@ module.exports = {
   config,
   provider,
   isConfigured,
+  testConnection,
   sendText,
   sendMedia,
   sendTemplate,

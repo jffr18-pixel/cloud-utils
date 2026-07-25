@@ -102,6 +102,11 @@ Con eso, los mensajes de tus clientes entran en el CRM, los envíos salen por
 YCloud, y si tienes Coexistence activado, lo que respondas desde la app del
 móvil aparece marcado con 📱.
 
+**Para verificar la conexión**: haz clic en la insignia de estado («● Conectado
+(YCloud)») en la barra lateral. El CRM consulta tu cuenta de YCloud y te dice
+si la API key funciona, qué números tienes dados de alta y si
+`YCLOUD_WHATSAPP_FROM` coincide con uno de ellos.
+
 ## Conectar con WhatsApp de verdad (API oficial de Meta)
 
 El CRM usa la **WhatsApp Business Cloud API**, la vía oficial de Meta (gratuita

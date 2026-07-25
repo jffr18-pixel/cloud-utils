@@ -413,6 +413,11 @@ async function main() {
     assert(mariaLast.text.includes('Firma pendiente') && !mariaLast.viaTemplate,
       'con la ventana abierta se sigue usando texto libre');
 
+    console.log('Prueba de conexión');
+    const testConn = await req('GET', '/api/test-connection');
+    assert(testConn.status === 200 && testConn.data.ok === false
+      && testConn.data.detail.includes('demo'), 'sin credenciales, la prueba de conexión informa del modo demo');
+
     console.log('Búsqueda en conversaciones');
     const found = await req('GET', '/api/search-messages?q=nóminas');
     assert(found.data.length >= 1 && found.data[0].clientName === 'Ana Torres',
