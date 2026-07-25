@@ -18,17 +18,17 @@
         <div class="brand-tagline">Simplificamos tus trámites</div>
         <div class="brand-sub" id="connection-badge" style="cursor:pointer" title="Clic para probar la conexión con WhatsApp">…</div>
       </div>
-      <button class="nav-btn active" data-view="dashboard">📊 Panel</button>
-      <button class="nav-btn" data-view="inbox">💬 WhatsApp <span class="badge hidden" id="nav-unread"></span></button>
-      <button class="nav-btn" data-view="clients">👥 Clientes</button>
-      <button class="nav-btn" data-view="cases">📁 Expedientes</button>
-      <button class="nav-btn" data-view="appointments">📅 Citas</button>
-      <button class="nav-btn" data-view="templates">📝 Plantillas</button>
-      <button class="nav-btn" data-view="reminders">⏰ Recordatorios</button>
-      <button class="nav-btn" data-view="campaigns">📣 Campañas</button>
-      <button class="nav-btn" data-view="automations">⚡ Automatizaciones</button>
+      <button class="nav-btn active" data-view="dashboard">📊 <span class="nav-label">Panel</span></button>
+      <button class="nav-btn" data-view="inbox">💬 <span class="nav-label">WhatsApp</span> <span class="badge hidden" id="nav-unread"></span></button>
+      <button class="nav-btn" data-view="clients">👥 <span class="nav-label">Clientes</span></button>
+      <button class="nav-btn" data-view="cases">📁 <span class="nav-label">Expedientes</span></button>
+      <button class="nav-btn" data-view="appointments">📅 <span class="nav-label">Citas</span></button>
+      <button class="nav-btn" data-view="templates">📝 <span class="nav-label">Plantillas</span></button>
+      <button class="nav-btn" data-view="reminders">⏰ <span class="nav-label">Recordatorios</span></button>
+      <button class="nav-btn" data-view="campaigns">📣 <span class="nav-label">Campañas</span></button>
+      <button class="nav-btn" data-view="automations">⚡ <span class="nav-label">Automatizaciones</span></button>
       <div style="flex:1"></div>
-      <button class="nav-btn hidden" id="btn-logout">🚪 Cerrar sesión</button>
+      <button class="nav-btn hidden" id="btn-logout">🚪 <span class="nav-label">Cerrar sesión</span></button>
     </nav>
 
     <main class="main">
@@ -66,6 +66,7 @@
             <div id="chat-empty" class="chat-empty">Selecciona una conversación</div>
             <div id="chat" class="hidden">
               <div class="chat-head">
+                <button class="btn small" id="btn-back-conv" title="Volver a las conversaciones">←</button>
                 <div>
                   <div class="chat-name" id="chat-name"></div>
                   <div class="chat-phone" id="chat-phone"></div>

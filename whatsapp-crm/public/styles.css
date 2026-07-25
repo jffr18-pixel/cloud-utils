@@ -443,10 +443,43 @@ dialog h2 { font-family: var(--font-brand); font-size: 19px; font-weight: 700; m
 }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 18px; }
 
+#btn-back-conv { display: none; }
+
 @media (max-width: 760px) {
-  .sidebar { width: 66px; min-width: 66px; padding: 16px 8px; }
-  .sidebar .brand, .sidebar .nav-btn { font-size: 0; }
-  .sidebar .nav-btn { justify-content: center; }
-  .main { padding: 18px 16px 30px; }
-  .conv-list-panel { width: 250px; min-width: 210px; }
+  /* Barra lateral → carril de iconos */
+  .sidebar { width: 62px; min-width: 62px; padding: 14px 7px 12px; }
+  .brand { padding: 0 0 12px; text-align: center; }
+  .brand-logo, .brand-tagline, .brand-sub { display: none; }
+  .brand::before {
+    content: "bZ"; font-family: var(--font-brand); font-weight: 800;
+    font-size: 21px; color: var(--accent); display: block;
+  }
+  .nav-label { display: none; }
+  .nav-btn { justify-content: center; padding: 11px 0; font-size: 16px; }
+  .nav-btn .badge { position: absolute; top: 3px; right: 5px; margin: 0; }
+  .nav-btn.active::before { display: none; }
+
+  .main { padding: 16px 13px 30px; }
+  .view h1 { font-size: 21px; }
+  .cards { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 9px; }
+
+  /* Bandeja: lista o chat a pantalla completa, con botón de volver */
+  .inbox { height: calc(100vh - 34px); }
+  .conv-list-panel { width: 100%; min-width: 0; border-right: none; }
+  .inbox .chat-panel { display: none; }
+  .inbox.mobile-chat .conv-list-panel { display: none; }
+  .inbox.mobile-chat .chat-panel { display: flex; }
+  #btn-back-conv { display: inline-block; }
+  .chat-head { padding: 10px 12px; flex-wrap: wrap; }
+  .chat-tools select { font-size: 11.5px; padding: 5px 6px; }
+  .chat-messages { padding: 14px 12px; }
+  .msg { max-width: 82%; }
+  .chat-compose { flex-wrap: wrap; }
+  .chat-compose textarea { flex: 1 1 100%; order: -1; }
+  .chat-compose select { max-width: 110px; }
+  .chat-compose .btn.primary { margin-left: auto; }
+}
+
+@media (min-width: 761px) {
+  .inbox .chat-panel { display: flex; }
 }

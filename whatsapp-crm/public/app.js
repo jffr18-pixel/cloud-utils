@@ -313,6 +313,8 @@ async function renderInbox() {
 
 async function openConversation(clientId) {
   state.activeClientId = clientId;
+  // En móvil, el chat ocupa la pantalla y la lista se oculta.
+  if (window.innerWidth <= 760) document.querySelector('.inbox').classList.add('mobile-chat');
   const [client, msgs] = await Promise.all([
     api('clients/' + clientId),
     api('messages?clientId=' + encodeURIComponent(clientId)),
@@ -431,6 +433,10 @@ $('#tpl-select').addEventListener('change', async () => {
 
 $('#btn-open-client').addEventListener('click', () => {
   if (state.activeClientId) openClientDetail(state.activeClientId);
+});
+
+$('#btn-back-conv').addEventListener('click', () => {
+  document.querySelector('.inbox').classList.remove('mobile-chat');
 });
 
 // Adjuntar documento o imagen.
