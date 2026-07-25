@@ -1,0 +1,42 @@
+# Blueprint de despliegue en Render (https://render.com) para el CRM de
+# WhatsApp de Burocracia Zero.
+#
+# Uso: en Render → New → Blueprint → conectar este repositorio. Render lee
+# este fichero, crea el servicio con su disco persistente y pide los valores
+# de las variables marcadas con sync: false (las claves secretas).
+
+services:
+  - type: web
+    name: burocracia-zero-crm
+    runtime: docker
+    rootDir: whatsapp-crm
+    plan: starter          # el plan gratuito se apaga por inactividad y
+                           # perdería los webhooks de YCloud; starter no.
+    region: frankfurt      # UE, conviene por RGPD
+    healthCheckPath: /api/auth
+    disk:
+      name: crm-data
+      mountPath: /data
+      sizeGB: 5
+    envVars:
+      - key: DATA_DIR
+        value: /data
+      - key: PORT
+        value: "3000"
+      # Acceso al CRM (usuarios separados por comas: nombre:clave,...)
+      - key: CRM_USERS
+        sync: false
+      # WhatsApp vía YCloud
+      - key: YCLOUD_API_KEY
+        sync: false
+      - key: YCLOUD_WHATSAPP_FROM
+        sync: false
+      - key: WEBHOOK_VERIFY_TOKEN
+        generateValue: true
+      # Microsoft 365 (Outlook + SharePoint); vacías = sin sincronización
+      - key: MS_TENANT_ID
+        sync: false
+      - key: MS_CLIENT_ID
+        sync: false
+      - key: MS_CLIENT_SECRET
+        sync: false

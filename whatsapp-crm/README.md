@@ -255,6 +255,47 @@ ese fichero y tendrás copia de todo el CRM. Los teléfonos se normalizan a
 formato internacional; un móvil español de 9 cifras recibe automáticamente el
 prefijo `34`.
 
+## Despliegue en producción (Render)
+
+El repositorio incluye `render.yaml` (en la raíz) y `Dockerfile`, así que el
+despliegue en [Render](https://render.com) es guiado:
+
+1. Crea la cuenta en Render e **instala su app de GitHub** dándole acceso al
+   repositorio privado `cloud-utils`.
+2. En Render: **New → Blueprint** → elige el repositorio → Render lee
+   `render.yaml` y propone el servicio `burocracia-zero-crm` (Docker, región
+   Frankfurt/UE, disco persistente de 5 GB montado en `/data`).
+3. Rellena las variables que pide: `CRM_USERS` (ej.
+   `carmen:UnaClaveLarga,jose:OtraClave`), `YCLOUD_API_KEY`,
+   `YCLOUD_WHATSAPP_FROM` y, si usas la integración con Microsoft 365,
+   `MS_TENANT_ID`, `MS_CLIENT_ID` y `MS_CLIENT_SECRET`.
+   `WEBHOOK_VERIFY_TOKEN` se genera solo.
+4. Al terminar el primer despliegue tendrás una URL del tipo
+   `https://burocracia-zero-crm.onrender.com`. Entra con tu usuario y pulsa
+   la insignia de conexión para verificar YCloud, y «Probar conexión» en la
+   tarjeta de Microsoft 365.
+5. En la consola de YCloud (**Developers → Webhooks**) apunta el endpoint a
+   `https://TU-URL.onrender.com/webhook` con los 4 eventos del apartado
+   anterior.
+6. (Opcional) Dominio propio: en Render **Settings → Custom Domains** añade
+   `crm.burocraciazero.es` y crea el CNAME que te indique en tu DNS.
+
+Notas de producción:
+
+- Cada `git push` a la rama conectada redespliega automáticamente. Los datos
+  no se pierden: viven en el disco `/data` (base de datos, adjuntos, copias
+  de seguridad y sesiones).
+- El plan gratuito de Render **no vale** para este CRM: apaga el servicio
+  tras unos minutos de inactividad y se perderían webhooks de YCloud. El plan
+  Starter (~7 $/mes) lo mantiene siempre encendido.
+- La cookie de sesión se marca `Secure` automáticamente detrás del HTTPS del
+  hosting, y el límite de intentos de acceso usa la IP real
+  (`X-Forwarded-For`).
+- Alternativas: **Railway** (detecta el `Dockerfile`; añade un volumen en
+  `/data` y las mismas variables) o cualquier **VPS** con Docker:
+  `docker build -t crm whatsapp-crm && docker run -d -p 80:3000 -v /srv/crm-data:/data --env-file .env crm`
+  (con un proxy inverso tipo Caddy para HTTPS).
+
 ## Protección de datos (RGPD)
 
 El CRM guarda datos personales de tus clientes en tu propio servidor, no en

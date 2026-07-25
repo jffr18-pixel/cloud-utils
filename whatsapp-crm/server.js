@@ -41,8 +41,37 @@ const SESSION_TTL_MS = 30 * 24 * 3600 * 1000; // 30 días
 const sessions = new Map(); // token -> { user, createdAt }
 const loginAttempts = new Map(); // ip -> { count, firstAt }
 
+// Las sesiones sobreviven a los reinicios/redespliegues del servidor.
+const SESSIONS_FILE = path.join(path.dirname(DB_FILE), 'sessions.json');
+try {
+  for (const [t, s] of Object.entries(JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8')))) {
+    if (Date.now() - s.createdAt < SESSION_TTL_MS) sessions.set(t, s);
+  }
+} catch { /* sin fichero de sesiones todavía */ }
+
+function persistSessions() {
+  try {
+    fs.mkdirSync(path.dirname(SESSIONS_FILE), { recursive: true });
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(Object.fromEntries(sessions)));
+  } catch (err) {
+    console.error('No se pudieron guardar las sesiones:', err.message);
+  }
+}
+
 function authRequired() {
   return authUsers().size > 0;
+}
+
+// IP real del cliente (detrás del proxy HTTPS del hosting llega en cabecera).
+function ipOf(req) {
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return fwd || req.socket.remoteAddress || '?';
+}
+
+// En producción (HTTPS detrás de proxy) la cookie de sesión debe ser Secure.
+function cookieFlags(req) {
+  const https = String(req.headers['x-forwarded-proto'] || '').includes('https');
+  return `HttpOnly; SameSite=Lax; Path=/${https ? '; Secure' : ''}`;
 }
 
 function parseCookies(req) {
@@ -314,7 +343,7 @@ async function handleApi(req, res, url) {
     });
   }
   if (req.method === 'POST' && resource === 'login') {
-    const ip = req.socket.remoteAddress || '?';
+    const ip = ipOf(req);
     if (tooManyAttempts(ip)) {
       return json(res, 429, { error: 'Demasiados intentos. Espera 15 minutos.' });
     }
@@ -328,18 +357,22 @@ async function handleApi(req, res, url) {
     loginAttempts.delete(ip);
     const token = crypto.randomBytes(32).toString('hex');
     sessions.set(token, { user: String(b.user).trim(), createdAt: Date.now() });
+    persistSessions();
     res.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',
-      'Set-Cookie': `crm_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL_MS / 1000}`,
+      'Set-Cookie': `crm_session=${token}; ${cookieFlags(req)}; Max-Age=${SESSION_TTL_MS / 1000}`,
     });
     return res.end(JSON.stringify({ ok: true }));
   }
   if (req.method === 'POST' && resource === 'logout') {
     const token = parseCookies(req).crm_session;
-    if (token) sessions.delete(token);
+    if (token) {
+      sessions.delete(token);
+      persistSessions();
+    }
     res.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',
-      'Set-Cookie': 'crm_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0',
+      'Set-Cookie': `crm_session=; ${cookieFlags(req)}; Max-Age=0`,
     });
     return res.end(JSON.stringify({ ok: true }));
   }
