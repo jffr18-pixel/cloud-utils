@@ -154,6 +154,7 @@ async function refreshView() {
     if (state.view === 'cases') await renderCases();
     if (state.view === 'appointments') await renderAppointments();
     if (state.view === 'templates') await renderTemplates();
+    if (state.view === 'fichas') await renderFichas();
     if (state.view === 'reminders') await renderReminders();
     if (state.view === 'campaigns') await renderCampaigns();
     if (state.view === 'automations') await renderAutomations();
@@ -499,6 +500,8 @@ function insertAtCursor(el, text) {
 function closePanels(except) {
   if (except !== 'emoji') $('#emoji-panel').classList.add('hidden');
   if (except !== 'sticker') $('#sticker-panel').classList.add('hidden');
+  const fp = $('#ficha-panel');
+  if (fp && except !== 'ficha') fp.classList.add('hidden');
 }
 $('#btn-emoji').addEventListener('click', (e) => {
   e.stopPropagation();
@@ -925,6 +928,98 @@ $('#btn-new-template').addEventListener('click', () => {
     await renderTemplates();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Fichas de trámite
+// ---------------------------------------------------------------------------
+
+function fichaFields(f = {}) {
+  return [
+    { name: 'title', label: 'Trámite (ej. «Arraigo social»)', value: f.title, required: true },
+    {
+      name: 'area', label: 'Área', type: 'select', value: f.area || 'otro',
+      options: Object.entries(TYPE_LABEL),
+    },
+    { name: 'intro', label: 'Mensaje de introducción (usa {nombre} y {tramite})', type: 'textarea',
+      value: f.intro !== undefined ? f.intro : 'Hola {nombre} 👋 Para tramitar «{tramite}» necesitamos la siguiente documentación:' },
+    { name: 'docs', label: 'Documentación necesaria (una línea por documento)', type: 'textarea', value: f.docs },
+    { name: 'notes', label: 'Nota final (opcional)', type: 'textarea', value: f.notes },
+  ];
+}
+
+async function renderFichas() {
+  const fichas = await api('fichas');
+  const byArea = {};
+  for (const f of fichas) (byArea[f.area] = byArea[f.area] || []).push(f);
+  const order = Object.keys(TYPE_LABEL).filter((a) => byArea[a]);
+  $('#ficha-list').innerHTML = order.map((area) => `
+    <div class="case-block">
+      <div class="block-head"><span class="block-title">${esc(TYPE_LABEL[area] || area)}</span><span class="block-count">${byArea[area].length}</span></div>
+      <div class="list">${byArea[area].map((f) => `
+        <div class="row ficha-row" data-id="${esc(f.id)}">
+          <div class="grow">
+            <div class="title">${esc(f.title)}</div>
+            <div class="sub">${esc((f.docs || '').split('\n').filter(Boolean).length)} documentos</div>
+          </div>
+          <button class="btn small danger ficha-del" data-id="${esc(f.id)}">Eliminar</button>
+        </div>`).join('')}</div>
+    </div>`).join('') || '<p class="hint">No hay fichas todavía. Crea la primera con «＋ Nueva ficha».</p>';
+
+  $('#ficha-list').querySelectorAll('.ficha-row').forEach((row) => {
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('.ficha-del')) return;
+      const f = fichas.find((x) => x.id === row.dataset.id);
+      openDialog('Editar ficha de trámite', fichaFields(f), async (v) => {
+        await api('fichas/' + f.id, { method: 'PUT', body: v });
+        await renderFichas();
+      });
+    });
+  });
+  $('#ficha-list').querySelectorAll('.ficha-del').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('¿Eliminar esta ficha?')) return;
+      await api('fichas/' + btn.dataset.id, { method: 'DELETE' });
+      await renderFichas();
+    });
+  });
+}
+
+$('#btn-new-ficha').addEventListener('click', () => {
+  openDialog('Nueva ficha de trámite', fichaFields(), async (v) => {
+    await api('fichas', { method: 'POST', body: v });
+    await renderFichas();
+  });
+});
+
+// Enviar una ficha al cliente desde el chat.
+let fichasCache = null;
+$('#btn-ficha-send').addEventListener('click', async (e) => {
+  e.stopPropagation();
+  const p = $('#ficha-panel');
+  const willShow = p.classList.contains('hidden');
+  closePanels();
+  p.classList.toggle('hidden');
+  if (!willShow) return;
+  if (!fichasCache) fichasCache = await api('fichas');
+  p.innerHTML = fichasCache.length ? fichasCache.map((f) =>
+    `<button type="button" class="ficha-pick" data-id="${esc(f.id)}">
+       <b>${esc(f.title)}</b><span>${esc(TYPE_LABEL[f.area] || f.area)} · ${esc((f.docs || '').split('\n').filter(Boolean).length)} docs</span>
+     </button>`).join('')
+    : '<p class="hint">No hay fichas. Créalas en «Fichas de trámite».</p>';
+  p.querySelectorAll('.ficha-pick').forEach((btn) => {
+    btn.addEventListener('click', () => sendFicha(btn.dataset.id));
+  });
+});
+async function sendFicha(fichaId) {
+  if (!state.activeClientId) return;
+  $('#ficha-panel').classList.add('hidden');
+  try {
+    await api('messages', { method: 'POST', body: { clientId: state.activeClientId, fichaId } });
+    await openConversation(state.activeClientId);
+  } catch (err) {
+    alert(err.message);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Recordatorios

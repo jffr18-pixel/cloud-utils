@@ -19,6 +19,7 @@ const EMPTY_DB = {
   reminders: [],
   campaigns: [],
   appointments: [],
+  fichas: [],
 };
 
 // db.settings es un objeto (configuración de automatizaciones, etc.).

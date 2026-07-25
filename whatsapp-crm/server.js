@@ -19,6 +19,44 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const UPLOADS_DIR = path.join(path.dirname(DB_FILE), 'uploads');
 const STICKERS_DIR = path.join(PUBLIC_DIR, 'stickers');
 
+// Fichas de trámite de ejemplo (editables). Se cargan la primera vez.
+const DEFAULT_FICHAS = [
+  {
+    title: 'Arraigo social', area: 'extranjeria',
+    intro: 'Hola {nombre} 👋 Para tramitar tu {tramite} necesitamos que nos envíes la siguiente documentación:',
+    docs: '• Pasaporte completo (todas las páginas)\n• Certificado de empadronamiento histórico\n• Contrato de trabajo o medios económicos\n• Certificado de antecedentes penales del país de origen (apostillado)\n• Antecedentes penales en España\n• Certificado de empadronamiento actual',
+    notes: 'Cuando lo tengas, envíanoslo por aquí mismo (foto o PDF). Cualquier duda, te ayudamos. 📲',
+  },
+  {
+    title: 'Alta de autónomo', area: 'fiscal',
+    intro: 'Hola {nombre} 👋 Para darte de alta como autónomo necesitamos:',
+    docs: '• DNI o NIE por ambas caras\n• Número de cuenta bancaria (IBAN)\n• Descripción de la actividad que vas a ejercer\n• Dirección de la actividad',
+    notes: 'Con esto tramitamos el alta en Hacienda (036) y en la Seguridad Social (RETA).',
+  },
+  {
+    title: 'Declaración de la renta', area: 'fiscal',
+    intro: 'Hola {nombre} 👋 Para tu declaración de la renta necesitamos:',
+    docs: '• DNI\n• Certificados de ingresos (nóminas, pensiones…)\n• Certificado de prestaciones (SEPE) si las hubo\n• Datos de vivienda (recibo IBI o referencia catastral)\n• Certificados bancarios y de inversiones\n• Justificantes de donativos o deducciones',
+    notes: '',
+  },
+  {
+    title: 'Transferencia de vehículo', area: 'vehiculos',
+    intro: 'Hola {nombre} 👋 Para el cambio de titular del vehículo necesitamos:',
+    docs: '• DNI del comprador y del vendedor\n• Permiso de circulación\n• Ficha técnica (ITV en vigor)\n• Contrato de compraventa firmado\n• Último recibo del Impuesto de Circulación pagado',
+    notes: 'Calculamos el ITP de tu comunidad y lo gestionamos todo online.',
+  },
+];
+
+function ensureDefaultFichas(db) {
+  if (!db.settings) db.settings = {};
+  if (db.settings.fichasSeeded || (db.fichas && db.fichas.length)) return;
+  for (const f of DEFAULT_FICHAS) {
+    db.fichas.push({ id: newId('fic'), ...f, createdAt: Date.now() });
+  }
+  db.settings.fichasSeeded = true;
+  save();
+}
+
 // Catálogo de stickers de Burocracia Zero (se lee del manifiesto generado).
 function loadStickers() {
   try {
@@ -677,6 +715,22 @@ async function handleApi(req, res, url) {
         return json(res, 201, noteMsg);
       }
 
+      // Envío de una ficha de trámite (documentación) al cliente.
+      if (b.fichaId) {
+        ensureDefaultFichas(db);
+        const ficha = db.fichas.find((f) => f.id === b.fichaId);
+        if (!ficha) return json(res, 404, { error: 'Ficha no encontrada' });
+        const first = (client.name || '').split(' ')[0];
+        const fill = (t) => String(t || '').replaceAll('{nombre}', first).replaceAll('{tramite}', ficha.title);
+        const parts = [
+          fill(ficha.intro) || `Hola ${first} 👋 Para tramitar «${ficha.title}» necesitamos:`,
+          ficha.docs,
+          fill(ficha.notes),
+        ].filter((p) => p && p.trim());
+        const msg = await sendMessageToClient(db, client, parts.join('\n\n'));
+        return json(res, 201, msg);
+      }
+
       // Envío de un sticker de Burocracia Zero (por id del catálogo).
       if (b.stickerId) {
         const sticker = loadStickers().find((s) => s.id === b.stickerId);
@@ -948,6 +1002,43 @@ async function handleApi(req, res, url) {
   // --- Catálogo de stickers de la gestoría ----------------------------------
   if (req.method === 'GET' && resource === 'stickers') {
     return json(res, 200, loadStickers());
+  }
+
+  // --- Fichas de trámite (documentación por trámite) ------------------------
+  if (resource === 'fichas') {
+    ensureDefaultFichas(db);
+    if (req.method === 'GET' && !id) return json(res, 200, db.fichas);
+    if (req.method === 'POST' && !id) {
+      const b = await readBody(req);
+      if (!b.title) return json(res, 400, { error: 'El título es obligatorio' });
+      const ficha = {
+        id: newId('fic'),
+        title: String(b.title).trim(),
+        area: b.area || 'otro',
+        intro: b.intro || '',
+        docs: b.docs || '',
+        notes: b.notes || '',
+        createdAt: Date.now(),
+      };
+      db.fichas.push(ficha);
+      save();
+      return json(res, 201, ficha);
+    }
+    const ficha = db.fichas.find((f) => f.id === id);
+    if (!ficha) return json(res, 404, { error: 'Ficha no encontrada' });
+    if (req.method === 'PUT') {
+      const b = await readBody(req);
+      for (const k of ['title', 'area', 'intro', 'docs', 'notes']) {
+        if (b[k] !== undefined) ficha[k] = String(b[k]);
+      }
+      save();
+      return json(res, 200, ficha);
+    }
+    if (req.method === 'DELETE') {
+      db.fichas = db.fichas.filter((f) => f.id !== id);
+      save();
+      return json(res, 200, { ok: true });
+    }
   }
 
   // --- Carpetas de SharePoint (para vincular al cliente) --------------------
@@ -1307,6 +1398,8 @@ setInterval(() => {
     console.error('Error al crear la copia de seguridad:', err.message);
   }
 }, 5 * 60 * 1000);
+
+ensureDefaultFichas(load());
 
 server.listen(PORT, () => {
   const mode = wa.isConfigured()

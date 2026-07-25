@@ -623,6 +623,27 @@ async function main() {
     const badLink = await req('PUT', `/api/messages/${fileMsg.data.id}`, { caseId: 'exp_inexistente' });
     assert(badLink.status === 404, 'vínculo a expediente inexistente rechazado');
 
+    console.log('Fichas de trámite');
+    const fichas = await req('GET', '/api/fichas');
+    assert(fichas.status === 200 && fichas.data.length >= 4, 'fichas de ejemplo precargadas');
+    assert(fichas.data.some((f) => f.title === 'Arraigo social' && f.area === 'extranjeria'),
+      'incluye la ficha de Arraigo social en extranjería');
+    const newFicha = await req('POST', '/api/fichas', {
+      title: 'Nacionalidad española', area: 'extranjeria',
+      intro: 'Hola {nombre}, para tu {tramite} necesitamos:', docs: '• Certificado de nacimiento\n• Certificado de antecedentes', notes: 'Gracias.',
+    });
+    assert(newFicha.status === 201 && newFicha.data.id, 'ficha nueva creada');
+    // Enviar la ficha al cliente compone el mensaje con {nombre} y {tramite}.
+    const fichaMsg = await req('POST', '/api/messages', { clientId, fichaId: newFicha.data.id });
+    assert(fichaMsg.status === 201 && fichaMsg.data.text.includes('María')
+      && fichaMsg.data.text.includes('Nacionalidad española')
+      && fichaMsg.data.text.includes('Certificado de nacimiento'),
+      'ficha enviada al cliente con la documentación y variables sustituidas');
+    const fichaBad = await req('POST', '/api/messages', { clientId, fichaId: 'no-existe' });
+    assert(fichaBad.status === 404, 'ficha inexistente rechazada');
+    const delFicha = await req('DELETE', '/api/fichas/' + newFicha.data.id);
+    assert(delFicha.status === 200, 'ficha eliminable');
+
     console.log('Stickers');
     const stickers = await req('GET', '/api/stickers');
     assert(stickers.status === 200 && stickers.data.length >= 8, 'catálogo de stickers disponible');
