@@ -260,10 +260,20 @@ function renderCasesChart(byStatus) {
 
 const CONV_DOT = { abierta: '🟢', pendiente: '🟡', resuelta: '⚪' };
 
+// Avatar con iniciales y color estable derivado del nombre.
+function avatarHtml(name) {
+  const parts = (name || '?').trim().split(/\s+/);
+  const initials = (parts[0]?.[0] || '?') + (parts[1]?.[0] || '');
+  let hash = 0;
+  for (const ch of name || '') hash = (hash * 31 + ch.charCodeAt(0)) % 997;
+  return `<span class="avatar a${hash % 4}">${esc(initials.toUpperCase())}</span>`;
+}
+
 function convRowHtml(c) {
   const arrow = c.lastDirection === 'out' ? '↗ ' : c.lastDirection === 'note' ? '🗒️ ' : '';
   return `
     <div class="row conv-row" data-client-id="${esc(c.clientId)}">
+      ${avatarHtml(c.clientName)}
       <div class="grow">
         <div class="title"><span class="conv-dot">${CONV_DOT[c.convStatus] || '🟢'}</span>${esc(c.clientName)}
           ${c.assignedTo ? `<span class="conv-assigned">· ${esc(c.assignedTo)}</span>` : ''}</div>
@@ -465,6 +475,7 @@ async function renderConvSearch() {
   const results = await api('search-messages?q=' + encodeURIComponent(q));
   $('#conv-list').innerHTML = results.map((r) => `
     <div class="row conv-row" data-client-id="${esc(r.clientId)}">
+      ${avatarHtml(r.clientName)}
       <div class="grow">
         <div class="title">${esc(r.clientName)}</div>
         <div class="sub">${r.direction === 'out' ? '↗ ' : ''}${esc(r.text)}</div>
@@ -519,6 +530,7 @@ async function renderClients() {
   state.clients = clients;
   $('#client-list').innerHTML = clients.map((c) => `
     <div class="row client-row" data-id="${esc(c.id)}">
+      ${avatarHtml(c.name)}
       <div class="grow">
         <div class="title">${esc(c.name)}</div>
         <div class="sub">+${esc(c.phone)}${c.nif ? ' · ' + esc(c.nif) : ''}${c.email ? ' · ' + esc(c.email) : ''}</div>
@@ -792,14 +804,15 @@ async function renderAppointments() {
   }
   const dayTitle = (iso) => {
     const d = new Date(iso + 'T12:00');
-    const label = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+    let label = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+    label = label.charAt(0).toUpperCase() + label.slice(1);
     return iso === today ? `Hoy · ${label}` : label;
   };
   $('#appt-list').innerHTML = [...byDay.entries()].map(([day, items]) => `
     <div class="appt-day">${esc(dayTitle(day))}</div>
     <div class="list">${items.map((a) => `
       <div class="row appt-row" data-id="${esc(a.id)}">
-        <div style="font-family:'Baloo 2',sans-serif;font-weight:700;font-size:17px">${esc(a.time)}</div>
+        <span class="appt-time">${esc(a.time)}</span>
         <div class="grow">
           <div class="title">${esc(nameOf(a.clientId))}</div>
           <div class="sub">${esc(a.reason || 'consulta')}${a.confirmationSentAt ? ' · ✓ confirmación enviada' : ''}${a.remindedAt ? ' · ✓ recordada' : ''}${a.msEventId ? ' · 📆 en Outlook' : ''}</div>
