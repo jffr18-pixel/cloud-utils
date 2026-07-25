@@ -703,6 +703,22 @@ async function main() {
     const fEmpresa = msgraphSeg.buildFolderPath('{aa} CLIENTES/{aa} {segmento}/{aa} {cliente}', { name: 'GEISA', segment: 'empresa' }, new Date('2026-07-25T12:00:00'));
     assert(fEmpresa === '26 CLIENTES/26 EMPRESAS/26 GEISA', 'carpeta SharePoint para empresa');
 
+    console.log('Carpeta de SharePoint del cliente');
+    const spClient = await req('POST', '/api/clients', {
+      name: 'Cliente Con Carpeta', phone: '911999888', segment: 'empresa',
+      sharepointFolder: { path: '26 CLIENTES/26 EMPRESAS/26 CLIENTE CON CARPETA', webUrl: 'https://sp/x' },
+    });
+    assert(spClient.status === 201 && spClient.data.sharepointFolder?.path.includes('EMPRESAS'),
+      'cliente creado con carpeta de SharePoint vinculada');
+    const spUnlink = await req('PUT', `/api/clients/${spClient.data.id}`, { sharepointFolder: null });
+    assert(spUnlink.data.sharepointFolder === null, 'carpeta desvinculable');
+    // Sin credenciales de Microsoft, los endpoints degradan sin romper.
+    const spSuggest = await req('GET', '/api/sharepoint/suggest?name=Ana&segment=particular');
+    assert(spSuggest.status === 200 && spSuggest.data.configured === false,
+      'sugerencia de carpeta indica que Microsoft no está configurado');
+    const spFolders = await req('GET', '/api/sharepoint/folders?path=');
+    assert(spFolders.data.configured === false, 'listado de carpetas indica no configurado');
+
     console.log('Búsqueda en conversaciones');
     const found = await req('GET', '/api/search-messages?q=nóminas');
     assert(found.data.length >= 1 && found.data[0].clientName === 'Ana Torres',

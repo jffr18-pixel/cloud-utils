@@ -541,6 +541,9 @@ async function handleApi(req, res, url) {
         tags: Array.isArray(b.tags) ? b.tags : [],
         // Segmento (bloque de expedientes): particular | autonomo | empresa
         segment: ['particular', 'autonomo', 'empresa'].includes(b.segment) ? b.segment : 'particular',
+        // Carpeta de SharePoint vinculada { path, webUrl } o null.
+        sharepointFolder: b.sharepointFolder && b.sharepointFolder.path
+          ? { path: String(b.sharepointFolder.path), webUrl: b.sharepointFolder.webUrl || null } : null,
         notes: b.notes || '',
         createdAt: Date.now(),
       };
@@ -560,6 +563,10 @@ async function handleApi(req, res, url) {
       if (b.tags !== undefined) client.tags = Array.isArray(b.tags) ? b.tags : [];
       if (b.segment !== undefined && ['particular', 'autonomo', 'empresa'].includes(b.segment)) {
         client.segment = b.segment;
+      }
+      if (b.sharepointFolder !== undefined) {
+        client.sharepointFolder = b.sharepointFolder && b.sharepointFolder.path
+          ? { path: String(b.sharepointFolder.path), webUrl: b.sharepointFolder.webUrl || null } : null;
       }
       if (b.notes !== undefined) client.notes = String(b.notes);
       if (b.convStatus !== undefined && ['abierta', 'pendiente', 'resuelta'].includes(b.convStatus)) {
@@ -626,10 +633,13 @@ async function handleApi(req, res, url) {
               data = Buffer.from(await upstream.arrayBuffer());
             }
             const client = db.clients.find((c) => c.id === msg.clientId);
+            // Carpeta vinculada al cliente si la tiene; si no, la de la plantilla.
+            const folderPath = client?.sharepointFolder?.path
+              || msgraph.buildFolderPath(msSp.folderTemplate, client || { name: 'SIN NOMBRE' });
             const uploaded = await msgraph.uploadToSharePoint({
               hostname: msSp.hostname,
               sitePath: msSp.sitePath,
-              folderPath: msgraph.buildFolderPath(msSp.folderTemplate, client || { name: 'SIN NOMBRE' }),
+              folderPath,
               filename: msg.media.filename || `adjunto-${msg.id}`,
               data,
             });
@@ -938,6 +948,43 @@ async function handleApi(req, res, url) {
   // --- Catálogo de stickers de la gestoría ----------------------------------
   if (req.method === 'GET' && resource === 'stickers') {
     return json(res, 200, loadStickers());
+  }
+
+  // --- Carpetas de SharePoint (para vincular al cliente) --------------------
+  if (resource === 'sharepoint') {
+    const msSp = auto.getSettings(db).microsoft.sharepoint;
+    if (!msgraph.isConfigured()) {
+      return json(res, 200, { configured: false, error: 'Microsoft 365 no está configurado en el servidor.' });
+    }
+    // Ruta sugerida para un cliente nuevo, según segmento y plantilla.
+    if (req.method === 'GET' && id === 'suggest') {
+      const name = url.searchParams.get('name') || 'SIN NOMBRE';
+      const segment = url.searchParams.get('segment') || 'particular';
+      const path = msgraph.buildFolderPath(msSp.folderTemplate, { name, segment });
+      return json(res, 200, { configured: true, path });
+    }
+    // Listado de subcarpetas de una ruta (navegador de carpetas).
+    if (req.method === 'GET' && id === 'folders') {
+      try {
+        const folderPath = url.searchParams.get('path') || '';
+        const folders = await msgraph.listFolders({ hostname: msSp.hostname, sitePath: msSp.sitePath, folderPath });
+        return json(res, 200, { configured: true, path: folderPath, folders });
+      } catch (err) {
+        return json(res, 502, { error: err.message });
+      }
+    }
+    // Crear una carpeta.
+    if (req.method === 'POST' && id === 'folder') {
+      const b = await readBody(req);
+      if (!b.path) return json(res, 400, { error: 'Falta la ruta de la carpeta' });
+      try {
+        const folder = await msgraph.createFolder({ hostname: msSp.hostname, sitePath: msSp.sitePath, folderPath: b.path });
+        security.audit('sharepoint_carpeta_creada', { user: sessionUser(req), path: folder.path });
+        return json(res, 201, folder);
+      } catch (err) {
+        return json(res, 502, { error: err.message });
+      }
+    }
   }
 
   // --- Estadísticas del panel ----------------------------------------------

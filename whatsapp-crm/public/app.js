@@ -87,18 +87,24 @@ function openDialog(title, fields, onSubmit) {
       const opts = f.options.map(([v, l]) =>
         `<option value="${esc(v)}" ${v === f.value ? 'selected' : ''}>${esc(l)}</option>`).join('');
       input = `<select id="${id}">${opts}</select>`;
+    } else if (f.type === 'custom') {
+      // Campo con render propio; el valor se guarda en window['dlg_'+name].
+      input = `<div id="${id}"></div>`;
     } else {
       input = `<input id="${id}" type="${f.type || 'text'}" value="${esc(f.value || '')}" ${f.required ? 'required' : ''}>`;
     }
     div.innerHTML = `<label for="${id}">${esc(f.label)}</label>${input}`;
     wrap.appendChild(div);
+    if (f.type === 'custom' && f.mount) f.mount($('#' + id));
   }
   const dialog = $('#dialog');
   const form = $('#dialog-form');
   form.onsubmit = async (e) => {
     e.preventDefault();
     const values = {};
-    for (const f of fields) values[f.name] = $('#df-' + f.name).value;
+    for (const f of fields) {
+      values[f.name] = f.type === 'custom' ? (f.getValue ? f.getValue() : undefined) : $('#df-' + f.name).value;
+    }
     try {
       await onSubmit(values);
       dialog.close();
@@ -623,8 +629,81 @@ function clientFields(c = {}) {
     { name: 'nif', label: 'NIF / DNI / CIF', value: c.nif },
     { name: 'email', label: 'Email', type: 'email', value: c.email },
     { name: 'tags', label: 'Etiquetas (separadas por comas)', value: (c.tags || []).join(', ') },
+    sharepointField(c),
     { name: 'notes', label: 'Notas', type: 'textarea', value: c.notes },
   ];
+}
+
+// Campo de carpeta de SharePoint: crear nueva o elegir una existente.
+function sharepointField(c = {}) {
+  let selected = c.sharepointFolder ? { ...c.sharepointFolder } : null;
+  let box = null;
+  const render = () => {
+    if (!box) return;
+    box.innerHTML = selected
+      ? `<div class="sp-selected">☁️ <b>${esc(selected.path)}</b>
+          ${selected.webUrl ? `<a href="${esc(selected.webUrl)}" target="_blank" class="btn small">Abrir</a>` : ''}
+          <button type="button" class="btn small" id="sp-change">Cambiar</button>
+          <button type="button" class="btn small danger" id="sp-clear">Quitar</button></div>`
+      : `<div class="sp-empty">
+          <button type="button" class="btn small primary" id="sp-create">＋ Crear carpeta</button>
+          <button type="button" class="btn small" id="sp-pick">📁 Elegir existente</button>
+        </div>`;
+    if (box.querySelector('#sp-change')) box.querySelector('#sp-change').onclick = () => { selected = null; render(); };
+    if (box.querySelector('#sp-clear')) box.querySelector('#sp-clear').onclick = () => { selected = null; render(); };
+    if (box.querySelector('#sp-create')) box.querySelector('#sp-create').onclick = createFolderFlow;
+    if (box.querySelector('#sp-pick')) box.querySelector('#sp-pick').onclick = pickFolderFlow;
+  };
+  const createFolderFlow = async () => {
+    const name = $('#df-name').value.trim() || c.name || '';
+    const segment = $('#df-segment').value || c.segment || 'particular';
+    if (!name) return alert('Escribe primero el nombre del cliente.');
+    const sug = await api(`sharepoint/suggest?name=${encodeURIComponent(name)}&segment=${segment}`);
+    if (!sug.configured) return alert('Microsoft 365 no está configurado. Actívalo en Automatizaciones.');
+    const path = prompt('Se creará esta carpeta en SharePoint (puedes editarla):', sug.path);
+    if (!path) return;
+    box.innerHTML = '<span class="hint">Creando carpeta…</span>';
+    try {
+      const folder = await api('sharepoint/folder', { method: 'POST', body: { path } });
+      selected = { path: folder.path, webUrl: folder.webUrl };
+    } catch (err) { alert(err.message); }
+    render();
+  };
+  const pickFolderFlow = () => openFolderPicker((folder) => { selected = folder; render(); });
+  return {
+    name: 'sharepointFolder', type: 'custom',
+    label: 'Carpeta de SharePoint del cliente',
+    mount: (el) => { box = el; render(); },
+    getValue: () => selected,
+  };
+}
+
+// Navegador de carpetas de SharePoint en un diálogo aparte.
+async function openFolderPicker(onChoose) {
+  const dlg = $('#folder-dialog');
+  let path = '';
+  const load = async () => {
+    $('#fp-list').innerHTML = '<p class="hint">Cargando…</p>';
+    try {
+      const r = await api('sharepoint/folders?path=' + encodeURIComponent(path));
+      if (!r.configured) { $('#fp-list').innerHTML = '<p class="hint">Microsoft 365 no está configurado.</p>'; return; }
+      $('#fp-path').textContent = '/' + (path || '');
+      $('#fp-up').style.visibility = path ? 'visible' : 'hidden';
+      $('#fp-list').innerHTML = r.folders.map((f) =>
+        `<div class="fp-row" data-path="${esc(f.path)}"><span class="fp-open" data-path="${esc(f.path)}">📁 ${esc(f.name)}</span>
+          <button type="button" class="btn small fp-choose" data-path="${esc(f.path)}" data-url="${esc(f.webUrl || '')}">Elegir</button></div>`).join('')
+        || '<p class="hint">Esta carpeta no tiene subcarpetas. Puedes elegirla con el botón de abajo.</p>';
+      $('#fp-list').querySelectorAll('.fp-open').forEach((e) => e.onclick = () => { path = e.dataset.path; load(); });
+      $('#fp-list').querySelectorAll('.fp-choose').forEach((e) => e.onclick = () => {
+        onChoose({ path: e.dataset.path, webUrl: e.dataset.url || null }); dlg.close();
+      });
+    } catch (err) { $('#fp-list').innerHTML = `<p class="hint">${esc(err.message)}</p>`; }
+  };
+  $('#fp-up').onclick = () => { path = path.split('/').slice(0, -1).join('/'); load(); };
+  $('#fp-choose-current').onclick = () => { if (path) { onChoose({ path, webUrl: null }); dlg.close(); } };
+  $('#fp-cancel').onclick = () => dlg.close();
+  await load();
+  dlg.showModal();
 }
 
 function parseClientValues(v) {

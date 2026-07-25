@@ -173,6 +173,33 @@ async function ensureFolders(siteId, folderPath) {
   }
 }
 
+// Lista las subcarpetas de una ruta (para el selector de carpetas). Ruta
+// vacía = raíz de la biblioteca de documentos.
+async function listFolders({ hostname, sitePath, folderPath = '' }) {
+  const siteId = await getSiteId(hostname, sitePath);
+  const clean = String(folderPath).replace(/^\/+|\/+$/g, '');
+  const ref = clean ? `root:/${clean}:` : 'root';
+  const data = await graph(`/sites/${siteId}/drive/${ref}/children?$select=name,folder,webUrl&$top=200`);
+  return (data.value || [])
+    .filter((it) => it.folder)
+    .map((it) => ({
+      name: it.name,
+      path: clean ? `${clean}/${it.name}` : it.name,
+      webUrl: it.webUrl,
+      childCount: it.folder.childCount || 0,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+}
+
+// Crea la carpeta (y las intermedias) y devuelve su ruta y URL.
+async function createFolder({ hostname, sitePath, folderPath }) {
+  const siteId = await getSiteId(hostname, sitePath);
+  const clean = String(folderPath).replace(/^\/+|\/+$/g, '');
+  await ensureFolders(siteId, clean);
+  const item = await graph(`/sites/${siteId}/drive/root:/${clean}:?$select=webUrl,name`);
+  return { path: clean, webUrl: item.webUrl || null };
+}
+
 // Sube un fichero (Buffer). Para >4 MB usa sesión de subida por bloques.
 async function uploadToSharePoint({ hostname, sitePath, folderPath, filename, data }) {
   const siteId = await getSiteId(hostname, sitePath);
@@ -239,6 +266,8 @@ module.exports = {
   isConfigured,
   buildEventPayload,
   buildFolderPath,
+  listFolders,
+  createFolder,
   createCalendarEvent,
   updateCalendarEvent,
   deleteCalendarEvent,

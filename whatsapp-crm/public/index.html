@@ -330,6 +330,20 @@
     </form>
   </div>
 
+  <!-- Navegador de carpetas de SharePoint -->
+  <dialog id="folder-dialog">
+    <h2>Carpeta de SharePoint</h2>
+    <div class="fp-bar">
+      <button type="button" class="btn small" id="fp-up">⬆ Subir</button>
+      <span class="fp-path" id="fp-path">/</span>
+    </div>
+    <div id="fp-list" class="fp-list"></div>
+    <div class="dialog-actions">
+      <button type="button" class="btn" id="fp-cancel">Cancelar</button>
+      <button type="button" class="btn primary" id="fp-choose-current">Elegir esta carpeta</button>
+    </div>
+  </dialog>
+
   <!-- Diálogo genérico -->
   <dialog id="dialog">
     <form method="dialog" id="dialog-form">
