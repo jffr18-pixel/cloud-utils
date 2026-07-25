@@ -120,14 +120,23 @@ async function deleteCalendarEvent(calendarUser, eventId) {
 
 // --- SharePoint -------------------------------------------------------------
 
+// Nombre de carpeta del segmento en SharePoint (como en su estructura real).
+const SEGMENT_FOLDER = {
+  particular: 'PARTICULARES',
+  autonomo: 'AUTONOMOS',
+  empresa: 'EMPRESAS',
+};
+
 // Ruta de carpeta del cliente según la plantilla configurada.
 // Variables: {aa} = año en 2 cifras, {aaaa} = año completo,
-// {cliente} = nombre en mayúsculas. Función pura, probada sin red.
+// {cliente} = nombre en mayúsculas, {segmento} = PARTICULARES|AUTONOMOS|EMPRESAS.
+// Función pura, probada sin red.
 function buildFolderPath(template, client, date = new Date()) {
   const yy = String(date.getFullYear()).slice(2);
   return template
     .replaceAll('{aa}', yy)
     .replaceAll('{aaaa}', String(date.getFullYear()))
+    .replaceAll('{segmento}', SEGMENT_FOLDER[client.segment] || SEGMENT_FOLDER.particular)
     .replaceAll('{cliente}', (client.name || 'SIN NOMBRE').toUpperCase())
     .split('/')
     .map((seg) => seg.trim().replace(/[\\:*?"<>|#%]/g, ''))

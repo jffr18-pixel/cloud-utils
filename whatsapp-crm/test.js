@@ -680,6 +680,29 @@ async function main() {
     assert(testConn.status === 200 && testConn.data.ok === false
       && testConn.data.detail.includes('demo'), 'sin credenciales, la prueba de conexión informa del modo demo');
 
+    console.log('Segmento de cliente y bloques de expedientes');
+    const segClient = await req('POST', '/api/clients', {
+      name: 'Talleres GEISA SL', phone: '911223344', segment: 'empresa', tags: ['empresa'],
+    });
+    assert(segClient.status === 201 && segClient.data.segment === 'empresa', 'cliente creado con segmento empresa');
+    const badSeg = await req('POST', '/api/clients', { name: 'Sin seg', phone: '911223355', segment: 'inventado' });
+    assert(badSeg.data.segment === 'particular', 'segmento no válido cae a particular por defecto');
+    const segUpd = await req('PUT', `/api/clients/${segClient.data.id}`, { segment: 'autonomo' });
+    assert(segUpd.data.segment === 'autonomo', 'segmento del cliente actualizable');
+    // Expediente del cliente empresa/autónomo: se agrupa por su segmento.
+    await req('POST', '/api/cases', {
+      clientId: segClient.data.id, title: 'Cuentas anuales 2025', type: 'contabilidad', status: 'en_curso',
+    });
+    const casesSeg = await req('GET', `/api/cases?clientId=${segClient.data.id}`);
+    assert(casesSeg.data.length === 1 && casesSeg.data[0].type === 'contabilidad', 'expediente vinculado al cliente con segmento');
+
+    // La ruta de SharePoint usa el segmento (estructura real de la gestoría).
+    const msgraphSeg = require('./lib/msgraph');
+    const fParticular = msgraphSeg.buildFolderPath('{aa} CLIENTES/{aa} {segmento}/{aa} {cliente}', { name: 'Ana', segment: 'particular' }, new Date('2026-07-25T12:00:00'));
+    assert(fParticular === '26 CLIENTES/26 PARTICULARES/26 ANA', 'carpeta SharePoint para particular');
+    const fEmpresa = msgraphSeg.buildFolderPath('{aa} CLIENTES/{aa} {segmento}/{aa} {cliente}', { name: 'GEISA', segment: 'empresa' }, new Date('2026-07-25T12:00:00'));
+    assert(fEmpresa === '26 CLIENTES/26 EMPRESAS/26 GEISA', 'carpeta SharePoint para empresa');
+
     console.log('Búsqueda en conversaciones');
     const found = await req('GET', '/api/search-messages?q=nóminas');
     assert(found.data.length >= 1 && found.data[0].clientName === 'Ana Torres',

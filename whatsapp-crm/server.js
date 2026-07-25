@@ -539,6 +539,8 @@ async function handleApi(req, res, url) {
         nif: (b.nif || '').trim(),
         email: (b.email || '').trim(),
         tags: Array.isArray(b.tags) ? b.tags : [],
+        // Segmento (bloque de expedientes): particular | autonomo | empresa
+        segment: ['particular', 'autonomo', 'empresa'].includes(b.segment) ? b.segment : 'particular',
         notes: b.notes || '',
         createdAt: Date.now(),
       };
@@ -556,6 +558,9 @@ async function handleApi(req, res, url) {
       if (b.nif !== undefined) client.nif = String(b.nif).trim();
       if (b.email !== undefined) client.email = String(b.email).trim();
       if (b.tags !== undefined) client.tags = Array.isArray(b.tags) ? b.tags : [];
+      if (b.segment !== undefined && ['particular', 'autonomo', 'empresa'].includes(b.segment)) {
+        client.segment = b.segment;
+      }
       if (b.notes !== undefined) client.notes = String(b.notes);
       if (b.convStatus !== undefined && ['abierta', 'pendiente', 'resuelta'].includes(b.convStatus)) {
         client.convStatus = b.convStatus;

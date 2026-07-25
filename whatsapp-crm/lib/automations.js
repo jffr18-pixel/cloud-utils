@@ -129,7 +129,7 @@ const DEFAULTS = {
       hostname: 'ejerciendolaciudadania.sharepoint.com',
       sitePath: '/sites/GestinBurocraciaZero',
       // {aa}=año en 2 cifras, {aaaa}=año completo, {cliente}=nombre en mayúsculas
-      folderTemplate: '{aa} CLIENTES/{aa} PARTICULARES/{aa} {cliente}/CRM WHATSAPP',
+      folderTemplate: '{aa} CLIENTES/{aa} {segmento}/{aa} {cliente}/CRM WHATSAPP',
     },
   },
   // Plantilla aprobada de Meta para cuando la ventana de 24 h está cerrada

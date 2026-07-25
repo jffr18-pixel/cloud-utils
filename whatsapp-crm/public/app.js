@@ -44,13 +44,21 @@ const STATUS_LABEL = {
   completado: 'Completado',
 };
 const TYPE_LABEL = {
+  extranjeria: 'Extranjería',
+  vehiculos: 'Tráfico / Vehículos',
   fiscal: 'Fiscal / Impuestos',
   laboral: 'Laboral / Nóminas',
   contabilidad: 'Contabilidad',
-  extranjeria: 'Extranjería',
-  vehiculos: 'Vehículos / Tráfico',
-  otro: 'Otro',
+  pensiones: 'Pensiones / Prestaciones',
+  otro: 'Otros trámites',
 };
+// Segmentos = bloques de expedientes (tipo de cliente).
+const SEGMENTS = [
+  { key: 'particular', label: 'Particulares', icon: '👤' },
+  { key: 'autonomo', label: 'Autónomos', icon: '🧑‍💼' },
+  { key: 'empresa', label: 'Empresas', icon: '🏢' },
+];
+const SEGMENT_LABEL = Object.fromEntries(SEGMENTS.map((s) => [s.key, s.label]));
 const MSG_STATUS = {
   demo: '⏳ demo (no enviado)',
   sent: '✓ enviado',
@@ -113,6 +121,7 @@ const state = {
   users: [],
   activeClientId: null,
   caseFilter: '',
+  segFilter: '',
   apptFilter: 'proximas',
   noteMode: false,
   lastMessageCount: 0,
@@ -606,6 +615,11 @@ function clientFields(c = {}) {
   return [
     { name: 'name', label: 'Nombre completo', value: c.name, required: true },
     { name: 'phone', label: 'Teléfono (con o sin prefijo, ej. 612345678)', value: c.phone, required: true },
+    {
+      name: 'segment', label: 'Tipo de cliente (bloque de expedientes)', type: 'select',
+      value: c.segment || 'particular',
+      options: SEGMENTS.map((s) => [s.key, s.label]),
+    },
     { name: 'nif', label: 'NIF / DNI / CIF', value: c.nif },
     { name: 'email', label: 'Email', type: 'email', value: c.email },
     { name: 'tags', label: 'Etiquetas (separadas por comas)', value: (c.tags || []).join(', ') },
@@ -628,7 +642,7 @@ async function renderClients() {
     <div class="row client-row" data-id="${esc(c.id)}">
       ${avatarHtml(c.name)}
       <div class="grow">
-        <div class="title">${esc(c.name)}</div>
+        <div class="title">${esc(c.name)} <span class="seg-badge seg-${esc(c.segment || 'particular')}">${esc(SEGMENT_LABEL[c.segment] || 'Particulares')}</span></div>
         <div class="sub">+${esc(c.phone)}${c.nif ? ' · ' + esc(c.nif) : ''}${c.email ? ' · ' + esc(c.email) : ''}</div>
         <div>${(c.tags || []).map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</div>
       </div>
@@ -695,6 +709,14 @@ document.querySelectorAll('#case-filters .chip').forEach((chip) => {
     renderCases();
   });
 });
+document.querySelectorAll('#seg-filters .chip').forEach((chip) => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('#seg-filters .chip').forEach((c) => c.classList.remove('active'));
+    chip.classList.add('active');
+    state.segFilter = chip.dataset.seg;
+    renderCases();
+  });
+});
 
 function caseFields(item = {}, clients = []) {
   return [
@@ -721,25 +743,41 @@ function caseFields(item = {}, clients = []) {
 async function renderCases() {
   const [cases, clients] = await Promise.all([api('cases'), api('clients')]);
   state.clients = clients;
-  const nameOf = (id) => clients.find((c) => c.id === id)?.name || '(cliente eliminado)';
+  const clientOf = (id) => clients.find((c) => c.id === id);
+  const nameOf = (id) => clientOf(id)?.name || '(cliente eliminado)';
+  const segOf = (id) => clientOf(id)?.segment || 'particular';
+
   let list = cases;
   if (state.caseFilter) list = list.filter((c) => c.status === state.caseFilter);
   list = list.slice().sort((a, b) => String(a.dueDate || '9999').localeCompare(String(b.dueDate || '9999')));
 
-  $('#case-list').innerHTML = list.map((c) => {
+  const caseRow = (c) => {
     const overdue = c.dueDate && c.status !== 'completado' && new Date(c.dueDate) < new Date();
     return `
     <div class="row case-row" data-id="${esc(c.id)}">
       <div class="grow">
         <div class="title">${esc(c.title)}</div>
-        <div class="sub">${esc(nameOf(c.clientId))} · ${esc(TYPE_LABEL[c.type] || c.type)}</div>
+        <div class="sub">${esc(nameOf(c.clientId))} · <span class="area-badge">${esc(TYPE_LABEL[c.type] || c.type)}</span></div>
       </div>
       <div class="meta">
         <span class="status ${esc(c.status)}">${esc(STATUS_LABEL[c.status] || c.status)}</span>
         <div style="${overdue ? 'color:var(--danger);font-weight:700' : ''}">📅 ${fmtDate(c.dueDate)}${overdue ? ' ¡vencido!' : ''}</div>
       </div>
     </div>`;
-  }).join('') || '<p class="hint">No hay expedientes con este filtro.</p>';
+  };
+
+  // Bloques por tipo de cliente (segmento). Se ocultan los vacíos.
+  const blocks = SEGMENTS
+    .map((seg) => ({ seg, items: list.filter((c) => segOf(c.clientId) === seg.key) }))
+    .filter((b) => state.segFilter ? b.seg.key === state.segFilter : true);
+
+  const anyItems = blocks.some((b) => b.items.length);
+  $('#case-list').innerHTML = anyItems ? blocks.map((b) => b.items.length ? `
+    <div class="case-block">
+      <div class="block-head"><span class="block-title">${b.seg.icon} ${esc(b.seg.label)}</span><span class="block-count">${b.items.length}</span></div>
+      <div class="list">${b.items.map(caseRow).join('')}</div>
+    </div>` : '').join('')
+    : '<p class="hint">No hay expedientes con este filtro.</p>';
 
   $('#case-list').querySelectorAll('.case-row').forEach((row) => {
     row.addEventListener('click', () => {

@@ -141,14 +141,20 @@
             <button class="btn primary" id="btn-new-case">＋ Nuevo expediente</button>
           </div>
         </div>
+        <div class="filters" id="seg-filters">
+          <button class="chip active" data-seg="">Todos los bloques</button>
+          <button class="chip" data-seg="particular">👤 Particulares</button>
+          <button class="chip" data-seg="autonomo">🧑‍💼 Autónomos</button>
+          <button class="chip" data-seg="empresa">🏢 Empresas</button>
+        </div>
         <div class="filters" id="case-filters">
-          <button class="chip active" data-status="">Todos</button>
+          <button class="chip active" data-status="">Todos los estados</button>
           <button class="chip" data-status="pendiente">Pendientes</button>
           <button class="chip" data-status="en_curso">En curso</button>
           <button class="chip" data-status="esperando_documentacion">Esperando documentación</button>
           <button class="chip" data-status="completado">Completados</button>
         </div>
-        <div id="case-list" class="list"></div>
+        <div id="case-list"></div>
       </section>
 
       <!-- Plantillas -->
