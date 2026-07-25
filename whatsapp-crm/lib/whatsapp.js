@@ -288,7 +288,8 @@ function extractMedia(msg) {
 // `type` y un objeto de carga según el tipo:
 //  - whatsapp.inbound_message.received → whatsappInboundMessage
 //  - whatsapp.message.updated          → whatsappMessage (estado de envíos)
-//  - whatsapp.smb.message.created      → whatsappMessage (eco de la app, Coexistence)
+//  - whatsapp.smb.message.echoes / .created → whatsappMessage (eco de la app,
+//    Coexistence; el nombre varía según la versión de la consola de YCloud)
 //  - whatsapp.smb.history              → historial sincronizado de la app
 function parseYCloudEvent(ev) {
   const incoming = [];
@@ -309,7 +310,8 @@ function parseYCloudEvent(ev) {
       historic: ev.type === 'whatsapp.smb.history',
     });
   }
-  if ((ev.type === 'whatsapp.smb.message.created' || ev.type === 'whatsapp.smb.history') && om) {
+  const isEcho = ev.type === 'whatsapp.smb.message.created' || ev.type === 'whatsapp.smb.message.echoes';
+  if ((isEcho || ev.type === 'whatsapp.smb.history') && om) {
     echoes.push({
       to: om.to || '',
       text: extractText(om),

@@ -111,7 +111,7 @@ móvil), la conexión es directa:
    desde Internet) y suscríbelo a estos eventos:
    - `whatsapp.inbound_message.received` (mensajes de clientes)
    - `whatsapp.message.updated` (estados: enviado/entregado/leído/fallido)
-   - `whatsapp.smb.message.created` (Coexistence: ecos de la app del móvil)
+   - `whatsapp.smb.message.echoes` (Coexistence: ecos de la app del móvil)
    - `whatsapp.smb.history` (Coexistence: historial sincronizado)
 
 Con eso, los mensajes de tus clientes entran en el CRM, los envíos salen por

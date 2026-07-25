@@ -241,7 +241,7 @@ async function main() {
     assert(anaMsgs.data[0].ycloudId === 'yc_msg_1', 'id interno de YCloud guardado (para markAsRead)');
 
     const ycEcho = await req('POST', '/webhook', {
-      id: 'evt_2', type: 'whatsapp.smb.message.created', apiVersion: 'v2',
+      id: 'evt_2', type: 'whatsapp.smb.message.echoes', apiVersion: 'v2',
       createTime: '2026-07-25T10:05:00.000Z',
       whatsappMessage: {
         id: 'yc_msg_2', wamid: 'wamid.YC2', from: '+34911222333', to: '+34677111222',
