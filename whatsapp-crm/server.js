@@ -214,6 +214,10 @@ async function sendMessageToClient(db, client, text, opts = {}) {
   try {
     if (opts.media) {
       sendResult = await wa.sendMedia(client.phone, opts.media);
+    } else if (opts.interactiveList) {
+      // Menú nativo de WhatsApp; siempre responde a un mensaje reciente del
+      // cliente, así que la ventana de 24 h está abierta.
+      sendResult = await wa.sendInteractiveList(client.phone, opts.interactiveList);
     } else {
       // Automatizaciones fuera de la ventana de 24 h: WhatsApp rechaza el
       // texto libre, así que se usa la plantilla aprobada si está configurada
@@ -264,17 +268,17 @@ async function sendMessageToClient(db, client, text, opts = {}) {
 
 // Envío usado por las automatizaciones (marca el mensaje como automático).
 function autoSender(db) {
-  return (client, text) => sendMessageToClient(db, client, text, { auto: true });
+  return (client, text, opts = {}) => sendMessageToClient(db, client, text, { ...opts, auto: true });
 }
 
 async function handleWebhookPayload(db, body) {
   const { incoming, echoes, statuses } = wa.parseWebhook(body);
-  const freshClients = new Map();
+  const freshIncoming = [];
   for (const inMsg of incoming) {
     if (db.messages.some((m) => m.waMessageId && m.waMessageId === inMsg.waMessageId)) continue;
     const phone = normalizePhone(inMsg.from);
     const client = ensureClientForPhone(db, phone, inMsg.name);
-    if (!inMsg.historic) freshClients.set(client.id, client);
+    if (!inMsg.historic) freshIncoming.push({ client, text: inMsg.text });
     db.messages.push({
       id: newId('msg'),
       clientId: client.id,
@@ -335,12 +339,17 @@ async function handleWebhookPayload(db, body) {
   }
   if (incoming.length || echoes.length || statuses.length) save();
 
-  // Automatizaciones sobre los mensajes recién llegados: mensaje de
-  // servicios (a cualquier cliente, máx. una vez cada N horas) y respuesta
-  // fuera de horario.
-  for (const client of freshClients.values()) {
-    await auto.maybeWelcome(db, client, autoSender(db));
-    await auto.maybeAutoReply(db, client, autoSender(db));
+  // Automatizaciones sobre los mensajes recién llegados. Primero se atienden
+  // las selecciones del menú de áreas (precios); si no lo es, el mensaje de
+  // servicios (máx. una vez cada N horas por cliente) y la respuesta fuera
+  // de horario.
+  const alreadyGreeted = new Set();
+  for (const item of freshIncoming) {
+    const wasMenuReply = await auto.maybeMenuReply(db, item.client, item.text, autoSender(db));
+    if (wasMenuReply || alreadyGreeted.has(item.client.id)) continue;
+    alreadyGreeted.add(item.client.id);
+    await auto.maybeWelcome(db, item.client, autoSender(db));
+    await auto.maybeAutoReply(db, item.client, autoSender(db));
   }
 }
 
@@ -670,8 +679,11 @@ async function handleApi(req, res, url) {
       read: false,
     });
     save();
-    await auto.maybeWelcome(db, client, autoSender(db));
-    await auto.maybeAutoReply(db, client, autoSender(db));
+    const wasMenuReply = await auto.maybeMenuReply(db, client, b.text || '', autoSender(db));
+    if (!wasMenuReply) {
+      await auto.maybeWelcome(db, client, autoSender(db));
+      await auto.maybeAutoReply(db, client, autoSender(db));
+    }
     return json(res, 201, { ok: true, clientId: client.id });
   }
 

@@ -200,9 +200,12 @@
         </div>
 
         <div class="auto-card">
-          <h3><label><input type="checkbox" id="auto-wel-enabled"> 👋 Mensaje de servicios al escribirnos</label></h3>
-          <p class="hint">Se envía a <strong>cualquier</strong> cliente que escriba — nuevo o ya existente — como máximo una vez cada las horas indicadas. Si usas esta, desactiva el mensaje de bienvenida de YCloud para no duplicar.</p>
-          <textarea id="auto-wel-text" rows="7"></textarea>
+          <h3><label><input type="checkbox" id="auto-wel-enabled"> 👋 Menú de servicios al escribirnos</label></h3>
+          <p class="hint">Se envía a <strong>cualquier</strong> cliente que escriba — nuevo o ya existente — como máximo una vez cada las horas indicadas. Llega como <strong>menú de WhatsApp con botón</strong>: el cliente elige un área y recibe sus precios al momento (también funciona si escribe el número o el nombre del área). Si usas esta, desactiva la automatización equivalente de YCloud para no duplicar.</p>
+          <label>Texto de presentación</label>
+          <textarea id="auto-wel-text" rows="3"></textarea>
+          <label>Áreas y precios — cada área empieza con <code>=== Nombre del área</code> y debajo el mensaje con sus precios (máx. 10 áreas)</label>
+          <textarea id="auto-wel-areas" rows="14"></textarea>
           <div class="auto-row">
             <label>Máximo una vez cada <input type="number" id="auto-wel-hours" min="1" max="720" style="width:70px"> horas por cliente</label>
           </div>

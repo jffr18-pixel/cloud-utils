@@ -942,6 +942,7 @@ async function renderAutomations() {
 
   $('#auto-wel-enabled').checked = s.welcome.enabled;
   $('#auto-wel-text').value = s.welcome.text;
+  $('#auto-wel-areas').value = s.welcome.areasText;
   $('#auto-wel-hours').value = s.welcome.frequencyHours;
 
   $('#auto-ah-enabled').checked = s.afterHours.enabled;
@@ -1024,6 +1025,7 @@ $('#btn-auto-save').addEventListener('click', async () => {
         welcome: {
           enabled: $('#auto-wel-enabled').checked,
           text: $('#auto-wel-text').value,
+          areasText: $('#auto-wel-areas').value,
           frequencyHours: Number($('#auto-wel-hours').value) || 24,
         },
         afterHours: { enabled: $('#auto-ah-enabled').checked, message: $('#auto-ah-message').value },

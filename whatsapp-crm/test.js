@@ -358,6 +358,50 @@ async function main() {
     const newMsgs = (await req('GET', `/api/messages?clientId=${welNew.data.clientId}`)).data;
     assert(newMsgs.some((m) => m.auto && m.text.includes('Servicios de Burocracia Zero')),
       'cliente NUEVO también recibe el mensaje de servicios');
+
+    // Menú de áreas → precios (réplica del flujo de YCloud).
+    await req('PUT', '/api/automations', {
+      welcome: {
+        enabled: true,
+        text: 'Elige un área, {nombre}:',
+        areasText: '=== Renta e impuestos\nPrecios de renta: desde 40 €\n\n=== Extranjería\nPrecios de extranjería: arraigo 150 €',
+        frequencyHours: 24,
+      },
+    });
+    const menuNew = await req('POST', '/api/simulate-incoming', { phone: '655111333', name: 'Cliente Menú', text: 'Hola' });
+    let menuMsgs = (await req('GET', `/api/messages?clientId=${menuNew.data.clientId}`)).data;
+    let menuLast = menuMsgs[menuMsgs.length - 1];
+    assert(menuLast.auto && menuLast.text.includes('1. Renta e impuestos') && menuLast.text.includes('2. Extranjería'),
+      'el menú de áreas se envía al escribir');
+    await req('POST', '/api/simulate-incoming', { phone: '655111333', text: '1' });
+    menuMsgs = (await req('GET', `/api/messages?clientId=${menuNew.data.clientId}`)).data;
+    menuLast = menuMsgs[menuMsgs.length - 1];
+    assert(menuLast.auto && menuLast.text.includes('desde 40 €'),
+      'elegir el área por número envía sus precios');
+    await req('POST', '/api/simulate-incoming', { phone: '655111333', text: 'Extranjería' });
+    menuMsgs = (await req('GET', `/api/messages?clientId=${menuNew.data.clientId}`)).data;
+    menuLast = menuMsgs[menuMsgs.length - 1];
+    assert(menuLast.auto && menuLast.text.includes('arraigo 150 €'),
+      'elegir el área por nombre (respuesta de la lista interactiva) envía sus precios');
+    const menuCount = menuMsgs.filter((m) => m.text.includes('1. Renta e impuestos')).length;
+    assert(menuCount === 1, 'las selecciones no reenvían el menú');
+
+    // La selección también llega como respuesta interactiva vía webhook.
+    await req('POST', '/webhook', {
+      id: 'evt_menu', type: 'whatsapp.inbound_message.received', apiVersion: 'v2',
+      createTime: '2026-07-25T12:00:00.000Z',
+      whatsappInboundMessage: {
+        id: 'yc_menu_1', wamid: 'wamid.MENU1', from: '+34655111333',
+        to: '+34911222333', sendTime: '2026-07-25T12:00:00.000Z',
+        type: 'interactive',
+        interactive: { type: 'list_reply', list_reply: { id: 'area_1', title: 'Renta e impuestos' } },
+      },
+    });
+    menuMsgs = (await req('GET', `/api/messages?clientId=${menuNew.data.clientId}`)).data;
+    menuLast = menuMsgs[menuMsgs.length - 1];
+    assert(menuLast.auto && menuLast.text.includes('desde 40 €'),
+      'la respuesta del menú interactivo de WhatsApp también envía los precios');
+
     await req('PUT', '/api/automations', { welcome: { enabled: false } });
 
     // Resto de automatizaciones: horario siempre abierto.
@@ -407,7 +451,7 @@ async function main() {
 
     console.log('Panel');
     const dash = await req('GET', '/api/dashboard');
-    assert(dash.data.totalClients === 5, 'panel: 5 clientes');
+    assert(dash.data.totalClients === 6, 'panel: 6 clientes');
     assert(dash.data.openCases === 0, 'panel: sin expedientes abiertos (el de prueba quedó completado)');
 
     console.log('Adjuntos (modo demo)');

@@ -98,6 +98,26 @@ async function sendMedia(toPhone, media) {
   return sendPayload(toPhone, payload);
 }
 
+// Envía un mensaje interactivo de lista (menú nativo de WhatsApp con un botón
+// que despliega opciones). Máximo 10 filas; títulos de fila ≤ 24 caracteres.
+async function sendInteractiveList(toPhone, { body, button, rows }) {
+  if (!isConfigured()) return { demo: true, id: null };
+  return sendPayload(toPhone, {
+    type: 'interactive',
+    interactive: {
+      type: 'list',
+      body: { text: body },
+      action: {
+        button: String(button || 'Ver opciones').slice(0, 20),
+        sections: [{
+          title: 'Áreas',
+          rows: rows.slice(0, 10).map((r) => ({ id: r.id, title: String(r.title).slice(0, 24) })),
+        }],
+      },
+    },
+  });
+}
+
 // Envía una plantilla aprobada de Meta (necesaria fuera de la ventana de 24 h).
 // `params` son los valores de las variables {{1}}, {{2}}… del cuerpo.
 async function sendTemplate(toPhone, name, langCode, params) {
@@ -395,6 +415,7 @@ module.exports = {
   testConnection,
   sendText,
   sendMedia,
+  sendInteractiveList,
   sendTemplate,
   uploadMedia,
   fetchInboundMedia,

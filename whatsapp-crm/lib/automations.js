@@ -23,11 +23,17 @@ const DEFAULTS = {
     cooldownHours: 12,
   },
   // Mensaje de servicios: se envía a CUALQUIER cliente que escriba (nuevo o
-  // ya existente), como máximo una vez cada N horas por cliente.
+  // ya existente), como máximo una vez cada N horas por cliente. Si se
+  // definen áreas, se envía como menú interactivo de WhatsApp y, al elegir
+  // un área, el cliente recibe sus precios.
   welcome: {
     enabled: false,
-    text: 'Hola {nombre} 👋 Gracias por escribir a Burocracia Zero. Estos son nuestros servicios:\n\n📋 Renta e impuestos (IVA, modelos trimestrales…)\n👷 Laboral y nóminas\n🏢 Contabilidad de autónomos y empresas\n🌍 Extranjería\n🚗 Vehículos y tráfico\n\nCuéntanos qué necesitas y te atendemos enseguida.',
+    text: 'Hola {nombre} 👋 Gracias por escribir a Burocracia Zero. Elige el área que te interesa y te enviamos los precios al momento:',
     frequencyHours: 24,
+    // Un área por bloque: la línea «=== Título» y debajo el texto con los
+    // precios que recibirá el cliente al elegirla. (TEXTOS DE EJEMPLO:
+    // sustitúyelos por los de tu automatización de YCloud.)
+    areasText: '=== Renta e impuestos\n📋 Renta e impuestos\n• Declaración de la renta: desde 40 €\n• IVA y modelos trimestrales: consultar plan\n\nEscríbenos y te confirmamos el precio exacto de tu caso.\n\n=== Laboral y Seg. Social\n👷 Laboral y Seguridad Social\n• Prestaciones y pensiones: desde 30 €\n• Nóminas y contratos: consultar\n\nEscríbenos y te confirmamos el precio exacto de tu caso.\n\n=== Extranjería\n🌍 Extranjería\n• Arraigo y residencia: desde 150 €\n• Nacionalidad: desde 120 €\n\nEscríbenos y te confirmamos el precio exacto de tu caso.\n\n=== Otros trámites\n📄 Otros trámites\nCuéntanos qué necesitas y te preparamos presupuesto sin compromiso.',
   },
   statusNotify: {
     enabled: false,
@@ -152,9 +158,32 @@ function firstName(client) {
   return (client.name || '').split(' ')[0];
 }
 
+// Parsea las áreas del menú: bloques que empiezan por «=== Título» seguidos
+// del texto (precios) de esa área. Los títulos se recortan a 24 caracteres,
+// el límite de las listas interactivas de WhatsApp.
+function parseAreas(areasText) {
+  const areas = [];
+  let current = null;
+  for (const line of String(areasText || '').split('\n')) {
+    const m = line.match(/^=+\s*(.+)$/);
+    if (m) {
+      if (current && current.body.trim()) areas.push(current);
+      current = { title: m[1].trim().slice(0, 24), body: '' };
+    } else if (current) {
+      current.body += (current.body ? '\n' : '') + line;
+    }
+  }
+  if (current && current.body.trim()) areas.push(current);
+  return areas
+    .filter((a) => a.title)
+    .slice(0, 10)
+    .map((a, i) => ({ id: `area_${i + 1}`, title: a.title, body: a.body.trim() }));
+}
+
 // 0) Mensaje de servicios a cualquier cliente que escriba (nuevo o existente),
 // como máximo una vez cada N horas por cliente. A diferencia de la respuesta
-// fuera de horario, se envía siempre, sea la hora que sea.
+// fuera de horario, se envía siempre, sea la hora que sea. Con áreas
+// definidas, sale como menú interactivo de WhatsApp.
 async function maybeWelcome(db, client, send, now = new Date()) {
   const s = getSettings(db);
   if (!s.welcome.enabled) return false;
@@ -162,7 +191,38 @@ async function maybeWelcome(db, client, send, now = new Date()) {
   const gapMs = (Number.isFinite(hours) && hours >= 1 ? hours : 24) * 3600 * 1000;
   if (client.lastWelcomeAt && now.getTime() - client.lastWelcomeAt < gapMs) return false;
   client.lastWelcomeAt = now.getTime();
-  await send(client, fillTemplate(s.welcome.text, { nombre: firstName(client) }));
+  const intro = fillTemplate(s.welcome.text, { nombre: firstName(client) });
+  const areas = parseAreas(s.welcome.areasText);
+  if (areas.length) {
+    // En el CRM el mensaje se guarda con el listado numerado para que la
+    // conversación sea legible; en WhatsApp llega como menú con botón.
+    const summary = `${intro}\n\n${areas.map((a, i) => `${i + 1}. ${a.title}`).join('\n')}`;
+    await send(client, summary, {
+      interactiveList: {
+        body: intro,
+        button: 'Ver áreas',
+        rows: areas.map((a) => ({ id: a.id, title: a.title })),
+      },
+    });
+  } else {
+    await send(client, intro);
+  }
+  return true;
+}
+
+// Respuesta al menú: si el texto entrante coincide con un área (selección de
+// la lista interactiva, el título escrito o su número), se envían sus precios.
+async function maybeMenuReply(db, client, text, send) {
+  const s = getSettings(db);
+  if (!s.welcome.enabled) return false;
+  const areas = parseAreas(s.welcome.areasText);
+  if (!areas.length) return false;
+  const t = String(text || '').trim().toLowerCase();
+  if (!t) return false;
+  let area = areas.find((a) => a.title.toLowerCase() === t);
+  if (!area && /^\d{1,2}$/.test(t)) area = areas[Number(t) - 1] || null;
+  if (!area) return false;
+  await send(client, area.body);
   return true;
 }
 
@@ -278,7 +338,9 @@ module.exports = {
   isWindowOpen,
   fillTemplate,
   prettyDate,
+  parseAreas,
   maybeWelcome,
+  maybeMenuReply,
   maybeAutoReply,
   onCaseStatusChanged,
   onAppointmentCreated,
