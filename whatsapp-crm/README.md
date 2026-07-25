@@ -123,6 +123,43 @@ móvil aparece marcado con 📱.
 si la API key funciona, qué números tienes dados de alta y si
 `YCLOUD_WHATSAPP_FROM` coincide con uno de ellos.
 
+## Integración con Microsoft 365 (Outlook + SharePoint)
+
+El CRM puede sincronizarse con el Microsoft 365 de Burocracia Zero:
+
+- **Citas → Outlook**: cada cita creada en el CRM aparece también en el
+  calendario configurado (por defecto `jose@burocraciazero.es`), con el
+  cliente, teléfono y motivo. Si la cancelas en el CRM, se borra de Outlook.
+- **Documentos → SharePoint**: al guardar un adjunto en un expediente, el
+  fichero se sube también a la carpeta del cliente en el sitio
+  `GestinBurocraciaZero`, siguiendo vuestra estructura
+  `26 CLIENTES/26 PARTICULARES/26 NOMBRE/CRM WHATSAPP` (plantilla editable
+  en Automatizaciones; `{aa}` = año en 2 cifras, `{cliente}` = nombre en
+  mayúsculas). El mensaje muestra después un enlace «☁️ SharePoint».
+
+### Alta de la aplicación en Microsoft (una sola vez)
+
+1. Entra en <https://entra.microsoft.com> con la cuenta de administrador →
+   **Registros de aplicaciones → Nuevo registro**. Nombre: «CRM WhatsApp».
+2. En **Certificados y secretos**, crea un secreto de cliente y apúntalo.
+3. En **Permisos de API → Agregar permiso → Microsoft Graph → Permisos de
+   aplicación**, añade `Calendars.ReadWrite` y `Sites.ReadWrite.All`, y pulsa
+   **Conceder consentimiento de administrador**.
+4. Copia del apartado **Información general**: el **Id. de directorio
+   (inquilino)** y el **Id. de aplicación (cliente)**.
+5. Arranca el CRM con las tres variables:
+
+   ```bash
+   MS_TENANT_ID="..." MS_CLIENT_ID="..." MS_CLIENT_SECRET="..." node server.js
+   ```
+
+6. En **Automatizaciones → Microsoft 365**, activa el calendario y/o
+   SharePoint y pulsa «Probar conexión» para verificarlo todo.
+
+> Si prefieres limitar el acceso a un único sitio de SharePoint en lugar de
+> `Sites.ReadWrite.All`, un administrador puede usar el permiso
+> `Sites.Selected` y conceder acceso solo a `GestinBurocraciaZero`.
+
 ## Conectar con WhatsApp de verdad (API oficial de Meta)
 
 El CRM usa la **WhatsApp Business Cloud API**, la vía oficial de Meta (gratuita
@@ -206,6 +243,7 @@ Puntos clave:
 | `WHATSAPP_PHONE_NUMBER_ID` | ID del número de WhatsApp Business (Meta directo) | *(vacío → modo demo)* |
 | `WEBHOOK_VERIFY_TOKEN` | Token que verifica el webhook de Meta | `gestoria-crm` |
 | `WHATSAPP_GRAPH_VERSION` | Versión de la Graph API | `v20.0` |
+| `MS_TENANT_ID` / `MS_CLIENT_ID` / `MS_CLIENT_SECRET` | Credenciales de la app de Entra ID para Outlook y SharePoint (vacías → sin sincronización) | *(vacío)* |
 
 La elección de proveedor y los precios están comparados en
 [`COMPARATIVA-BSP.md`](COMPARATIVA-BSP.md).

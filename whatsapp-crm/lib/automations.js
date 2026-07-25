@@ -45,6 +45,22 @@ const DEFAULTS = {
     confirmText: 'Hola {nombre}, te confirmamos tu cita en Burocracia Zero el {fecha} a las {hora}. Motivo: {motivo}. Si no puedes venir, avísanos por aquí. ¡Gracias!',
     remindText: 'Hola {nombre}, te recordamos tu cita de mañana ({fecha}) a las {hora} en Burocracia Zero. ¡Te esperamos!',
   },
+  // Integración con Microsoft 365 (las credenciales van por variables de
+  // entorno MS_TENANT_ID / MS_CLIENT_ID / MS_CLIENT_SECRET; aquí solo se
+  // configura qué sincronizar y dónde).
+  microsoft: {
+    calendar: {
+      enabled: false,
+      user: 'jose@burocraciazero.es',
+    },
+    sharepoint: {
+      enabled: false,
+      hostname: 'ejerciendolaciudadania.sharepoint.com',
+      sitePath: '/sites/GestinBurocraciaZero',
+      // {aa}=año en 2 cifras, {aaaa}=año completo, {cliente}=nombre en mayúsculas
+      folderTemplate: '{aa} CLIENTES/{aa} PARTICULARES/{aa} {cliente}/CRM WHATSAPP',
+    },
+  },
   // Plantilla aprobada de Meta para cuando la ventana de 24 h está cerrada
   // (el cliente lleva más de 24 h sin escribir). Debe crearse y aprobarse en
   // YCloud/Meta con dos variables: {{1}} = nombre del cliente, {{2}} = texto.

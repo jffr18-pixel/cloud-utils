@@ -477,6 +477,44 @@ async function main() {
     const badLink = await req('PUT', `/api/messages/${fileMsg.data.id}`, { caseId: 'exp_inexistente' });
     assert(badLink.status === 404, 'vínculo a expediente inexistente rechazado');
 
+    console.log('Microsoft 365');
+    const msgraph = require('./lib/msgraph');
+    const evt = msgraph.buildEventPayload(
+      { date: '2026-09-15', time: '10:45', reason: 'Firma renta', notes: 'Traer DNI' },
+      { name: 'María López', phone: '34612345678' },
+    );
+    assert(evt.subject === 'Cita: María López — Firma renta', 'evento Outlook: asunto correcto');
+    assert(evt.start.dateTime === '2026-09-15T10:45:00' && evt.end.dateTime === '2026-09-15T11:15:00',
+      'evento Outlook: 30 minutos de duración');
+    assert(evt.start.timeZone === 'Europe/Madrid', 'evento Outlook: zona horaria de España');
+    const evtCross = msgraph.buildEventPayload({ date: '2026-09-15', time: '13:45' }, { name: 'X', phone: '1' });
+    assert(evtCross.end.dateTime === '2026-09-15T14:15:00', 'evento Outlook: cruce de hora correcto');
+
+    const folder = msgraph.buildFolderPath(
+      '{aa} CLIENTES/{aa} PARTICULARES/{aa} {cliente}/CRM WHATSAPP',
+      { name: 'María López' }, new Date('2026-07-25T12:00:00'),
+    );
+    assert(folder === '26 CLIENTES/26 PARTICULARES/26 MARÍA LÓPEZ/CRM WHATSAPP',
+      'carpeta SharePoint según la estructura de Burocracia Zero');
+    const folderClean = msgraph.buildFolderPath('{aaaa}/{cliente}', { name: 'A:B*C?' }, new Date('2026-01-01T12:00:00'));
+    assert(folderClean === '2026/ABC', 'caracteres no válidos eliminados de la ruta');
+
+    const msTest = await req('GET', '/api/test-microsoft');
+    assert(msTest.status === 200 && msTest.data.configured === false && msTest.data.ok === false,
+      'sin credenciales de Microsoft, la prueba lo indica');
+    const msSettings = await req('PUT', '/api/automations', {
+      microsoft: { calendar: { enabled: true, user: 'jose@burocraciazero.es' } },
+    });
+    assert(msSettings.data.microsoft.calendar.enabled === true
+      && msSettings.data.microsoft.sharepoint.hostname === 'ejerciendolaciudadania.sharepoint.com',
+      'configuración de Microsoft 365 guardada con los valores del sitio');
+    // Cita con calendario activado pero sin credenciales → se crea sin evento.
+    const apptNoMs = await req('POST', '/api/appointments', {
+      clientId, date: tomorrow, time: '17:00', reason: 'Consulta laboral',
+    });
+    assert(apptNoMs.status === 201 && !apptNoMs.data.msEventId,
+      'sin credenciales la cita se crea igualmente sin evento de Outlook');
+
     console.log('Prueba de conexión');
     const testConn = await req('GET', '/api/test-connection');
     assert(testConn.status === 200 && testConn.data.ok === false

@@ -11,6 +11,7 @@ const { load, save, newId, normalizePhone, DB_FILE } = require('./lib/store');
 const wa = require('./lib/whatsapp');
 const auto = require('./lib/automations');
 const backup = require('./lib/backup');
+const msgraph = require('./lib/msgraph');
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -391,6 +392,12 @@ async function handleApi(req, res, url) {
     return json(res, 200, await wa.testConnection());
   }
 
+  // Prueba de conexión con Microsoft 365.
+  if (req.method === 'GET' && resource === 'test-microsoft') {
+    const result = await msgraph.testConnection(auto.getSettings(db).microsoft);
+    return json(res, 200, { ...result, configured: msgraph.isConfigured() });
+  }
+
   if (req.method === 'GET' && resource === 'dashboard') {
     const now = Date.now();
     const endOfToday = new Date();
@@ -492,7 +499,7 @@ async function handleApi(req, res, url) {
       if (toMark.length) save();
       return json(res, 200, { marked: toMark.length });
     }
-    // Vincular un adjunto a un expediente.
+    // Vincular un adjunto a un expediente (y subirlo a SharePoint si procede).
     if (req.method === 'PUT' && id) {
       const b = await readBody(req);
       const msg = db.messages.find((m) => m.id === id);
@@ -502,6 +509,31 @@ async function handleApi(req, res, url) {
           return json(res, 404, { error: 'Expediente no encontrado' });
         }
         msg.caseId = b.caseId || null;
+        const msSp = auto.getSettings(db).microsoft.sharepoint;
+        if (msg.caseId && msg.media && !msg.sharepointUrl && msgraph.isConfigured() && msSp.enabled) {
+          try {
+            let data = null;
+            if (msg.media.localPath) {
+              data = fs.readFileSync(path.join(UPLOADS_DIR, path.basename(msg.media.localPath)));
+            } else {
+              const upstream = await wa.fetchInboundMedia(msg.media);
+              if (!upstream.ok) throw new Error(`descarga del adjunto: HTTP ${upstream.status}`);
+              data = Buffer.from(await upstream.arrayBuffer());
+            }
+            const client = db.clients.find((c) => c.id === msg.clientId);
+            const uploaded = await msgraph.uploadToSharePoint({
+              hostname: msSp.hostname,
+              sitePath: msSp.sitePath,
+              folderPath: msgraph.buildFolderPath(msSp.folderTemplate, client || { name: 'SIN NOMBRE' }),
+              filename: msg.media.filename || `adjunto-${msg.id}`,
+              data,
+            });
+            msg.sharepointUrl = uploaded.webUrl;
+          } catch (err) {
+            msg.sharepointError = err.message;
+            console.error('No se pudo subir a SharePoint:', err.message);
+          }
+        }
       }
       save();
       return json(res, 200, msg);
@@ -714,6 +746,15 @@ async function handleApi(req, res, url) {
       db.appointments.push(appt);
       save();
       await auto.onAppointmentCreated(db, appt, client, autoSender(db));
+      // Sincronización con el calendario de Outlook (si está activada).
+      const msCal = auto.getSettings(db).microsoft.calendar;
+      if (msgraph.isConfigured() && msCal.enabled && msCal.user) {
+        try {
+          appt.msEventId = await msgraph.createCalendarEvent(msCal.user, appt, client);
+        } catch (err) {
+          console.error('No se pudo crear el evento en Outlook:', err.message);
+        }
+      }
       save();
       return json(res, 201, appt);
     }
@@ -726,6 +767,20 @@ async function handleApi(req, res, url) {
       }
       if (b.status !== undefined && ['activa', 'cancelada', 'completada'].includes(b.status)) {
         appt.status = b.status;
+      }
+      const msCal = auto.getSettings(db).microsoft.calendar;
+      if (msgraph.isConfigured() && msCal.enabled && msCal.user && appt.msEventId) {
+        try {
+          if (appt.status === 'cancelada') {
+            await msgraph.deleteCalendarEvent(msCal.user, appt.msEventId);
+            appt.msEventId = null;
+          } else {
+            const client = db.clients.find((c) => c.id === appt.clientId);
+            if (client) await msgraph.updateCalendarEvent(msCal.user, appt.msEventId, appt, client);
+          }
+        } catch (err) {
+          console.error('No se pudo actualizar el evento en Outlook:', err.message);
+        }
       }
       save();
       return json(res, 200, appt);

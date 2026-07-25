@@ -331,6 +331,9 @@ async function openConversation(clientId) {
         mediaHtml = `<a class="msg-file" href="${src}" target="_blank" download="${esc(m.media.filename || 'adjunto')}">${icon} ${esc(m.media.filename || 'Adjunto')}</a>`;
       }
       mediaHtml += `<button class="btn small msg-link-case" data-msg-id="${esc(m.id)}" title="Guardar en un expediente">${m.caseId ? '📁 en expediente' : '📁 asignar a expediente'}</button> `;
+      if (m.sharepointUrl) {
+        mediaHtml += `<a class="btn small" href="${esc(m.sharepointUrl)}" target="_blank" title="Abrir en SharePoint">☁️ SharePoint</a> `;
+      }
     }
     return `
     <div class="msg ${m.direction} ${m.status === 'error' ? 'error' : ''}">${mediaHtml}${esc(m.text)}
@@ -799,7 +802,7 @@ async function renderAppointments() {
         <div style="font-family:'Baloo 2',sans-serif;font-weight:700;font-size:17px">${esc(a.time)}</div>
         <div class="grow">
           <div class="title">${esc(nameOf(a.clientId))}</div>
-          <div class="sub">${esc(a.reason || 'consulta')}${a.confirmationSentAt ? ' · ✓ confirmación enviada' : ''}${a.remindedAt ? ' · ✓ recordada' : ''}</div>
+          <div class="sub">${esc(a.reason || 'consulta')}${a.confirmationSentAt ? ' · ✓ confirmación enviada' : ''}${a.remindedAt ? ' · ✓ recordada' : ''}${a.msEventId ? ' · 📆 en Outlook' : ''}</div>
         </div>
         ${a.status === 'cancelada' ? '<span class="status pendiente">Cancelada</span>' : ''}
       </div>`).join('')}
@@ -943,8 +946,34 @@ async function renderAutomations() {
   $('#auto-appt-confirm').value = s.appointments.confirmText;
   $('#auto-appt-remind').value = s.appointments.remindText;
 
+  $('#auto-ms-cal').checked = s.microsoft.calendar.enabled;
+  $('#auto-ms-cal-user').value = s.microsoft.calendar.user;
+  $('#auto-ms-sp').checked = s.microsoft.sharepoint.enabled;
+  $('#auto-ms-sp-site').value = s.microsoft.sharepoint.sitePath;
+  $('#auto-ms-sp-folder').value = s.microsoft.sharepoint.folderTemplate;
+  api('test-microsoft').then((r) => {
+    $('#ms-status').textContent = r.configured
+      ? 'Credenciales de Microsoft configuradas en el servidor.'
+      : 'Sin credenciales: define MS_TENANT_ID, MS_CLIENT_ID y MS_CLIENT_SECRET al arrancar el servidor (ver README).';
+  }).catch(() => {});
+
   await renderBackups();
 }
+
+$('#btn-test-ms').addEventListener('click', async () => {
+  const btn = $('#btn-test-ms');
+  btn.disabled = true;
+  btn.textContent = '⏳…';
+  try {
+    const r = await api('test-microsoft');
+    alert(`${r.ok ? '✅' : '❌'} ${r.detail}`);
+  } catch (err) {
+    alert('❌ ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Probar conexión';
+  }
+});
 
 async function renderBackups() {
   const backups = await api('backups');
@@ -993,6 +1022,17 @@ $('#btn-auto-save').addEventListener('click', async () => {
           enabled: $('#auto-appt-enabled').checked,
           confirmText: $('#auto-appt-confirm').value,
           remindText: $('#auto-appt-remind').value,
+        },
+        microsoft: {
+          calendar: {
+            enabled: $('#auto-ms-cal').checked,
+            user: $('#auto-ms-cal-user').value.trim(),
+          },
+          sharepoint: {
+            enabled: $('#auto-ms-sp').checked,
+            sitePath: $('#auto-ms-sp-site').value.trim(),
+            folderTemplate: $('#auto-ms-sp-folder').value.trim(),
+          },
         },
       },
     });

@@ -240,6 +240,19 @@
         </div>
 
         <div class="auto-card">
+          <h3>☁️ Microsoft 365 <button class="btn small" id="btn-test-ms" style="float:right">Probar conexión</button></h3>
+          <p class="hint" id="ms-status">…</p>
+          <div class="auto-row"><label><input type="checkbox" id="auto-ms-cal"> Crear las citas también en el calendario de Outlook</label></div>
+          <div class="auto-row"><label>Calendario de <input type="text" id="auto-ms-cal-user" style="width:250px" placeholder="jose@burocraciazero.es"></label></div>
+          <div class="auto-row"><label><input type="checkbox" id="auto-ms-sp"> Subir a SharePoint los documentos guardados en expedientes</label></div>
+          <div class="auto-row">
+            <label>Sitio <input type="text" id="auto-ms-sp-site" style="width:230px" placeholder="/sites/GestinBurocraciaZero"></label>
+          </div>
+          <label>Carpeta del cliente (<code>{aa}</code> año en 2 cifras, <code>{aaaa}</code> año, <code>{cliente}</code> nombre en mayúsculas)</label>
+          <div class="auto-row"><input type="text" id="auto-ms-sp-folder" style="width:100%"></div>
+        </div>
+
+        <div class="auto-card">
           <h3>💾 Copias de seguridad</h3>
           <p class="hint">Cada día se guarda automáticamente una copia de todos los datos (clientes, chats, expedientes, citas…) y se conservan las últimas 14. Los archivos adjuntos están en la carpeta <code>data/uploads</code>.</p>
           <button class="btn small" id="btn-backup-now">＋ Crear copia ahora</button>
