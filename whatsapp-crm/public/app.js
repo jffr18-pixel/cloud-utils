@@ -940,6 +940,10 @@ async function renderAutomations() {
   $('#auto-open').value = s.businessHours.open;
   $('#auto-close').value = s.businessHours.close;
 
+  $('#auto-wel-enabled').checked = s.welcome.enabled;
+  $('#auto-wel-text').value = s.welcome.text;
+  $('#auto-wel-hours').value = s.welcome.frequencyHours;
+
   $('#auto-ah-enabled').checked = s.afterHours.enabled;
   $('#auto-ah-message').value = s.afterHours.message;
 
@@ -1017,6 +1021,11 @@ $('#btn-auto-save').addEventListener('click', async () => {
       method: 'PUT',
       body: {
         businessHours: { days, open: $('#auto-open').value, close: $('#auto-close').value },
+        welcome: {
+          enabled: $('#auto-wel-enabled').checked,
+          text: $('#auto-wel-text').value,
+          frequencyHours: Number($('#auto-wel-hours').value) || 24,
+        },
         afterHours: { enabled: $('#auto-ah-enabled').checked, message: $('#auto-ah-message').value },
         statusNotify: {
           enabled: $('#auto-sn-enabled').checked,

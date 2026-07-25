@@ -335,8 +335,11 @@ async function handleWebhookPayload(db, body) {
   }
   if (incoming.length || echoes.length || statuses.length) save();
 
-  // Respuesta automática fuera de horario a los mensajes recién llegados.
+  // Automatizaciones sobre los mensajes recién llegados: mensaje de
+  // servicios (a cualquier cliente, máx. una vez cada N horas) y respuesta
+  // fuera de horario.
   for (const client of freshClients.values()) {
+    await auto.maybeWelcome(db, client, autoSender(db));
     await auto.maybeAutoReply(db, client, autoSender(db));
   }
 }
@@ -667,6 +670,7 @@ async function handleApi(req, res, url) {
       read: false,
     });
     save();
+    await auto.maybeWelcome(db, client, autoSender(db));
     await auto.maybeAutoReply(db, client, autoSender(db));
     return json(res, 201, { ok: true, clientId: client.id });
   }

@@ -338,6 +338,28 @@ async function main() {
     msgs = (await req('GET', `/api/messages?clientId=${clientId}`)).data;
     assert(msgs.filter((m) => m.auto).length === 1, 'no se repite dentro del periodo de cooldown');
 
+    // Mensaje de servicios: a cualquier cliente que escriba, máx. 1 vez/día.
+    await req('PUT', '/api/automations', {
+      afterHours: { enabled: false },
+      welcome: { enabled: true, text: 'Servicios de Burocracia Zero, {nombre}: renta, laboral, extranjería.', frequencyHours: 24 },
+    });
+    await req('POST', '/api/simulate-incoming', { phone: '612345678', text: 'Hola, ¿qué hacéis?' });
+    let welMsgs = (await req('GET', `/api/messages?clientId=${clientId}`)).data;
+    let welLast = welMsgs[welMsgs.length - 1];
+    assert(welLast.auto === true && welLast.text.includes('Servicios de Burocracia Zero'),
+      'cliente EXISTENTE recibe el mensaje de servicios al escribir');
+    assert(welLast.text.includes('María'), 'mensaje de servicios personalizado con {nombre}');
+    const welCount = welMsgs.filter((m) => m.text.includes('Servicios de Burocracia Zero')).length;
+    await req('POST', '/api/simulate-incoming', { phone: '612345678', text: 'Otra consulta más' });
+    welMsgs = (await req('GET', `/api/messages?clientId=${clientId}`)).data;
+    assert(welMsgs.filter((m) => m.text.includes('Servicios de Burocracia Zero')).length === welCount,
+      'no se repite dentro de las 24 horas');
+    const welNew = await req('POST', '/api/simulate-incoming', { phone: '644556677', name: 'Cliente Nuevo', text: 'Buenas' });
+    const newMsgs = (await req('GET', `/api/messages?clientId=${welNew.data.clientId}`)).data;
+    assert(newMsgs.some((m) => m.auto && m.text.includes('Servicios de Burocracia Zero')),
+      'cliente NUEVO también recibe el mensaje de servicios');
+    await req('PUT', '/api/automations', { welcome: { enabled: false } });
+
     // Resto de automatizaciones: horario siempre abierto.
     await req('PUT', '/api/automations', {
       businessHours: { days: [0, 1, 2, 3, 4, 5, 6], open: '00:00', close: '23:59' },
@@ -385,7 +407,7 @@ async function main() {
 
     console.log('Panel');
     const dash = await req('GET', '/api/dashboard');
-    assert(dash.data.totalClients === 4, 'panel: 4 clientes');
+    assert(dash.data.totalClients === 5, 'panel: 5 clientes');
     assert(dash.data.openCases === 0, 'panel: sin expedientes abiertos (el de prueba quedó completado)');
 
     console.log('Adjuntos (modo demo)');

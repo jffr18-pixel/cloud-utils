@@ -200,6 +200,15 @@
         </div>
 
         <div class="auto-card">
+          <h3><label><input type="checkbox" id="auto-wel-enabled"> 👋 Mensaje de servicios al escribirnos</label></h3>
+          <p class="hint">Se envía a <strong>cualquier</strong> cliente que escriba — nuevo o ya existente — como máximo una vez cada las horas indicadas. Si usas esta, desactiva el mensaje de bienvenida de YCloud para no duplicar.</p>
+          <textarea id="auto-wel-text" rows="7"></textarea>
+          <div class="auto-row">
+            <label>Máximo una vez cada <input type="number" id="auto-wel-hours" min="1" max="720" style="width:70px"> horas por cliente</label>
+          </div>
+        </div>
+
+        <div class="auto-card">
           <h3><label><input type="checkbox" id="auto-ah-enabled"> 🌙 Respuesta automática fuera de horario</label></h3>
           <p class="hint">Se envía una sola vez por cliente cada 12 h cuando escribe fuera del horario.</p>
           <textarea id="auto-ah-message" rows="3"></textarea>

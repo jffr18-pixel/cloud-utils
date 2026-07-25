@@ -22,6 +22,13 @@ const DEFAULTS = {
     // No repetir la respuesta automática al mismo cliente durante estas horas.
     cooldownHours: 12,
   },
+  // Mensaje de servicios: se envía a CUALQUIER cliente que escriba (nuevo o
+  // ya existente), como máximo una vez cada N horas por cliente.
+  welcome: {
+    enabled: false,
+    text: 'Hola {nombre} 👋 Gracias por escribir a Burocracia Zero. Estos son nuestros servicios:\n\n📋 Renta e impuestos (IVA, modelos trimestrales…)\n👷 Laboral y nóminas\n🏢 Contabilidad de autónomos y empresas\n🌍 Extranjería\n🚗 Vehículos y tráfico\n\nCuéntanos qué necesitas y te atendemos enseguida.',
+    frequencyHours: 24,
+  },
   statusNotify: {
     enabled: false,
     onEnCurso: false,
@@ -145,6 +152,20 @@ function firstName(client) {
   return (client.name || '').split(' ')[0];
 }
 
+// 0) Mensaje de servicios a cualquier cliente que escriba (nuevo o existente),
+// como máximo una vez cada N horas por cliente. A diferencia de la respuesta
+// fuera de horario, se envía siempre, sea la hora que sea.
+async function maybeWelcome(db, client, send, now = new Date()) {
+  const s = getSettings(db);
+  if (!s.welcome.enabled) return false;
+  const hours = Number(s.welcome.frequencyHours);
+  const gapMs = (Number.isFinite(hours) && hours >= 1 ? hours : 24) * 3600 * 1000;
+  if (client.lastWelcomeAt && now.getTime() - client.lastWelcomeAt < gapMs) return false;
+  client.lastWelcomeAt = now.getTime();
+  await send(client, fillTemplate(s.welcome.text, { nombre: firstName(client) }));
+  return true;
+}
+
 // 1) Respuesta automática fuera de horario. `send(client, text)` envía y
 // registra el mensaje (se marca como automático desde el servidor).
 async function maybeAutoReply(db, client, send, now = new Date()) {
@@ -257,6 +278,7 @@ module.exports = {
   isWindowOpen,
   fillTemplate,
   prettyDate,
+  maybeWelcome,
   maybeAutoReply,
   onCaseStatusChanged,
   onAppointmentCreated,
