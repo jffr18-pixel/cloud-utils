@@ -227,10 +227,22 @@ async function openConversation(clientId) {
   $('#chat-phone').textContent = '+' + client.phone;
   state.lastMessageCount = msgs.length;
 
-  $('#chat-messages').innerHTML = msgs.map((m) => `
-    <div class="msg ${m.direction} ${m.status === 'error' ? 'error' : ''}">${esc(m.text)}
-      <span class="msg-meta">${m.auto ? '🤖 automático · ' : ''}${m.viaApp ? '📱 desde el móvil · ' : ''}${fmtTime(m.timestamp)} ${MSG_STATUS[m.status] || ''}${m.error ? ' · ' + esc(m.error) : ''}</span>
-    </div>`).join('');
+  $('#chat-messages').innerHTML = msgs.map((m) => {
+    let mediaHtml = '';
+    if (m.media) {
+      const src = `/api/media/${encodeURIComponent(m.id)}`;
+      if (m.media.kind === 'image' || m.media.kind === 'sticker') {
+        mediaHtml = `<a href="${src}" target="_blank"><img class="msg-media" src="${src}" alt="imagen"></a>`;
+      } else {
+        const icon = m.media.kind === 'video' ? '🎬' : m.media.kind === 'audio' ? '🎧' : '📄';
+        mediaHtml = `<a class="msg-file" href="${src}" target="_blank" download="${esc(m.media.filename || 'adjunto')}">${icon} ${esc(m.media.filename || 'Adjunto')}</a>`;
+      }
+    }
+    return `
+    <div class="msg ${m.direction} ${m.status === 'error' ? 'error' : ''}">${mediaHtml}${esc(m.text)}
+      <span class="msg-meta">${m.auto ? '🤖 automático · ' : ''}${m.viaTemplate ? '📋 plantilla · ' : ''}${m.viaApp ? '📱 desde el móvil · ' : ''}${fmtTime(m.timestamp)} ${MSG_STATUS[m.status] || ''}${m.error ? ' · ' + esc(m.error) : ''}</span>
+    </div>`;
+  }).join('');
   const box = $('#chat-messages');
   box.scrollTop = box.scrollHeight;
 
@@ -276,6 +288,41 @@ $('#tpl-select').addEventListener('change', async () => {
 
 $('#btn-open-client').addEventListener('click', () => {
   if (state.activeClientId) openClientDetail(state.activeClientId);
+});
+
+// Adjuntar documento o imagen.
+$('#btn-attach').addEventListener('click', () => $('#file-input').click());
+$('#file-input').addEventListener('change', async () => {
+  const file = $('#file-input').files[0];
+  $('#file-input').value = '';
+  if (!file || !state.activeClientId) return;
+  if (file.size > 16_000_000) return alert('WhatsApp no admite archivos de más de 16 MB.');
+  const btn = $('#btn-attach');
+  btn.disabled = true;
+  btn.textContent = '⏳';
+  try {
+    const data = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    await api('messages', {
+      method: 'POST',
+      body: {
+        clientId: state.activeClientId,
+        text: $('#chat-input').value.trim(),
+        file: { name: file.name, mime: file.type, data },
+      },
+    });
+    $('#chat-input').value = '';
+    await openConversation(state.activeClientId);
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📎';
+  }
 });
 
 $('#btn-simulate').addEventListener('click', () => {
@@ -584,6 +631,10 @@ async function renderAutomations() {
 
   $('#auto-rem-enabled').checked = s.clientReminders.enabled;
   $('#auto-rem-text').value = s.clientReminders.text;
+
+  $('#auto-tpl-enabled').checked = s.template24h.enabled;
+  $('#auto-tpl-name').value = s.template24h.name;
+  $('#auto-tpl-lang').value = s.template24h.lang;
 }
 
 $('#btn-auto-save').addEventListener('click', async () => {
@@ -609,6 +660,11 @@ $('#btn-auto-save').addEventListener('click', async () => {
           followUpText: $('#auto-docs-followup').value,
         },
         clientReminders: { enabled: $('#auto-rem-enabled').checked, text: $('#auto-rem-text').value },
+        template24h: {
+          enabled: $('#auto-tpl-enabled').checked,
+          name: $('#auto-tpl-name').value.trim(),
+          lang: $('#auto-tpl-lang').value.trim() || 'es',
+        },
       },
     });
     alert('Automatizaciones guardadas ✔');
@@ -628,6 +684,14 @@ $('#btn-auto-run').addEventListener('click', async () => {
 // ---------------------------------------------------------------------------
 
 async function init() {
+  const authState = await api('auth');
+  if (authState.required && !authState.authenticated) {
+    $('#login-overlay').classList.remove('hidden');
+    $('#login-password').focus();
+    return; // el resto se carga tras iniciar sesión
+  }
+  if (authState.required) $('#btn-logout').classList.remove('hidden');
+
   const status = await api('status');
   const badge = $('#connection-badge');
   if (status.whatsappConfigured) {
@@ -641,6 +705,26 @@ async function init() {
   }
   await refreshView();
 }
+
+$('#login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    await api('login', {
+      method: 'POST',
+      body: { user: $('#login-user').value.trim(), password: $('#login-password').value },
+    });
+    location.reload();
+  } catch (err) {
+    const box = $('#login-error');
+    box.textContent = err.message;
+    box.classList.remove('hidden');
+  }
+});
+
+$('#btn-logout').addEventListener('click', async () => {
+  await api('logout', { method: 'POST' });
+  location.reload();
+});
 
 // Sondeo cada 5 s: refresca la bandeja y el contador de no leídos
 // para que los mensajes entrantes del webhook aparezcan solos.

@@ -6,8 +6,18 @@ por WhatsApp. Sin dependencias externas: solo necesitas **Node.js 18 o superior*
 ## Qué incluye
 
 - **💬 Bandeja de WhatsApp**: conversaciones con cada cliente, contador de
-  mensajes sin leer, envío y recepción de mensajes, y estados de entrega
-  (enviado / entregado / leído).
+  mensajes sin leer, envío y recepción de mensajes y **de documentos, fotos,
+  vídeos y audios** (botón 📎), y estados de entrega (enviado / entregado /
+  leído).
+- **🔐 Acceso con contraseña**: definiendo `CRM_PASSWORD` la interfaz exige
+  iniciar sesión (usuario `admin` por defecto, configurable con `CRM_USER`).
+  Sesiones de 30 días y bloqueo tras 10 intentos fallidos. **Imprescindible
+  antes de exponer el CRM en Internet.** El webhook queda público porque lo
+  necesita el proveedor.
+- **📋 Plantillas de Meta para la ventana de 24 h**: si un aviso automático
+  debe salir cuando el cliente lleva más de 24 h sin escribir, se envía con
+  una plantilla aprobada (configurable en Automatizaciones) en vez de texto
+  libre, para que WhatsApp no lo rechace.
 - **👥 Clientes**: ficha con nombre, teléfono, NIF/DNI, email, etiquetas y notas.
   Si un número desconocido te escribe, se crea la ficha automáticamente.
 - **📁 Expedientes**: trámites por cliente (fiscal, laboral, contabilidad,
@@ -59,7 +69,16 @@ móvil), la conexión es directa:
    node server.js
    ```
 
-3. En **Developers → Webhooks** de YCloud, crea un endpoint apuntando a
+3. Para las automatizaciones fuera de la ventana de 24 h, crea en YCloud una
+   plantilla de Meta (por defecto el CRM usa el nombre `aviso_gestoria`,
+   idioma `es`) con este cuerpo de dos variables y espera su aprobación:
+
+   > Hola {{1}}, tienes un aviso de tu gestoría: {{2}}
+
+   Después actívala en la pestaña **Automatizaciones → Plantilla para la
+   ventana de 24 h**.
+
+4. En **Developers → Webhooks** de YCloud, crea un endpoint apuntando a
    `https://tu-dominio/webhook` (el servidor debe ser accesible por HTTPS
    desde Internet) y suscríbelo a estos eventos:
    - `whatsapp.inbound_message.received` (mensajes de clientes)
@@ -144,6 +163,8 @@ Puntos clave:
 | Variable | Descripción | Por defecto |
 | --- | --- | --- |
 | `PORT` | Puerto del servidor | `3000` |
+| `CRM_PASSWORD` | Contraseña de acceso a la interfaz (vacía → sin login, solo para pruebas locales) | *(vacío)* |
+| `CRM_USER` | Usuario de acceso | `admin` |
 | `YCLOUD_API_KEY` | API key de YCloud (Developers → API Keys en su consola; máxima prioridad si está definida) | *(vacío)* |
 | `YCLOUD_WHATSAPP_FROM` | Número del negocio en YCloud, formato internacional (ej. `+34612345678`) | *(vacío)* |
 | `WHATSAPP_360DIALOG_API_KEY` | API key de 360dialog | *(vacío)* |

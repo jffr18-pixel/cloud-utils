@@ -6,12 +6,74 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { load, save, newId, normalizePhone } = require('./lib/store');
+const crypto = require('crypto');
+const { load, save, newId, normalizePhone, DB_FILE } = require('./lib/store');
 const wa = require('./lib/whatsapp');
 const auto = require('./lib/automations');
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const UPLOADS_DIR = path.join(path.dirname(DB_FILE), 'uploads');
+
+// ---------------------------------------------------------------------------
+// Autenticación
+// Se activa definiendo CRM_PASSWORD (y opcionalmente CRM_USER, por defecto
+// "admin"). Sin contraseña configurada, el CRM queda abierto (solo para
+// pruebas locales; NO desplegar así en Internet).
+// ---------------------------------------------------------------------------
+
+const AUTH_USER = process.env.CRM_USER || 'admin';
+const AUTH_PASSWORD = process.env.CRM_PASSWORD || '';
+const SESSION_TTL_MS = 30 * 24 * 3600 * 1000; // 30 días
+const sessions = new Map(); // token -> { createdAt }
+const loginAttempts = new Map(); // ip -> { count, firstAt }
+
+function authRequired() {
+  return AUTH_PASSWORD.length > 0;
+}
+
+function parseCookies(req) {
+  const out = {};
+  for (const part of (req.headers.cookie || '').split(';')) {
+    const idx = part.indexOf('=');
+    if (idx > 0) out[part.slice(0, idx).trim()] = part.slice(idx + 1).trim();
+  }
+  return out;
+}
+
+function isAuthenticated(req) {
+  if (!authRequired()) return true;
+  const token = parseCookies(req).crm_session;
+  const session = token && sessions.get(token);
+  if (!session) return false;
+  if (Date.now() - session.createdAt > SESSION_TTL_MS) {
+    sessions.delete(token);
+    return false;
+  }
+  return true;
+}
+
+function safeEqual(a, b) {
+  const ha = crypto.createHash('sha256').update(String(a)).digest();
+  const hb = crypto.createHash('sha256').update(String(b)).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+function tooManyAttempts(ip) {
+  const rec = loginAttempts.get(ip);
+  if (!rec) return false;
+  if (Date.now() - rec.firstAt > 15 * 60 * 1000) {
+    loginAttempts.delete(ip);
+    return false;
+  }
+  return rec.count >= 10;
+}
+
+function recordAttempt(ip) {
+  const rec = loginAttempts.get(ip) || { count: 0, firstAt: Date.now() };
+  rec.count += 1;
+  loginAttempts.set(ip, rec);
+}
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -28,12 +90,12 @@ function json(res, status, data) {
   res.end(body);
 }
 
-function readBody(req) {
+function readBody(req, maxBytes = 2_000_000) {
   return new Promise((resolve, reject) => {
     let raw = '';
     req.on('data', (c) => {
       raw += c;
-      if (raw.length > 2_000_000) { reject(new Error('Cuerpo demasiado grande')); req.destroy(); }
+      if (raw.length > maxBytes) { reject(new Error('Cuerpo demasiado grande')); req.destroy(); }
     });
     req.on('end', () => {
       if (!raw) return resolve({});
@@ -100,8 +162,26 @@ function conversationSummaries(db) {
 async function sendMessageToClient(db, client, text, opts = {}) {
   let sendResult = { demo: true, id: null };
   let status = 'demo';
+  let viaTemplate = false;
   try {
-    sendResult = await wa.sendText(client.phone, text);
+    if (opts.media) {
+      sendResult = await wa.sendMedia(client.phone, opts.media);
+    } else {
+      // Automatizaciones fuera de la ventana de 24 h: WhatsApp rechaza el
+      // texto libre, así que se usa la plantilla aprobada si está configurada
+      // ({{1}} = nombre, {{2}} = texto del aviso).
+      const settings = auto.getSettings(db);
+      const useTemplate = opts.auto
+        && settings.template24h.enabled
+        && !auto.isWindowOpen(db, client.id);
+      if (useTemplate) {
+        viaTemplate = true;
+        sendResult = await wa.sendTemplate(client.phone, settings.template24h.name,
+          settings.template24h.lang, [(client.name || '').split(' ')[0], text]);
+      } else {
+        sendResult = await wa.sendText(client.phone, text);
+      }
+    }
     status = sendResult.demo ? 'demo' : 'sent';
   } catch (err) {
     status = 'error';
@@ -112,11 +192,21 @@ async function sendMessageToClient(db, client, text, opts = {}) {
     clientId: client.id,
     direction: 'out',
     text,
+    media: opts.media ? {
+      kind: opts.media.kind,
+      mime: opts.media.mime,
+      filename: opts.media.filename,
+      caption: opts.media.caption || '',
+      localPath: opts.media.localPath || null,
+      link: null,
+      metaMediaId: null,
+    } : null,
     timestamp: Date.now(),
     status, // demo | sent | delivered | read | error
     error: sendResult.error || null,
     waMessageId: sendResult.id,
     auto: Boolean(opts.auto), // enviado por una automatización
+    viaTemplate, // enviado como plantilla aprobada (ventana de 24 h cerrada)
     read: true,
   };
   db.messages.push(msg);
@@ -142,6 +232,7 @@ async function handleWebhookPayload(db, body) {
       clientId: client.id,
       direction: 'in',
       text: inMsg.text,
+      media: inMsg.media || null,
       timestamp: inMsg.timestamp,
       status: 'received',
       waMessageId: inMsg.waMessageId,
@@ -161,6 +252,7 @@ async function handleWebhookPayload(db, body) {
       clientId: client.id,
       direction: 'out',
       text: echo.text,
+      media: echo.media || null,
       timestamp: echo.timestamp,
       status: 'sent',
       viaApp: true,
@@ -192,6 +284,74 @@ async function handleApi(req, res, url) {
   const parts = url.pathname.split('/').filter(Boolean); // ['api', ...]
   const resource = parts[1];
   const id = parts[2];
+
+  // --- Autenticación (rutas públicas) -------------------------------------
+  if (req.method === 'GET' && resource === 'auth') {
+    return json(res, 200, { required: authRequired(), authenticated: isAuthenticated(req) });
+  }
+  if (req.method === 'POST' && resource === 'login') {
+    const ip = req.socket.remoteAddress || '?';
+    if (tooManyAttempts(ip)) {
+      return json(res, 429, { error: 'Demasiados intentos. Espera 15 minutos.' });
+    }
+    const b = await readBody(req);
+    if (!authRequired()) return json(res, 200, { ok: true });
+    if (!safeEqual(b.user || '', AUTH_USER) || !safeEqual(b.password || '', AUTH_PASSWORD)) {
+      recordAttempt(ip);
+      return json(res, 401, { error: 'Usuario o contraseña incorrectos' });
+    }
+    loginAttempts.delete(ip);
+    const token = crypto.randomBytes(32).toString('hex');
+    sessions.set(token, { createdAt: Date.now() });
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Set-Cookie': `crm_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL_MS / 1000}`,
+    });
+    return res.end(JSON.stringify({ ok: true }));
+  }
+  if (req.method === 'POST' && resource === 'logout') {
+    const token = parseCookies(req).crm_session;
+    if (token) sessions.delete(token);
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Set-Cookie': 'crm_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0',
+    });
+    return res.end(JSON.stringify({ ok: true }));
+  }
+
+  // Todo lo demás requiere sesión si hay contraseña configurada.
+  if (!isAuthenticated(req)) {
+    return json(res, 401, { error: 'No autenticado' });
+  }
+
+  // --- Descarga de adjuntos ------------------------------------------------
+  if (req.method === 'GET' && resource === 'media' && id) {
+    const msg = db.messages.find((m) => m.id === id);
+    if (!msg || !msg.media) return json(res, 404, { error: 'Adjunto no encontrado' });
+    const media = msg.media;
+    const filename = media.filename || `adjunto.${(media.mime || '').split('/')[1] || 'bin'}`;
+    if (media.localPath) {
+      const full = path.join(UPLOADS_DIR, path.basename(media.localPath));
+      if (!fs.existsSync(full)) return json(res, 404, { error: 'Fichero no disponible' });
+      res.writeHead(200, {
+        'Content-Type': media.mime || 'application/octet-stream',
+        'Content-Disposition': `inline; filename="${encodeURIComponent(filename)}"`,
+      });
+      return fs.createReadStream(full).pipe(res);
+    }
+    try {
+      const upstream = await wa.fetchInboundMedia(media);
+      if (!upstream.ok) return json(res, 502, { error: `El proveedor devolvió HTTP ${upstream.status}` });
+      res.writeHead(200, {
+        'Content-Type': media.mime || upstream.headers.get('content-type') || 'application/octet-stream',
+        'Content-Disposition': `inline; filename="${encodeURIComponent(filename)}"`,
+      });
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      return res.end(buf);
+    } catch (err) {
+      return json(res, 502, { error: err.message });
+    }
+  }
 
   // --- Estado general -----------------------------------------------------
   if (req.method === 'GET' && resource === 'status') {
@@ -299,9 +459,43 @@ async function handleApi(req, res, url) {
       return json(res, 200, { marked: toMark.length });
     }
     if (req.method === 'POST') {
-      const b = await readBody(req);
+      // Hasta ~25 MB para permitir adjuntos en base64 (límite WhatsApp: 16 MB).
+      const b = await readBody(req, 25_000_000);
       const client = db.clients.find((c) => c.id === b.clientId);
       if (!client) return json(res, 404, { error: 'Cliente no encontrado' });
+
+      if (b.file && b.file.data) {
+        const data = Buffer.from(b.file.data, 'base64');
+        if (data.length > 16_000_000) return json(res, 400, { error: 'El archivo supera los 16 MB de WhatsApp' });
+        const mime = b.file.mime || 'application/octet-stream';
+        const filename = path.basename(b.file.name || 'archivo');
+        const kind = mime.startsWith('image/') && mime !== 'image/svg+xml' ? 'image'
+          : mime.startsWith('video/') ? 'video'
+            : mime.startsWith('audio/') ? 'audio' : 'document';
+        fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+        const localName = `${newId('up')}_${filename.replace(/[^\w.\-]+/g, '_')}`;
+        fs.writeFileSync(path.join(UPLOADS_DIR, localName), data);
+        let mediaId = null;
+        if (wa.isConfigured()) {
+          try {
+            mediaId = await wa.uploadMedia(data, filename, mime);
+          } catch (err) {
+            return json(res, 502, { error: err.message });
+          }
+        }
+        const msg = await sendMessageToClient(db, client, String(b.text || '').trim() || `📎 ${filename}`, {
+          media: {
+            kind,
+            mime,
+            filename,
+            caption: String(b.text || '').trim(),
+            mediaId,
+            localPath: localName,
+          },
+        });
+        return json(res, 201, msg);
+      }
+
       if (!b.text || !String(b.text).trim()) return json(res, 400, { error: 'El mensaje está vacío' });
       const msg = await sendMessageToClient(db, client, String(b.text).trim());
       return json(res, 201, msg);

@@ -39,7 +39,23 @@ const DEFAULTS = {
     enabled: false,
     text: '⏰ Recordatorio de tu gestoría: {texto}',
   },
+  // Plantilla aprobada de Meta para cuando la ventana de 24 h está cerrada
+  // (el cliente lleva más de 24 h sin escribir). Debe crearse y aprobarse en
+  // YCloud/Meta con dos variables: {{1}} = nombre del cliente, {{2}} = texto.
+  template24h: {
+    enabled: false,
+    name: 'aviso_gestoria',
+    lang: 'es',
+  },
 };
+
+// La ventana de servicio de WhatsApp: 24 h desde el último mensaje del cliente.
+function isWindowOpen(db, clientId, now = Date.now()) {
+  const lastIn = db.messages
+    .filter((m) => m.clientId === clientId && m.direction === 'in')
+    .reduce((max, m) => Math.max(max, m.timestamp), 0);
+  return lastIn > 0 && now - lastIn < 24 * 3600 * 1000;
+}
 
 function merge(base, extra) {
   const out = { ...base };
@@ -177,6 +193,7 @@ module.exports = {
   getSettings,
   setSettings,
   isBusinessOpen,
+  isWindowOpen,
   fillTemplate,
   maybeAutoReply,
   onCaseStatusChanged,

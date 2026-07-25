@@ -42,6 +42,50 @@ async function waitForServer() {
   throw new Error('El servidor no arrancó');
 }
 
+// Servidor aparte con contraseña para probar la autenticación.
+async function testAuthServer() {
+  const AUTH_PORT = 3778;
+  const AUTH_BASE = `http://127.0.0.1:${AUTH_PORT}`;
+  const authDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crm-auth-'));
+  const server = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
+    env: {
+      ...process.env, PORT: String(AUTH_PORT), DATA_DIR: authDataDir,
+      CRM_PASSWORD: 'secreto123', WHATSAPP_TOKEN: '', WHATSAPP_PHONE_NUMBER_ID: '',
+    },
+    stdio: 'ignore',
+  });
+  try {
+    for (let i = 0; i < 50; i += 1) {
+      try { await fetch(AUTH_BASE + '/api/auth'); break; } catch { await new Promise((r) => setTimeout(r, 100)); }
+    }
+    const noAuth = await fetch(AUTH_BASE + '/api/clients');
+    assert(noAuth.status === 401, 'sin sesión → 401');
+    const badLogin = await fetch(AUTH_BASE + '/api/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user: 'admin', password: 'mala' }),
+    });
+    assert(badLogin.status === 401, 'contraseña incorrecta → 401');
+    const goodLogin = await fetch(AUTH_BASE + '/api/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user: 'admin', password: 'secreto123' }),
+    });
+    assert(goodLogin.status === 200, 'inicio de sesión correcto');
+    const cookie = (goodLogin.headers.get('set-cookie') || '').split(';')[0];
+    assert(cookie.startsWith('crm_session='), 'cookie de sesión emitida');
+    const withAuth = await fetch(AUTH_BASE + '/api/clients', { headers: { Cookie: cookie } });
+    assert(withAuth.status === 200, 'con sesión → acceso permitido');
+    const verify = await fetch(AUTH_BASE + '/webhook?hub.mode=subscribe&hub.verify_token=gestoria-crm&hub.challenge=abc');
+    assert(await verify.text() === 'abc', 'el webhook sigue siendo público (lo necesita el proveedor)');
+    const logout = await fetch(AUTH_BASE + '/api/logout', { method: 'POST', headers: { Cookie: cookie } });
+    assert(logout.status === 200, 'cierre de sesión');
+    const afterLogout = await fetch(AUTH_BASE + '/api/clients', { headers: { Cookie: cookie } });
+    assert(afterLogout.status === 401, 'tras cerrar sesión → 401');
+  } finally {
+    server.kill();
+    fs.rmSync(authDataDir, { recursive: true, force: true });
+  }
+}
+
 async function main() {
   const server = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
     env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, WHATSAPP_TOKEN: '', WHATSAPP_PHONE_NUMBER_ID: '' },
@@ -284,10 +328,66 @@ async function main() {
     assert(dash.data.totalClients === 4, 'panel: 4 clientes');
     assert(dash.data.openCases === 0, 'panel: sin expedientes abiertos (el de prueba quedó completado)');
 
+    console.log('Adjuntos (modo demo)');
+    const fileMsg = await req('POST', '/api/messages', {
+      clientId,
+      text: 'Te adjunto el justificante',
+      file: { name: 'justificante.pdf', mime: 'application/pdf', data: Buffer.from('PDF-DEMO').toString('base64') },
+    });
+    assert(fileMsg.status === 201 && fileMsg.data.media?.kind === 'document', 'envío de documento registrado');
+    assert(fileMsg.data.media.filename === 'justificante.pdf', 'nombre del archivo conservado');
+    const download = await fetch(`${BASE}/api/media/${fileMsg.data.id}`);
+    assert(download.status === 200 && (await download.text()) === 'PDF-DEMO', 'descarga del adjunto local');
+
+    const ycMedia = await req('POST', '/webhook', {
+      id: 'evt_5', type: 'whatsapp.inbound_message.received', apiVersion: 'v2',
+      createTime: '2026-07-25T11:00:00.000Z',
+      whatsappInboundMessage: {
+        id: 'yc_msg_9', wamid: 'wamid.YC9', from: '+34677111222',
+        to: '+34911222333', sendTime: '2026-07-25T11:00:00.000Z',
+        type: 'document',
+        document: { id: 'media1', link: 'https://example.com/f.pdf', mime_type: 'application/pdf', filename: 'nominas.pdf', caption: 'Mis nóminas' },
+      },
+    });
+    assert(ycMedia.status === 200, 'webhook con documento aceptado');
+    const anaMsgs5 = (await req('GET', `/api/messages?clientId=${ana.clientId}`)).data;
+    const docMsg = anaMsgs5.find((m) => m.waMessageId === 'wamid.YC9');
+    assert(docMsg?.media?.filename === 'nominas.pdf' && docMsg.media.link,
+      'adjunto entrante guardado con su enlace de descarga');
+    assert(docMsg.text === 'Mis nóminas', 'la descripción del adjunto se usa como texto');
+
+    console.log('Plantilla para la ventana de 24 h');
+    await req('PUT', '/api/automations', {
+      template24h: { enabled: true, name: 'aviso_gestoria', lang: 'es' },
+    });
+    // Lucía: su único mensaje entrante es de hace más de 24 h → plantilla.
+    const luciaCase = await req('POST', '/api/cases', {
+      clientId: lucia.clientId, title: 'Alta autónomo', type: 'fiscal', status: 'completado',
+    });
+    assert(luciaCase.status === 201, 'expediente de Lucía creado');
+    const luciaMsgs = (await req('GET', `/api/messages?clientId=${lucia.clientId}`)).data;
+    const luciaLast = luciaMsgs[luciaMsgs.length - 1];
+    assert(luciaLast.auto === true && luciaLast.viaTemplate === true,
+      'aviso fuera de la ventana de 24 h enviado como plantilla');
+    // María escribió hace un momento → ventana abierta → texto libre.
+    const remMaria = await req('POST', '/api/reminders', {
+      text: 'Firma pendiente', dueDate: today, clientId, sendToClient: true,
+    });
+    await req('POST', '/api/automations/run');
+    const mariaMsgs = (await req('GET', `/api/messages?clientId=${clientId}`)).data;
+    const mariaLast = mariaMsgs[mariaMsgs.length - 1];
+    assert(mariaLast.text.includes('Firma pendiente') && !mariaLast.viaTemplate,
+      'con la ventana abierta se sigue usando texto libre');
+
+    console.log('Autenticación');
+    const authOff = await req('GET', '/api/auth');
+    assert(authOff.data.required === false, 'sin CRM_PASSWORD la autenticación está desactivada');
+    await testAuthServer();
+
     console.log('Borrado en cascada');
     await req('DELETE', `/api/clients/${clientId}`);
     const casesAfter = await req('GET', '/api/cases');
-    assert(casesAfter.data.length === 0, 'expedientes del cliente eliminados');
+    assert(casesAfter.data.every((c) => c.clientId !== clientId), 'expedientes del cliente eliminados');
   } finally {
     server.kill();
     fs.rmSync(dataDir, { recursive: true, force: true });

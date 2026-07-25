@@ -181,6 +181,30 @@ body {
 }
 .day-chip.on { background: var(--green); border-color: var(--green); color: #fff; }
 
+/* --- Pantalla de acceso --- */
+.login-overlay {
+  position: fixed; inset: 0; z-index: 50;
+  background: var(--green-dark);
+  display: flex; align-items: center; justify-content: center;
+}
+.login-box {
+  background: var(--panel); border-radius: 14px; padding: 30px 32px;
+  width: min(360px, 90vw); box-shadow: 0 16px 50px rgba(0,0,0,.35);
+}
+.login-brand { font-size: 20px; font-weight: 700; text-align: center; margin-bottom: 18px; }
+.login-error { color: var(--danger); font-size: 13px; margin-bottom: 10px; }
+
+/* --- Adjuntos en el chat --- */
+.msg img.msg-media {
+  max-width: 100%; max-height: 260px; border-radius: 8px; display: block;
+  margin-bottom: 4px; cursor: pointer;
+}
+.msg .msg-file {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(0,0,0,.06); border-radius: 8px; padding: 8px 12px;
+  margin-bottom: 4px; text-decoration: none; color: inherit; font-weight: 600;
+}
+
 /* --- Diálogo --- */
 dialog {
   border: none; border-radius: 12px; padding: 22px 24px;

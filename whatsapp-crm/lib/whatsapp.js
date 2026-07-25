@@ -57,26 +57,78 @@ async function sendText(toPhone, text) {
   if (!isConfigured()) {
     return { demo: true, id: null };
   }
+  return sendPayload(toPhone, { type: 'text', text: { preview_url: false, body: text } });
+}
+
+// Sube un fichero al proveedor y devuelve el id de medio para usarlo en un
+// mensaje. `data` es un Buffer.
+async function uploadMedia(data, filename, mime) {
+  const c = config();
+  const form = new FormData();
+  form.append('file', new Blob([data], { type: mime || 'application/octet-stream' }), filename || 'archivo');
+  let url;
+  let headers;
+  if (provider() === 'ycloud') {
+    if (!c.ycloudFrom) throw new Error('Falta YCLOUD_WHATSAPP_FROM');
+    url = `${YCLOUD_BASE}/whatsapp/media/${encodeURIComponent(c.ycloudFrom)}/upload`;
+    headers = { 'X-API-Key': c.ycloudApiKey };
+  } else if (provider() === '360dialog') {
+    url = 'https://waba-v2.360dialog.io/media';
+    headers = { 'D360-API-KEY': c.d360ApiKey };
+    form.append('messaging_product', 'whatsapp');
+  } else {
+    url = `https://graph.facebook.com/${GRAPH_VERSION}/${c.phoneNumberId}/media`;
+    headers = { Authorization: `Bearer ${c.token}` };
+    form.append('messaging_product', 'whatsapp');
+  }
+  const res = await fetch(url, { method: 'POST', headers, body: form });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`Error al subir el archivo: ${out?.error?.message || `HTTP ${res.status}`}`);
+  if (!out.id) throw new Error('El proveedor no devolvió un id de medio');
+  return out.id;
+}
+
+// Envía un mensaje con adjunto. `media`: { kind, mediaId, filename, caption }.
+async function sendMedia(toPhone, media) {
+  if (!isConfigured()) return { demo: true, id: null };
+  const mediaObj = { id: media.mediaId };
+  if (media.caption && media.kind !== 'audio' && media.kind !== 'sticker') mediaObj.caption = media.caption;
+  if (media.filename && media.kind === 'document') mediaObj.filename = media.filename;
+  const payload = { to: toPhone, type: media.kind, [media.kind]: mediaObj };
+  return sendPayload(toPhone, payload);
+}
+
+// Envía una plantilla aprobada de Meta (necesaria fuera de la ventana de 24 h).
+// `params` son los valores de las variables {{1}}, {{2}}… del cuerpo.
+async function sendTemplate(toPhone, name, langCode, params) {
+  if (!isConfigured()) return { demo: true, id: null };
+  const payload = {
+    to: toPhone,
+    type: 'template',
+    template: {
+      name,
+      language: { code: langCode || 'es' },
+      components: params?.length ? [{
+        type: 'body',
+        parameters: params.map((t) => ({ type: 'text', text: String(t) })),
+      }] : [],
+    },
+  };
+  return sendPayload(toPhone, payload);
+}
+
+// Envío genérico de una carga tipo Cloud API con el proveedor activo.
+async function sendPayload(toPhone, payload) {
   if (provider() === 'ycloud') {
     const c = config();
-    if (!c.ycloudFrom) {
-      throw new Error('Falta YCLOUD_WHATSAPP_FROM (número del negocio en formato +34...)');
-    }
+    if (!c.ycloudFrom) throw new Error('Falta YCLOUD_WHATSAPP_FROM (número del negocio en formato +34...)');
     const res = await fetch(`${YCLOUD_BASE}/whatsapp/messages/sendDirectly`, {
       method: 'POST',
       headers: { 'X-API-Key': c.ycloudApiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: c.ycloudFrom,
-        to: '+' + toPhone,
-        type: 'text',
-        text: { body: text },
-      }),
+      body: JSON.stringify({ ...payload, from: c.ycloudFrom, to: '+' + toPhone }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const msg = data?.error?.message || `HTTP ${res.status}`;
-      throw new Error(`Error de la API de YCloud: ${msg}`);
-    }
+    if (!res.ok) throw new Error(`Error de la API de YCloud: ${data?.error?.message || `HTTP ${res.status}`}`);
     return { demo: false, id: data?.wamid || data?.id || null };
   }
   const { url, headers } = endpoint();
@@ -86,17 +138,31 @@ async function sendText(toPhone, text) {
     body: JSON.stringify({
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
+      ...payload,
       to: toPhone,
-      type: 'text',
-      text: { preview_url: false, body: text },
     }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg = data?.error?.message || `HTTP ${res.status}`;
-    throw new Error(`Error de la API de WhatsApp: ${msg}`);
-  }
+  if (!res.ok) throw new Error(`Error de la API de WhatsApp: ${data?.error?.message || `HTTP ${res.status}`}`);
   return { demo: false, id: data?.messages?.[0]?.id || null };
+}
+
+// Descarga un adjunto entrante y lo devuelve como respuesta de fetch.
+// YCloud: el `link` del webhook, con la API key. Meta/360dialog: se canjea el
+// id por una URL temporal y se descarga con el token.
+async function fetchInboundMedia(media) {
+  const c = config();
+  if (media.link) {
+    return fetch(media.link, { headers: { 'X-API-Key': c.ycloudApiKey } });
+  }
+  if (media.metaMediaId && provider() !== 'ycloud' && isConfigured()) {
+    const { headers } = endpoint();
+    const metaRes = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${media.metaMediaId}`, { headers });
+    const meta = await metaRes.json().catch(() => ({}));
+    if (!metaRes.ok || !meta.url) throw new Error('No se pudo obtener la URL del adjunto');
+    return fetch(meta.url, { headers });
+  }
+  throw new Error('Adjunto no disponible');
 }
 
 // ref: { waMessageId, ycloudId } — YCloud usa su propio id interno del
@@ -125,6 +191,8 @@ async function markAsRead(ref) {
   }).catch(() => {});
 }
 
+const MEDIA_KINDS = ['image', 'document', 'video', 'audio', 'sticker'];
+
 // Extrae el texto de un mensaje del webhook sea cual sea su tipo.
 function extractText(msg) {
   if (msg.type === 'text') return msg.text?.body || '';
@@ -133,7 +201,27 @@ function extractText(msg) {
     return msg.interactive?.button_reply?.title
       || msg.interactive?.list_reply?.title || '';
   }
+  if (MEDIA_KINDS.includes(msg.type)) {
+    const m = msg[msg.type] || {};
+    return m.caption || m.filename || '';
+  }
   return `[${msg.type}] (contenido no textual)`;
+}
+
+// Extrae la información del adjunto (imagen, documento, vídeo, audio…).
+// YCloud incluye `link` (descargable con la cabecera X-API-Key durante un
+// mes); Meta/360dialog incluyen un `id` que hay que canjear por una URL.
+function extractMedia(msg) {
+  if (!MEDIA_KINDS.includes(msg.type)) return null;
+  const m = msg[msg.type] || {};
+  return {
+    kind: msg.type,
+    mime: m.mime_type || '',
+    filename: m.filename || '',
+    caption: m.caption || '',
+    link: m.link || null,
+    metaMediaId: m.link ? null : (m.id || null),
+  };
 }
 
 // Eventos de webhook de YCloud (docs.ycloud.com). Un POST por evento, con
@@ -154,6 +242,7 @@ function parseYCloudEvent(ev) {
       from: im.from || '',
       name: im.customerProfile?.name || '',
       text: extractText(im),
+      media: extractMedia(im),
       waMessageId: im.wamid || im.id,
       ycloudId: im.id || null,
       timestamp: Date.parse(im.sendTime) || Date.now(),
@@ -164,6 +253,7 @@ function parseYCloudEvent(ev) {
     echoes.push({
       to: om.to || '',
       text: extractText(om),
+      media: extractMedia(om),
       waMessageId: om.wamid || om.id,
       timestamp: Date.parse(om.createTime || om.sendTime) || Date.now(),
     });
@@ -207,6 +297,7 @@ function parseWebhook(body) {
           from: msg.from,
           name: contactNames[msg.from] || '',
           text: extractText(msg),
+          media: extractMedia(msg),
           waMessageId: msg.id,
           timestamp: Number(msg.timestamp) * 1000 || Date.now(),
         });
@@ -216,6 +307,7 @@ function parseWebhook(body) {
         echoes.push({
           to: msg.to,
           text: extractText(msg),
+          media: extractMedia(msg),
           waMessageId: msg.id,
           timestamp: Number(msg.timestamp) * 1000 || Date.now(),
         });
@@ -228,4 +320,15 @@ function parseWebhook(body) {
   return { incoming, echoes, statuses };
 }
 
-module.exports = { config, provider, isConfigured, sendText, markAsRead, parseWebhook };
+module.exports = {
+  config,
+  provider,
+  isConfigured,
+  sendText,
+  sendMedia,
+  sendTemplate,
+  uploadMedia,
+  fetchInboundMedia,
+  markAsRead,
+  parseWebhook,
+};

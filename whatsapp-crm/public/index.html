@@ -24,6 +24,8 @@
       <button class="nav-btn" data-view="templates">📝 Plantillas</button>
       <button class="nav-btn" data-view="reminders">⏰ Recordatorios</button>
       <button class="nav-btn" data-view="automations">⚡ Automatizaciones</button>
+      <div style="flex:1"></div>
+      <button class="nav-btn hidden" id="btn-logout">🚪 Cerrar sesión</button>
     </nav>
 
     <main class="main">
@@ -60,6 +62,8 @@
                 <select id="tpl-select" title="Insertar plantilla">
                   <option value="">📝 Plantilla…</option>
                 </select>
+                <button class="btn" id="btn-attach" title="Adjuntar documento o imagen">📎</button>
+                <input type="file" id="file-input" class="hidden">
                 <textarea id="chat-input" rows="2" placeholder="Escribe un mensaje…"></textarea>
                 <button class="btn primary" id="btn-send">Enviar</button>
               </div>
@@ -164,8 +168,34 @@
           <p class="hint">Los recordatorios con fecha y con la opción «Enviar por WhatsApp al cliente» se mandan automáticamente ese día, dentro del horario.</p>
           <textarea id="auto-rem-text" rows="2"></textarea>
         </div>
+
+        <div class="auto-card">
+          <h3><label><input type="checkbox" id="auto-tpl-enabled"> 📋 Plantilla para la ventana de 24 h</label></h3>
+          <p class="hint">WhatsApp solo permite texto libre durante las 24 h siguientes al último mensaje del cliente. Si pasa más tiempo, los avisos automáticos se envían con esta plantilla aprobada de Meta (créala en YCloud con dos variables: <code>{{1}}</code> = nombre y <code>{{2}}</code> = texto del aviso). Los mensajes enviados así aparecen con 📋 en el chat.</p>
+          <div class="auto-row">
+            <label>Nombre de la plantilla <input type="text" id="auto-tpl-name" style="width:220px"></label>
+            <label>Idioma <input type="text" id="auto-tpl-lang" style="width:70px"></label>
+          </div>
+        </div>
       </section>
     </main>
+  </div>
+
+  <!-- Pantalla de acceso -->
+  <div id="login-overlay" class="login-overlay hidden">
+    <form id="login-form" class="login-box">
+      <div class="login-brand">💬 CRM Gestoría</div>
+      <div class="field">
+        <label for="login-user">Usuario</label>
+        <input id="login-user" type="text" autocomplete="username" value="admin">
+      </div>
+      <div class="field">
+        <label for="login-password">Contraseña</label>
+        <input id="login-password" type="password" autocomplete="current-password" required>
+      </div>
+      <div id="login-error" class="login-error hidden"></div>
+      <button type="submit" class="btn primary" style="width:100%">Entrar</button>
+    </form>
   </div>
 
   <!-- Diálogo genérico -->
