@@ -19,42 +19,103 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const UPLOADS_DIR = path.join(path.dirname(DB_FILE), 'uploads');
 const STICKERS_DIR = path.join(PUBLIC_DIR, 'stickers');
 
-// Fichas de trámite de ejemplo (editables). Se cargan la primera vez.
-const DEFAULT_FICHAS = [
-  {
-    title: 'Arraigo social', area: 'extranjeria',
-    intro: 'Hola {nombre} 👋 Para tramitar tu {tramite} necesitamos que nos envíes la siguiente documentación:',
-    docs: '• Pasaporte completo (todas las páginas)\n• Certificado de empadronamiento histórico\n• Contrato de trabajo o medios económicos\n• Certificado de antecedentes penales del país de origen (apostillado)\n• Antecedentes penales en España\n• Certificado de empadronamiento actual',
-    notes: 'Cuando lo tengas, envíanoslo por aquí mismo (foto o PDF). Cualquier duda, te ayudamos. 📲',
-  },
-  {
-    title: 'Alta de autónomo', area: 'fiscal',
-    intro: 'Hola {nombre} 👋 Para darte de alta como autónomo necesitamos:',
-    docs: '• DNI o NIE por ambas caras\n• Número de cuenta bancaria (IBAN)\n• Descripción de la actividad que vas a ejercer\n• Dirección de la actividad',
-    notes: 'Con esto tramitamos el alta en Hacienda (036) y en la Seguridad Social (RETA).',
-  },
-  {
-    title: 'Declaración de la renta', area: 'fiscal',
-    intro: 'Hola {nombre} 👋 Para tu declaración de la renta necesitamos:',
-    docs: '• DNI\n• Certificados de ingresos (nóminas, pensiones…)\n• Certificado de prestaciones (SEPE) si las hubo\n• Datos de vivienda (recibo IBI o referencia catastral)\n• Certificados bancarios y de inversiones\n• Justificantes de donativos o deducciones',
-    notes: '',
-  },
-  {
-    title: 'Transferencia de vehículo', area: 'vehiculos',
-    intro: 'Hola {nombre} 👋 Para el cambio de titular del vehículo necesitamos:',
-    docs: '• DNI del comprador y del vendedor\n• Permiso de circulación\n• Ficha técnica (ITV en vigor)\n• Contrato de compraventa firmado\n• Último recibo del Impuesto de Circulación pagado',
-    notes: 'Calculamos el ITP de tu comunidad y lo gestionamos todo online.',
-  },
-];
+// Fichas de trámite predefinidas, organizadas en «packs». Cada pack se aplica
+// una sola vez: así se pueden añadir fichas nuevas por código y aparecen tras
+// desplegar, sin duplicar las que la gestoría ya tenga o haya editado.
+const FICHA_PACKS = {
+  // Ejemplos iniciales (editables).
+  'ejemplos-v1': [
+    {
+      title: 'Arraigo social', area: 'extranjeria',
+      intro: 'Hola {nombre} 👋 Para tramitar tu {tramite} necesitamos que nos envíes la siguiente documentación:',
+      docs: '• Pasaporte completo (todas las páginas)\n• Certificado de empadronamiento histórico\n• Contrato de trabajo o medios económicos\n• Certificado de antecedentes penales del país de origen (apostillado)\n• Antecedentes penales en España\n• Certificado de empadronamiento actual',
+      notes: 'Cuando lo tengas, envíanoslo por aquí mismo (foto o PDF). Cualquier duda, te ayudamos. 📲',
+    },
+    {
+      title: 'Alta de autónomo', area: 'fiscal',
+      intro: 'Hola {nombre} 👋 Para darte de alta como autónomo necesitamos:',
+      docs: '• DNI o NIE por ambas caras\n• Número de cuenta bancaria (IBAN)\n• Descripción de la actividad que vas a ejercer\n• Dirección de la actividad',
+      notes: 'Con esto tramitamos el alta en Hacienda (036) y en la Seguridad Social (RETA).',
+    },
+    {
+      title: 'Declaración de la renta', area: 'fiscal',
+      intro: 'Hola {nombre} 👋 Para tu declaración de la renta necesitamos:',
+      docs: '• DNI\n• Certificados de ingresos (nóminas, pensiones…)\n• Certificado de prestaciones (SEPE) si las hubo\n• Datos de vivienda (recibo IBI o referencia catastral)\n• Certificados bancarios y de inversiones\n• Justificantes de donativos o deducciones',
+      notes: '',
+    },
+  ],
+  // Trámites de tráfico (DGT). Documentación según la sede electrónica de la
+  // DGT; la gestoría confirma tasas oficiales y particularidades de cada caso.
+  'trafico-v1': [
+    {
+      title: 'Transferencia (cambio de titularidad)', area: 'vehiculos',
+      intro: 'Hola {nombre} 👋 Para el cambio de titularidad del vehículo necesitamos:',
+      docs: '• DNI, NIE o pasaporte del comprador y del vendedor (en vigor)\n• Permiso de circulación del vehículo\n• Ficha técnica (tarjeta ITV) con la ITV en vigor\n• Contrato de compraventa firmado por ambas partes (o factura si vende una empresa)\n• Justificante del último Impuesto de Circulación (IVTM) pagado',
+      notes: 'El vehículo debe estar libre de cargas y al día de multas e impuestos. Calculamos el ITP de tu comunidad y presentamos el trámite en la DGT. 📲',
+    },
+    {
+      title: 'Notificación de venta', area: 'vehiculos',
+      intro: 'Hola {nombre} 👋 Para comunicar a la DGT que has vendido tu vehículo necesitamos:',
+      docs: '• DNI o NIE del vendedor\n• Contrato de compraventa firmado por ambas partes\n• Datos del comprador (nombre y DNI/NIE)\n• Matrícula del vehículo',
+      notes: 'Debe comunicarse en un máximo de 10 días desde la venta. Con esto dejas de ser responsable del vehículo.',
+    },
+    {
+      title: 'Duplicado del permiso de circulación', area: 'vehiculos',
+      intro: 'Hola {nombre} 👋 Para el duplicado del permiso de circulación (pérdida, robo o deterioro) necesitamos:',
+      docs: '• DNI o NIE del titular\n• Matrícula del vehículo\n• En caso de robo, copia de la denuncia (si la hubiera)',
+      notes: 'Lo tramitamos online. Te avisamos cuando esté listo.',
+    },
+    {
+      title: 'Baja definitiva de vehículo', area: 'vehiculos',
+      intro: 'Hola {nombre} 👋 Para dar de baja definitiva el vehículo necesitamos:',
+      docs: '• DNI o NIE del titular\n• Permiso de circulación\n• Ficha técnica (tarjeta ITV)\n• Certificado de destrucción del CAT (centro autorizado), si va a desguace',
+      notes: 'La baja definitiva implica que el vehículo ya no puede circular ni venderse.',
+    },
+    {
+      title: 'Matriculación de vehículo', area: 'vehiculos',
+      intro: 'Hola {nombre} 👋 Para matricular el vehículo necesitamos:',
+      docs: '• DNI, NIE o CIF del titular\n• Ficha técnica (tarjeta ITV) con la ITV pasada\n• Justificante del Impuesto de Matriculación y del IVTM (impuesto municipal)\n• Factura de compra o documentación de importación (si viene del extranjero)',
+      notes: 'Al terminar te entregamos el número de matrícula y el permiso de circulación. Confirmamos las tasas según el vehículo.',
+    },
+    {
+      title: 'Duplicado del permiso de conducir', area: 'vehiculos',
+      intro: 'Hola {nombre} 👋 Para el duplicado del carné de conducir (deterioro, pérdida o robo) necesitamos:',
+      docs: '• DNI, NIE o pasaporte en vigor\n• Permiso de conducir original (salvo robo o extravío)\n• Una foto reciente (si la solicita la Jefatura)',
+      notes: 'Lo gestionamos online con firma digital o con cita previa.',
+    },
+    {
+      title: 'Renovación del permiso de conducir', area: 'vehiculos',
+      intro: 'Hola {nombre} 👋 Para renovar el carné de conducir necesitamos:',
+      docs: '• DNI, NIE o pasaporte en vigor\n• Permiso de conducir a renovar (aunque esté caducado)\n• Informe de aptitud psicofísica de un Centro de Reconocimiento de Conductores\n• Una foto reciente',
+      notes: 'El reconocimiento médico se hace en un centro autorizado; nosotros tramitamos la renovación en la DGT.',
+    },
+    {
+      title: 'Canje de permiso de conducir extranjero', area: 'vehiculos',
+      intro: 'Hola {nombre} 👋 Para canjear tu permiso de conducir extranjero necesitamos:',
+      docs: '• Permiso de conducir extranjero original, en vigor\n• DNI, NIE o pasaporte y tarjeta de residencia\n• Certificado de empadronamiento (acredita tu residencia)\n• Informe de aptitud psicofísica de un Centro de Reconocimiento de Conductores\n• Una foto reciente',
+      notes: 'Solo para países con acuerdo de canje. Comprobamos si tu país tiene convenio y te lo confirmamos.',
+    },
+  ],
+};
 
+// Aplica los packs de fichas que aún no se hayan cargado en esta base de datos.
 function ensureDefaultFichas(db) {
   if (!db.settings) db.settings = {};
-  if (db.settings.fichasSeeded || (db.fichas && db.fichas.length)) return;
-  for (const f of DEFAULT_FICHAS) {
-    db.fichas.push({ id: newId('fic'), ...f, createdAt: Date.now() });
+  if (!Array.isArray(db.settings.fichaPacks)) db.settings.fichaPacks = [];
+  // Compatibilidad: si los ejemplos ya se sembraron con el sistema anterior,
+  // marcamos ese pack como aplicado para no duplicarlos.
+  if (db.settings.fichasSeeded && !db.settings.fichaPacks.includes('ejemplos-v1')) {
+    db.settings.fichaPacks.push('ejemplos-v1');
   }
-  db.settings.fichasSeeded = true;
-  save();
+  let changed = false;
+  for (const [packId, fichas] of Object.entries(FICHA_PACKS)) {
+    if (db.settings.fichaPacks.includes(packId)) continue;
+    for (const f of fichas) db.fichas.push({ id: newId('fic'), ...f, createdAt: Date.now() });
+    db.settings.fichaPacks.push(packId);
+    db.settings.fichasSeeded = true;
+    changed = true;
+  }
+  if (changed) save();
 }
 
 // Catálogo de stickers de Burocracia Zero (se lee del manifiesto generado).

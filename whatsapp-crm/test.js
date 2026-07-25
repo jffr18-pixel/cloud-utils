@@ -625,9 +625,19 @@ async function main() {
 
     console.log('Fichas de trámite');
     const fichas = await req('GET', '/api/fichas');
-    assert(fichas.status === 200 && fichas.data.length >= 4, 'fichas de ejemplo precargadas');
+    assert(fichas.status === 200 && fichas.data.length >= 10, 'fichas predefinidas precargadas (ejemplos + tráfico)');
     assert(fichas.data.some((f) => f.title === 'Arraigo social' && f.area === 'extranjeria'),
       'incluye la ficha de Arraigo social en extranjería');
+    // Pack de tráfico (DGT).
+    const trafico = fichas.data.filter((f) => f.area === 'vehiculos');
+    assert(trafico.length >= 8, 'el pack de tráfico añade sus fichas al área vehículos');
+    assert(trafico.some((f) => f.title === 'Notificación de venta' && f.notes.includes('10 días')),
+      'ficha de notificación de venta con el plazo de 10 días');
+    assert(trafico.some((f) => f.title.startsWith('Canje') && f.docs.includes('psicofísica')),
+      'ficha de canje de permiso extranjero con el informe psicofísico');
+    // Idempotencia: volver a pedir las fichas no las duplica.
+    const fichas2 = await req('GET', '/api/fichas');
+    assert(fichas2.data.length === fichas.data.length, 'los packs no se reaplican (sin duplicados)');
     const newFicha = await req('POST', '/api/fichas', {
       title: 'Nacionalidad española', area: 'extranjeria',
       intro: 'Hola {nombre}, para tu {tramite} necesitamos:', docs: '• Certificado de nacimiento\n• Certificado de antecedentes', notes: 'Gracias.',
