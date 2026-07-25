@@ -96,6 +96,59 @@ const FICHA_PACKS = {
       notes: 'Solo para países con acuerdo de canje. Comprobamos si tu país tiene convenio y te lo confirmamos.',
     },
   ],
+  // Extranjería, según el nuevo Reglamento (RD 1155/2024, en vigor desde el
+  // 20/05/2025) y la Instrucción SEM 1/2025 sobre arraigos. La documentación
+  // exacta varía en cada caso: la gestoría la confirma según la situación.
+  'extranjeria-v1': [
+    {
+      title: 'Arraigo social (2025)', area: 'extranjeria',
+      intro: 'Hola {nombre} 👋 Para tu arraigo social (residencia por circunstancias excepcionales) necesitamos:',
+      docs: '• Solicitud oficial EX-10 firmada\n• Pasaporte completo en vigor (todas las páginas)\n• Empadronamiento histórico que acredite al menos 2 años en España\n• Antecedentes penales del país de origen (apostillados/legalizados y traducidos)\n• Antecedentes penales en España\n• Medios económicos: contrato/nóminas, cuenta bancaria o medios propios\n• Informe de integración social o acreditación de vínculos familiares con residente legal',
+      notes: '⚠️ Las ausencias no pueden superar 90 días en los 2 años. Cada caso es distinto: confirmamos tu documentación exacta según tu situación y la Instrucción SEM 1/2025.',
+    },
+    {
+      title: 'Arraigo sociolaboral', area: 'extranjeria',
+      intro: 'Hola {nombre} 👋 Para tu arraigo sociolaboral necesitamos:',
+      docs: '• Solicitud oficial EX-10 firmada\n• Pasaporte completo en vigor\n• Empadronamiento histórico (al menos 2 años en España)\n• Antecedentes penales del país de origen (apostillados y traducidos)\n• Antecedentes penales en España\n• Uno o varios contratos de trabajo de al menos 20 horas semanales (con el SMI o el convenio aplicable)',
+      notes: '⚠️ Cada caso es distinto; confirmamos tu documentación exacta según tu situación y la Instrucción SEM 1/2025.',
+    },
+    {
+      title: 'Arraigo socioformativo', area: 'extranjeria',
+      intro: 'Hola {nombre} 👋 Para tu arraigo socioformativo necesitamos:',
+      docs: '• Solicitud oficial EX-10 firmada\n• Pasaporte completo en vigor\n• Empadronamiento histórico (al menos 2 años en España)\n• Antecedentes penales del país de origen (apostillados y traducidos) y de España\n• Matrícula o compromiso de matrícula en una formación válida (mínimo 50% presencial)\n• Informe de integración social del Ayuntamiento o Comunidad Autónoma',
+      notes: '⚠️ La formación 100% a distancia no sirve. Si la matrícula tiene un plazo oficial, hay que presentar la solicitud en los 2 meses anteriores. Confirmamos tu caso según la Instrucción SEM 1/2025.',
+    },
+    {
+      title: 'Arraigo familiar', area: 'extranjeria',
+      intro: 'Hola {nombre} 👋 Para tu arraigo familiar (no exige tiempo mínimo de residencia) necesitamos:',
+      docs: '• Solicitud oficial EX-10 firmada\n• Pasaporte completo en vigor\n• Documento del vínculo: libro de familia o certificado de nacimiento del menor español o de la UE\n• DNI del menor español (o documento del familiar de la UE)\n• Antecedentes penales del país de origen (apostillados y traducidos) y de España\n• Empadronamiento',
+      notes: 'Para padres/tutores de un menor español o de la UE, o apoyo a persona con discapacidad de la UE. Autorización de 5 años. ⚠️ Confirmamos tu supuesto según la Instrucción SEM 1/2025.',
+    },
+    {
+      title: 'Arraigo de segunda oportunidad', area: 'extranjeria',
+      intro: 'Hola {nombre} 👋 Para tu arraigo de segunda oportunidad necesitamos:',
+      docs: '• Solicitud oficial EX-10 firmada\n• Pasaporte completo en vigor\n• Empadronamiento histórico (al menos 2 años en España)\n• Antecedentes penales del país de origen (apostillados y traducidos) y de España\n• Documentación de la residencia legal que tuviste antes en España (TIE o tarjeta caducada)',
+      notes: 'Para quien ya tuvo residencia legal y no pudo renovarla. Concede 1 año con permiso de trabajo. ⚠️ Confirmamos tu caso según la Instrucción SEM 1/2025.',
+    },
+    {
+      title: 'Reagrupación familiar', area: 'extranjeria',
+      intro: 'Hola {nombre} 👋 Para reagrupar a tu familia en España necesitamos:',
+      docs: '• Solicitud oficial EX-02 firmada\n• Pasaporte y TIE/NIE del reagrupante\n• Empadronamiento de la unidad familiar\n• Documentos del vínculo (matrimonio, nacimiento…) legalizados y traducidos\n• Medios económicos suficientes (nóminas, contrato, renta): mínimo 150% del IPREM\n• Informe de vivienda adecuada\n• Justificante de la tasa (modelo 790, código 052)',
+      notes: '⚠️ Necesitas al menos 1 año de residencia legal renovada. Confirmamos los requisitos según tu régimen (general, familiar de español o comunitario).',
+    },
+    {
+      title: 'Nacionalidad española por residencia', area: 'extranjeria',
+      intro: 'Hola {nombre} 👋 Para tu solicitud de nacionalidad por residencia necesitamos:',
+      docs: '• Certificado de nacimiento del país de origen (apostillado/legalizado y traducido)\n• Pasaporte completo en vigor y TIE\n• Antecedentes penales del país de origen (apostillados y traducidos)\n• Antecedentes penales en España\n• Certificado de empadronamiento\n• Certificado de residencia legal (lo emite Extranjería)\n• Diplomas CCSE y DELE A2 (salvo exenciones)\n• Justificante del pago de la tasa',
+      notes: 'El tiempo de residencia exigido depende de tu caso (10 años general, 2 para iberoamericanos, 1 casado/a con español/a…). ⚠️ Te confirmamos tu plazo y documentación.',
+    },
+    {
+      title: 'Renovación de residencia (TIE)', area: 'extranjeria',
+      intro: 'Hola {nombre} 👋 Para renovar tu tarjeta de residencia necesitamos:',
+      docs: '• Solicitud en el modelo oficial que corresponda a tu tarjeta\n• Pasaporte completo en vigor\n• TIE actual\n• Documentación de que mantienes los requisitos (contrato/nóminas, medios económicos, matrícula escolar de los hijos…)\n• Empadronamiento\n• Justificante de la tasa',
+      notes: 'Puedes renovar hasta 90 días antes de la caducidad (y hasta 90 días después). ⚠️ Confirmamos la documentación según tu tipo de tarjeta.',
+    },
+  ],
 };
 
 // Aplica los packs de fichas que aún no se hayan cargado en esta base de datos.
