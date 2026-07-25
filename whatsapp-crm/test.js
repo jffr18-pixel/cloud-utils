@@ -729,6 +729,16 @@ async function main() {
     const dispPdf = sec.mediaDisposition('application/pdf', 'factura.pdf');
     assert(dispPdf.disposition.startsWith('inline'), 'PDF puede verse en línea');
 
+    // El enlace de un adjunto entrante solo puede apuntar a hosts del
+    // proveedor (evita filtrar la API key a un servidor atacante).
+    const waLib = require('./lib/whatsapp');
+    assert(waLib.isTrustedMediaUrl('https://waba-v2.360dialog.io/media/x') === true, 'host 360dialog de confianza');
+    assert(waLib.isTrustedMediaUrl('https://storage.ycloud.com/abc') === true, 'host ycloud de confianza');
+    assert(waLib.isTrustedMediaUrl('https://mmg.whatsapp.net/x') === true, 'host whatsapp.net de confianza');
+    assert(waLib.isTrustedMediaUrl('https://attacker.example/x.jpg') === false, 'host arbitrario rechazado');
+    assert(waLib.isTrustedMediaUrl('http://storage.ycloud.com/x') === false, 'http (no https) rechazado');
+    assert(waLib.isTrustedMediaUrl('https://ycloud.com.attacker.example/x') === false, 'host que imita al proveedor rechazado');
+
     await testSignedWebhookServer();
 
     console.log('Autenticación');

@@ -167,12 +167,37 @@ async function sendPayload(toPhone, payload) {
   return { demo: false, id: data?.messages?.[0]?.id || null };
 }
 
+// Hosts de confianza a los que SÍ se puede enviar la API key al descargar un
+// adjunto. El `link` de un adjunto entrante llega en el webhook, y aunque el
+// webhook vaya firmado, nunca se manda la credencial a un host arbitrario:
+// así una URL maliciosa no puede exfiltrar la API key de YCloud.
+const TRUSTED_MEDIA_HOSTS = [
+  /(^|\.)ycloud\.com$/i,
+  /(^|\.)whatsapp\.net$/i,
+  /(^|\.)fbcdn\.net$/i,
+  /(^|\.)facebook\.com$/i,
+  /(^|\.)360dialog\.io$/i,
+];
+
+function isTrustedMediaUrl(rawUrl) {
+  try {
+    const u = new URL(rawUrl);
+    if (u.protocol !== 'https:') return false;
+    return TRUSTED_MEDIA_HOSTS.some((re) => re.test(u.hostname));
+  } catch {
+    return false;
+  }
+}
+
 // Descarga un adjunto entrante y lo devuelve como respuesta de fetch.
 // YCloud: el `link` del webhook, con la API key. Meta/360dialog: se canjea el
 // id por una URL temporal y se descarga con el token.
 async function fetchInboundMedia(media) {
   const c = config();
   if (media.link) {
+    if (!isTrustedMediaUrl(media.link)) {
+      throw new Error('El enlace del adjunto no apunta a un host de confianza del proveedor');
+    }
     return fetch(media.link, { headers: { 'X-API-Key': c.ycloudApiKey } });
   }
   if (media.metaMediaId && provider() !== 'ycloud' && isConfigured()) {
@@ -180,6 +205,9 @@ async function fetchInboundMedia(media) {
     const metaRes = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${media.metaMediaId}`, { headers });
     const meta = await metaRes.json().catch(() => ({}));
     if (!metaRes.ok || !meta.url) throw new Error('No se pudo obtener la URL del adjunto');
+    if (!isTrustedMediaUrl(meta.url)) {
+      throw new Error('La URL del adjunto de Meta no es de un host de confianza');
+    }
     return fetch(meta.url, { headers });
   }
   throw new Error('Adjunto no disponible');
@@ -413,6 +441,7 @@ module.exports = {
   provider,
   isConfigured,
   testConnection,
+  isTrustedMediaUrl,
   sendText,
   sendMedia,
   sendInteractiveList,

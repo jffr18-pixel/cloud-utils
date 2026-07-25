@@ -158,7 +158,10 @@ function startupWarnings({ authUsers }) {
     }
   }
   if (!process.env.YCLOUD_WEBHOOK_SECRET && !process.env.META_APP_SECRET) {
-    warnings.push('⚠️  Webhook sin verificación de firma: define YCLOUD_WEBHOOK_SECRET (consola de YCloud → Webhooks → secreto del endpoint).');
+    warnings.push('⚠️  IMPORTANTE: webhook SIN verificación de firma. Cualquiera que'
+      + ' conozca la URL podría inyectar mensajes falsos. Define'
+      + ' YCLOUD_WEBHOOK_SECRET (consola de YCloud → Developers → Webhooks →'
+      + ' secreto del endpoint) antes de usar el CRM en producción.');
   }
   return warnings;
 }

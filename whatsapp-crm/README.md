@@ -314,7 +314,10 @@ Medidas activas en el CRM:
   Permissions-Policy.
 - **Adjuntos seguros**: los tipos capaces de ejecutar código (SVG, HTML…) se
   sirven como descarga y con CSP `sandbox`; solo imágenes seguras, PDF,
-  audio y vídeo se muestran en línea.
+  audio y vídeo se muestran en línea. Además, al descargar un adjunto entrante
+  la API key solo se envía a hosts del proveedor (`*.ycloud.com`,
+  `*.whatsapp.net`, `*.fbcdn.net`, `*.360dialog.io`) y solo por HTTPS, de modo
+  que un enlace manipulado nunca puede filtrar la credencial.
 - **Límite de peticiones** por IP (API y webhook, configurable con
   `RATE_LIMIT_API` / `RATE_LIMIT_WEBHOOK`).
 - **Registro de auditoría** en `data/audit.log`: accesos correctos y
