@@ -33,6 +33,11 @@ services:
         sync: false
       - key: WEBHOOK_VERIFY_TOKEN
         generateValue: true
+      # Secreto del endpoint de webhooks (consola de YCloud → Developers →
+      # Webhooks → secreto del endpoint). Activa la verificación de firma:
+      # solo se aceptan webhooks auténticos de YCloud.
+      - key: YCLOUD_WEBHOOK_SECRET
+        sync: false
       # Microsoft 365 (Outlook + SharePoint); vacías = sin sincronización
       - key: MS_TENANT_ID
         sync: false

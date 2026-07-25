@@ -296,6 +296,37 @@ Notas de producción:
   `docker build -t crm whatsapp-crm && docker run -d -p 80:3000 -v /srv/crm-data:/data --env-file .env crm`
   (con un proxy inverso tipo Caddy para HTTPS).
 
+## Seguridad
+
+Medidas activas en el CRM:
+
+- **Autenticación**: sesiones con cookie `HttpOnly`/`SameSite`/`Secure` (30
+  días), comparación de credenciales en tiempo constante (sin filtrar qué
+  usuarios existen), bloqueo de 15 min tras 10 intentos fallidos por IP.
+- **Verificación de firma de webhooks**: con `YCLOUD_WEBHOOK_SECRET` definido
+  (secreto del endpoint en la consola de YCloud → Developers → Webhooks),
+  solo se aceptan webhooks firmados HMAC-SHA256 por YCloud, con tolerancia
+  anti-replay de 5 minutos. Para Meta directo, `META_APP_SECRET` verifica
+  `X-Hub-Signature-256`. **Configúralo en producción**: sin él, cualquiera
+  que conozca la URL podría inyectar mensajes falsos.
+- **Cabeceras de seguridad**: Content-Security-Policy estricta, HSTS (tras
+  HTTPS), `nosniff`, `X-Frame-Options: DENY`, Referrer-Policy y
+  Permissions-Policy.
+- **Adjuntos seguros**: los tipos capaces de ejecutar código (SVG, HTML…) se
+  sirven como descarga y con CSP `sandbox`; solo imágenes seguras, PDF,
+  audio y vídeo se muestran en línea.
+- **Límite de peticiones** por IP (API y webhook, configurable con
+  `RATE_LIMIT_API` / `RATE_LIMIT_WEBHOOK`).
+- **Registro de auditoría** en `data/audit.log`: accesos correctos y
+  fallidos (con IP), cierres de sesión, descargas de copias, exportaciones
+  CSV, campañas y webhooks rechazados.
+- **Superficie mínima**: cero dependencias de terceros (nada de `npm install`
+  → sin riesgo de cadena de suministro), validación de rutas en estáticos,
+  adjuntos y copias, límites de tamaño de cuerpo, y fichero de sesiones con
+  permisos `0600`.
+- El servidor avisa al arrancar si detecta configuración insegura (sin
+  contraseña, contraseñas cortas o webhook sin secreto).
+
 ## Protección de datos (RGPD)
 
 El CRM guarda datos personales de tus clientes en tu propio servidor, no en

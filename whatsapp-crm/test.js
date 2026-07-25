@@ -42,6 +42,60 @@ async function waitForServer() {
   throw new Error('El servidor no arrancó');
 }
 
+// Servidor con secreto de webhook: solo acepta webhooks firmados.
+async function testSignedWebhookServer() {
+  const SIG_PORT = 3780;
+  const SIG_BASE = `http://127.0.0.1:${SIG_PORT}`;
+  const sigDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crm-sig-'));
+  const cryptoMod = require('crypto');
+  const secret = 'whsec_prueba_123';
+  const server = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
+    env: {
+      ...process.env, PORT: String(SIG_PORT), DATA_DIR: sigDataDir,
+      YCLOUD_WEBHOOK_SECRET: secret, CRM_PASSWORD: '',
+      WHATSAPP_TOKEN: '', WHATSAPP_PHONE_NUMBER_ID: '',
+    },
+    stdio: 'ignore',
+  });
+  try {
+    for (let i = 0; i < 50; i += 1) {
+      try { await fetch(SIG_BASE + '/api/auth'); break; } catch { await new Promise((r) => setTimeout(r, 100)); }
+    }
+    const payload = JSON.stringify({
+      id: 'evt_sig', type: 'whatsapp.inbound_message.received', apiVersion: 'v2',
+      whatsappInboundMessage: {
+        id: 'yc_sig_1', wamid: 'wamid.SIG1', from: '+34600111222',
+        to: '+34911222333', sendTime: new Date().toISOString(),
+        type: 'text', text: { body: 'Mensaje firmado' },
+      },
+    });
+    const unsigned = await fetch(SIG_BASE + '/webhook', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload,
+    });
+    assert(unsigned.status === 401, 'webhook SIN firma rechazado cuando hay secreto');
+    const badSig = await fetch(SIG_BASE + '/webhook', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'YCloud-Signature': `t=${Math.floor(Date.now() / 1000)},s=falsa` },
+      body: payload,
+    });
+    assert(badSig.status === 401, 'webhook con firma falsa rechazado');
+    const ts = Math.floor(Date.now() / 1000);
+    const sig = cryptoMod.createHmac('sha256', secret).update(`${ts}.${payload}`).digest('hex');
+    const signed = await fetch(SIG_BASE + '/webhook', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'YCloud-Signature': `t=${ts},s=${sig}` },
+      body: payload,
+    });
+    assert(signed.status === 200, 'webhook correctamente firmado aceptado');
+    const convs = await (await fetch(SIG_BASE + '/api/conversations')).json();
+    assert(convs.length === 1 && convs[0].lastMessage === 'Mensaje firmado',
+      'el mensaje firmado se procesó');
+  } finally {
+    server.kill();
+    fs.rmSync(sigDataDir, { recursive: true, force: true });
+  }
+}
+
 // Servidor aparte con contraseña para probar la autenticación.
 async function testAuthServer() {
   const AUTH_PORT = 3778;
@@ -641,6 +695,41 @@ async function main() {
       'mensaje de campaña personalizado con {nombre}');
     const campList = await req('GET', '/api/campaigns');
     assert(campList.data.length === 1 && campList.data[0].tag === 'renta', 'histórico de campañas guardado');
+
+    console.log('Seguridad');
+    const secHome = await fetch(`${BASE}/`);
+    assert((secHome.headers.get('content-security-policy') || '').includes("default-src 'self'"),
+      'CSP aplicada en la interfaz');
+    assert(secHome.headers.get('x-content-type-options') === 'nosniff', 'nosniff aplicado');
+    assert(secHome.headers.get('x-frame-options') === 'DENY', 'protección contra clickjacking');
+    const secApi = await fetch(`${BASE}/api/status`);
+    assert((secApi.headers.get('content-security-policy') || '').length > 0, 'CSP también en la API');
+
+    // Firmas de webhook (funciones puras).
+    const sec = require('./lib/security');
+    const cryptoMod = require('crypto');
+    const secret = 'secreto-de-prueba';
+    const rawBody = '{"type":"whatsapp.inbound_message.received"}';
+    const ts = Math.floor(Date.now() / 1000);
+    const goodSig = cryptoMod.createHmac('sha256', secret).update(`${ts}.${rawBody}`).digest('hex');
+    assert(sec.verifyYCloudSignature(rawBody, `t=${ts},s=${goodSig}`, secret) === true,
+      'firma de YCloud válida aceptada');
+    assert(sec.verifyYCloudSignature(rawBody, `t=${ts},s=deadbeef`, secret) === false,
+      'firma de YCloud incorrecta rechazada');
+    assert(sec.verifyYCloudSignature(rawBody, `t=${ts - 900},s=${goodSig}`, secret) === false,
+      'firma con timestamp antiguo rechazada (anti-replay)');
+    const metaSig = 'sha256=' + cryptoMod.createHmac('sha256', 'app-secret').update(rawBody).digest('hex');
+    assert(sec.verifyMetaSignature(rawBody, metaSig, 'app-secret') === true, 'firma de Meta válida aceptada');
+    assert(sec.verifyMetaSignature(rawBody, 'sha256=malo', 'app-secret') === false, 'firma de Meta incorrecta rechazada');
+
+    // Adjuntos peligrosos se sirven como descarga con sandbox.
+    const dispSvg = sec.mediaDisposition('image/svg+xml', 'malicioso.svg');
+    assert(dispSvg.disposition.startsWith('attachment') && dispSvg.extraHeaders['Content-Security-Policy'] === 'sandbox',
+      'SVG servido como descarga con CSP sandbox');
+    const dispPdf = sec.mediaDisposition('application/pdf', 'factura.pdf');
+    assert(dispPdf.disposition.startsWith('inline'), 'PDF puede verse en línea');
+
+    await testSignedWebhookServer();
 
     console.log('Autenticación');
     const authOff = await req('GET', '/api/auth');

@@ -12,6 +12,7 @@ const wa = require('./lib/whatsapp');
 const auto = require('./lib/automations');
 const backup = require('./lib/backup');
 const msgraph = require('./lib/msgraph');
+const security = require('./lib/security');
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -51,8 +52,11 @@ try {
 
 function persistSessions() {
   try {
+    for (const [t, s] of sessions) {
+      if (Date.now() - s.createdAt > SESSION_TTL_MS) sessions.delete(t);
+    }
     fs.mkdirSync(path.dirname(SESSIONS_FILE), { recursive: true });
-    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(Object.fromEntries(sessions)));
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(Object.fromEntries(sessions)), { mode: 0o600 });
   } catch (err) {
     console.error('No se pudieron guardar las sesiones:', err.message);
   }
@@ -136,19 +140,22 @@ function json(res, status, data) {
   res.end(body);
 }
 
-function readBody(req, maxBytes = 2_000_000) {
+function readRawBody(req, maxBytes = 2_000_000) {
   return new Promise((resolve, reject) => {
     let raw = '';
     req.on('data', (c) => {
       raw += c;
       if (raw.length > maxBytes) { reject(new Error('Cuerpo demasiado grande')); req.destroy(); }
     });
-    req.on('end', () => {
-      if (!raw) return resolve({});
-      try { resolve(JSON.parse(raw)); } catch { reject(new Error('JSON inválido')); }
-    });
+    req.on('end', () => resolve(raw));
     req.on('error', reject);
   });
+}
+
+async function readBody(req, maxBytes = 2_000_000) {
+  const raw = await readRawBody(req, maxBytes);
+  if (!raw) return {};
+  try { return JSON.parse(raw); } catch { throw new Error('JSON inválido'); }
 }
 
 // ---------------------------------------------------------------------------
@@ -379,14 +386,21 @@ async function handleApi(req, res, url) {
     }
     const b = await readBody(req);
     if (!authRequired()) return json(res, 200, { ok: true });
-    const expected = authUsers().get(String(b.user || '').trim());
-    if (expected === undefined || !safeEqual(b.password || '', expected)) {
+    const userName = String(b.user || '').trim();
+    const users = authUsers();
+    // Comparación en tiempo constante también con usuarios inexistentes,
+    // para no revelar qué nombres de usuario existen.
+    const expected = users.get(userName) ?? `dummy-${crypto.randomBytes(8).toString('hex')}`;
+    const passwordOk = safeEqual(b.password || '', expected);
+    if (!users.has(userName) || !passwordOk) {
       recordAttempt(ip);
+      security.audit('login_fallido', { user: userName, ip });
       return json(res, 401, { error: 'Usuario o contraseña incorrectos' });
     }
     loginAttempts.delete(ip);
+    security.audit('login_correcto', { user: userName, ip });
     const token = crypto.randomBytes(32).toString('hex');
-    sessions.set(token, { user: String(b.user).trim(), createdAt: Date.now() });
+    sessions.set(token, { user: userName, createdAt: Date.now() });
     persistSessions();
     res.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',
@@ -397,6 +411,7 @@ async function handleApi(req, res, url) {
   if (req.method === 'POST' && resource === 'logout') {
     const token = parseCookies(req).crm_session;
     if (token) {
+      security.audit('logout', { user: sessions.get(token)?.user || null, ip: ipOf(req) });
       sessions.delete(token);
       persistSessions();
     }
@@ -418,12 +433,17 @@ async function handleApi(req, res, url) {
     if (!msg || !msg.media) return json(res, 404, { error: 'Adjunto no encontrado' });
     const media = msg.media;
     const filename = media.filename || `adjunto.${(media.mime || '').split('/')[1] || 'bin'}`;
+    // Los tipos que pueden ejecutar código (SVG, HTML…) se sirven como
+    // descarga y con CSP sandbox, para que un adjunto malicioso enviado por
+    // WhatsApp no pueda ejecutar nada en el origen del CRM.
+    const { disposition, extraHeaders } = security.mediaDisposition(media.mime, filename);
     if (media.localPath) {
       const full = path.join(UPLOADS_DIR, path.basename(media.localPath));
       if (!fs.existsSync(full)) return json(res, 404, { error: 'Fichero no disponible' });
       res.writeHead(200, {
         'Content-Type': media.mime || 'application/octet-stream',
-        'Content-Disposition': `inline; filename="${encodeURIComponent(filename)}"`,
+        'Content-Disposition': disposition,
+        ...extraHeaders,
       });
       return fs.createReadStream(full).pipe(res);
     }
@@ -432,7 +452,8 @@ async function handleApi(req, res, url) {
       if (!upstream.ok) return json(res, 502, { error: `El proveedor devolvió HTTP ${upstream.status}` });
       res.writeHead(200, {
         'Content-Type': media.mime || upstream.headers.get('content-type') || 'application/octet-stream',
-        'Content-Disposition': `inline; filename="${encodeURIComponent(filename)}"`,
+        'Content-Disposition': disposition,
+        ...extraHeaders,
       });
       const buf = Buffer.from(await upstream.arrayBuffer());
       return res.end(buf);
@@ -932,11 +953,13 @@ async function handleApi(req, res, url) {
     if (req.method === 'GET' && !id) return json(res, 200, backup.list());
     if (req.method === 'POST' && !id) {
       const b = backup.create(true);
+      security.audit('backup_creada', { user: sessionUser(req), ip: ipOf(req), name: b.name });
       return json(res, 201, b);
     }
     if (req.method === 'GET' && id) {
       const stream = backup.read(id);
       if (!stream) return json(res, 404, { error: 'Copia no encontrada' });
+      security.audit('backup_descargada', { user: sessionUser(req), ip: ipOf(req), name: id });
       res.writeHead(200, {
         'Content-Type': 'application/gzip',
         'Content-Disposition': `attachment; filename="${id}"`,
@@ -995,6 +1018,7 @@ async function handleApi(req, res, url) {
       );
     }
     if (csv === null) return json(res, 404, { error: 'Exportación no disponible' });
+    security.audit('exportacion_csv', { user: sessionUser(req), ip: ipOf(req), tipo: name });
     res.writeHead(200, {
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': `attachment; filename="${name}-burocracia-zero.csv"`,
@@ -1034,6 +1058,7 @@ async function handleApi(req, res, url) {
       };
       db.campaigns.push(campaign);
       save();
+      security.audit('campana_enviada', { user: sessionUser(req), ip: ipOf(req), tag, total: recipients.length });
       return json(res, 201, campaign);
     }
   }
@@ -1109,10 +1134,14 @@ async function handleApi(req, res, url) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  security.applySecurityHeaders(req, res);
 
   try {
-    // Webhook de Meta: verificación (GET) y recepción de mensajes (POST).
+    // Webhook de Meta/YCloud: verificación (GET) y recepción (POST).
     if (url.pathname === '/webhook') {
+      if (!security.rateLimit(`wh:${ipOf(req)}`, Number(process.env.RATE_LIMIT_WEBHOOK || 300))) {
+        return json(res, 429, { error: 'Demasiadas peticiones' });
+      }
       if (req.method === 'GET') {
         const mode = url.searchParams.get('hub.mode');
         const token = url.searchParams.get('hub.verify_token');
@@ -1125,13 +1154,25 @@ const server = http.createServer(async (req, res) => {
         return res.end();
       }
       if (req.method === 'POST') {
-        const body = await readBody(req);
+        const raw = await readRawBody(req);
+        // Con YCLOUD_WEBHOOK_SECRET (o META_APP_SECRET) definido, solo se
+        // aceptan webhooks firmados: nadie puede inyectar mensajes falsos.
+        const verdict = security.verifyWebhook(req, raw);
+        if (!verdict.ok) {
+          security.audit('webhook_rechazado', { ip: ipOf(req) });
+          return json(res, 401, { error: 'Firma del webhook no válida' });
+        }
+        let body = {};
+        try { body = raw ? JSON.parse(raw) : {}; } catch { return json(res, 400, { error: 'JSON inválido' }); }
         await handleWebhookPayload(load(), body);
         return json(res, 200, { ok: true });
       }
     }
 
     if (url.pathname.startsWith('/api/')) {
+      if (!security.rateLimit(`api:${ipOf(req)}`, Number(process.env.RATE_LIMIT_API || 600))) {
+        return json(res, 429, { error: 'Demasiadas peticiones, espera un momento' });
+      }
       return await handleApi(req, res, url);
     }
 
@@ -1171,4 +1212,7 @@ server.listen(PORT, () => {
     : 'MODO DEMO (sin credenciales de WhatsApp; los envíos no salen de verdad)';
   console.log(`CRM de WhatsApp para gestoría — http://localhost:${PORT}`);
   console.log(`Estado: ${mode}`);
+  for (const warning of security.startupWarnings({ authUsers: authUsers() })) {
+    console.warn(warning);
+  }
 });
