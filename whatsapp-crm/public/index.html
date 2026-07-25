@@ -23,6 +23,7 @@
       <button class="nav-btn" data-view="cases">📁 Expedientes</button>
       <button class="nav-btn" data-view="templates">📝 Plantillas</button>
       <button class="nav-btn" data-view="reminders">⏰ Recordatorios</button>
+      <button class="nav-btn" data-view="automations">⚡ Automatizaciones</button>
     </nav>
 
     <main class="main">
@@ -110,6 +111,59 @@
           <button class="btn primary" id="btn-new-reminder">＋ Nuevo recordatorio</button>
         </div>
         <div id="reminder-list" class="list"></div>
+      </section>
+      <!-- Automatizaciones -->
+      <section id="view-automations" class="view hidden">
+        <div class="panel-head">
+          <h1>Automatizaciones</h1>
+          <div>
+            <button class="btn small" id="btn-auto-run" title="Ejecuta ya los reclamos y recordatorios pendientes">▶ Ejecutar tareas ahora</button>
+            <button class="btn primary" id="btn-auto-save">Guardar cambios</button>
+          </div>
+        </div>
+        <p class="hint">Los mensajes automáticos aparecen en el chat marcados con 🤖. Variables disponibles: <code>{nombre}</code>, <code>{tramite}</code>, <code>{documentos}</code> y <code>{texto}</code> (recordatorios).</p>
+
+        <div class="auto-card">
+          <h3>🕘 Horario de la gestoría</h3>
+          <p class="hint">Se usa para la respuesta fuera de horario y como franja de envío de los mensajes programados.</p>
+          <div class="auto-row" id="auto-days"></div>
+          <div class="auto-row">
+            <label>Apertura <input type="time" id="auto-open"></label>
+            <label>Cierre <input type="time" id="auto-close"></label>
+          </div>
+        </div>
+
+        <div class="auto-card">
+          <h3><label><input type="checkbox" id="auto-ah-enabled"> 🌙 Respuesta automática fuera de horario</label></h3>
+          <p class="hint">Se envía una sola vez por cliente cada 12 h cuando escribe fuera del horario.</p>
+          <textarea id="auto-ah-message" rows="3"></textarea>
+        </div>
+
+        <div class="auto-card">
+          <h3><label><input type="checkbox" id="auto-sn-enabled"> 📁 Aviso al cambiar el estado de un expediente</label></h3>
+          <div class="auto-row"><label><input type="checkbox" id="auto-sn-encurso"> Avisar al pasar a «En curso»</label></div>
+          <textarea id="auto-sn-encurso-text" rows="2"></textarea>
+          <div class="auto-row"><label><input type="checkbox" id="auto-sn-completado"> Avisar al pasar a «Completado»</label></div>
+          <textarea id="auto-sn-completado-text" rows="2"></textarea>
+        </div>
+
+        <div class="auto-card">
+          <h3><label><input type="checkbox" id="auto-docs-enabled"> 📄 Petición y reclamo de documentación</label></h3>
+          <p class="hint">Al poner un expediente en «Esperando documentación» se envía la petición (usa el campo «Documentación necesaria» del expediente). Si el cliente no responde, se reclama una vez pasados los días indicados.</p>
+          <label>Mensaje de petición</label>
+          <textarea id="auto-docs-request" rows="3"></textarea>
+          <div class="auto-row">
+            <label>Reclamar a los <input type="number" id="auto-docs-days" min="1" max="30" style="width:70px"> días sin respuesta</label>
+          </div>
+          <label>Mensaje de reclamo</label>
+          <textarea id="auto-docs-followup" rows="3"></textarea>
+        </div>
+
+        <div class="auto-card">
+          <h3><label><input type="checkbox" id="auto-rem-enabled"> ⏰ Enviar recordatorios al cliente</label></h3>
+          <p class="hint">Los recordatorios con fecha y con la opción «Enviar por WhatsApp al cliente» se mandan automáticamente ese día, dentro del horario.</p>
+          <textarea id="auto-rem-text" rows="2"></textarea>
+        </div>
       </section>
     </main>
   </div>

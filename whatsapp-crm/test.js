@@ -215,10 +215,74 @@ async function main() {
     const rem = await req('POST', '/api/reminders', { text: 'Llamar a María', dueDate: '2026-07-25', clientId });
     assert(rem.status === 201, 'crear recordatorio');
 
+    console.log('Automatizaciones');
+    const autoDefaults = await req('GET', '/api/automations');
+    assert(autoDefaults.status === 200 && autoDefaults.data.afterHours.enabled === false,
+      'configuración por defecto: todo desactivado');
+
+    // Fuera de horario: sin días laborables → siempre cerrado.
+    await req('PUT', '/api/automations', {
+      businessHours: { days: [], open: '09:00', close: '18:00' },
+      afterHours: { enabled: true, message: 'Estamos cerrados, {nombre}. Te respondemos mañana.' },
+    });
+    await req('POST', '/api/simulate-incoming', { phone: '612345678', text: '¿Estáis abiertos?' });
+    let msgs = (await req('GET', `/api/messages?clientId=${clientId}`)).data;
+    let last = msgs[msgs.length - 1];
+    assert(last.direction === 'out' && last.auto === true, 'respuesta automática fuera de horario enviada');
+    assert(last.text.includes('María'), 'variable {nombre} sustituida');
+    await req('POST', '/api/simulate-incoming', { phone: '612345678', text: '¿Hola?' });
+    msgs = (await req('GET', `/api/messages?clientId=${clientId}`)).data;
+    assert(msgs.filter((m) => m.auto).length === 1, 'no se repite dentro del periodo de cooldown');
+
+    // Resto de automatizaciones: horario siempre abierto.
+    await req('PUT', '/api/automations', {
+      businessHours: { days: [0, 1, 2, 3, 4, 5, 6], open: '00:00', close: '23:59' },
+      afterHours: { enabled: false },
+      statusNotify: { enabled: true, onCompletado: true },
+      docs: { enabled: true, followUpDays: 0 },
+      clientReminders: { enabled: true },
+    });
+
+    // Petición de documentación al cambiar el estado.
+    await req('PUT', `/api/cases/${kase.data.id}`, {
+      status: 'esperando_documentacion', docs: 'DNI\nCertificado de retenciones',
+    });
+    msgs = (await req('GET', `/api/messages?clientId=${clientId}`)).data;
+    last = msgs[msgs.length - 1];
+    assert(last.auto === true && last.text.includes('DNI'), 'petición de documentación enviada con {documentos}');
+
+    // Reclamo automático (0 días de espera, el cliente no ha respondido).
+    const run1 = await req('POST', '/api/automations/run');
+    assert(run1.data.executed.some((a) => a.type === 'docs_follow_up'), 'reclamo de documentación ejecutado');
+    const run2 = await req('POST', '/api/automations/run');
+    assert(!run2.data.executed.some((a) => a.type === 'docs_follow_up'), 'el reclamo no se duplica');
+
+    // Aviso al completar el expediente.
+    await req('PUT', `/api/cases/${kase.data.id}`, { status: 'completado' });
+    msgs = (await req('GET', `/api/messages?clientId=${clientId}`)).data;
+    last = msgs[msgs.length - 1];
+    assert(last.auto === true && last.text.includes('Declaración renta 2025'),
+      'aviso de expediente completado con {tramite}');
+
+    // Recordatorio enviado al cliente en su fecha.
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const remCli = await req('POST', '/api/reminders', {
+      text: 'Mañana vence el plazo del IVA', dueDate: today, clientId, sendToClient: true,
+    });
+    const run3 = await req('POST', '/api/automations/run');
+    assert(run3.data.executed.some((a) => a.type === 'client_reminder'), 'recordatorio enviado al cliente');
+    msgs = (await req('GET', `/api/messages?clientId=${clientId}`)).data;
+    assert(msgs[msgs.length - 1].text.includes('IVA'), 'el recordatorio incluye {texto}');
+    const run4 = await req('POST', '/api/automations/run');
+    assert(!run4.data.executed.some((a) => a.type === 'client_reminder'), 'el recordatorio no se reenvía');
+    const remAfter = (await req('GET', '/api/reminders')).data.find((r) => r.id === remCli.data.id);
+    assert(Boolean(remAfter.sentToClientAt), 'recordatorio marcado como enviado');
+
     console.log('Panel');
     const dash = await req('GET', '/api/dashboard');
     assert(dash.data.totalClients === 4, 'panel: 4 clientes');
-    assert(dash.data.openCases === 1, 'panel: 1 expediente abierto');
+    assert(dash.data.openCases === 0, 'panel: sin expedientes abiertos (el de prueba quedó completado)');
 
     console.log('Borrado en cascada');
     await req('DELETE', `/api/clients/${clientId}`);

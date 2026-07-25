@@ -136,6 +136,7 @@ async function refreshView() {
     if (state.view === 'cases') await renderCases();
     if (state.view === 'templates') await renderTemplates();
     if (state.view === 'reminders') await renderReminders();
+    if (state.view === 'automations') await renderAutomations();
     await updateUnreadBadge();
   } catch (err) {
     console.error(err);
@@ -228,7 +229,7 @@ async function openConversation(clientId) {
 
   $('#chat-messages').innerHTML = msgs.map((m) => `
     <div class="msg ${m.direction} ${m.status === 'error' ? 'error' : ''}">${esc(m.text)}
-      <span class="msg-meta">${m.viaApp ? '📱 desde el móvil · ' : ''}${fmtTime(m.timestamp)} ${MSG_STATUS[m.status] || ''}${m.error ? ' · ' + esc(m.error) : ''}</span>
+      <span class="msg-meta">${m.auto ? '🤖 automático · ' : ''}${m.viaApp ? '📱 desde el móvil · ' : ''}${fmtTime(m.timestamp)} ${MSG_STATUS[m.status] || ''}${m.error ? ' · ' + esc(m.error) : ''}</span>
     </div>`).join('');
   const box = $('#chat-messages');
   box.scrollTop = box.scrollHeight;
@@ -399,6 +400,7 @@ function caseFields(item = {}, clients = []) {
       options: Object.entries(STATUS_LABEL),
     },
     { name: 'dueDate', label: 'Fecha límite', type: 'date', value: item.dueDate },
+    { name: 'docs', label: 'Documentación necesaria (una línea por documento; se usa en la automatización)', type: 'textarea', value: item.docs },
     { name: 'notes', label: 'Notas', type: 'textarea', value: item.notes },
   ];
 }
@@ -508,7 +510,7 @@ async function renderReminders() {
       <input type="checkbox" class="rem-check" data-id="${esc(r.id)}" ${r.done ? 'checked' : ''}>
       <div class="grow">
         <div class="title" style="${r.done ? 'text-decoration:line-through' : ''}">${esc(r.text)}</div>
-        <div class="sub">${nameOf(r.clientId) ? '👤 ' + esc(nameOf(r.clientId)) + ' · ' : ''}📅 <span style="${overdue ? 'color:var(--danger);font-weight:700' : ''}">${fmtDate(r.dueDate)}</span></div>
+        <div class="sub">${nameOf(r.clientId) ? '👤 ' + esc(nameOf(r.clientId)) + ' · ' : ''}📅 <span style="${overdue ? 'color:var(--danger);font-weight:700' : ''}">${fmtDate(r.dueDate)}</span>${r.sendToClient ? (r.sentToClientAt ? ' · 📨 enviado al cliente' : ' · 📨 se enviará al cliente') : ''}</div>
       </div>
       <button class="btn small danger rem-del" data-id="${esc(r.id)}">Eliminar</button>
     </div>`;
@@ -537,11 +539,88 @@ $('#btn-new-reminder').addEventListener('click', async () => {
       name: 'clientId', label: 'Cliente (opcional)', type: 'select',
       options: [['', '— Ninguno —'], ...clients.map((c) => [c.id, c.name])],
     },
+    {
+      name: 'sendToClient', label: 'Enviar por WhatsApp al cliente ese día', type: 'select',
+      value: 'no', options: [['no', 'No, es solo para mí'], ['si', 'Sí, enviárselo al cliente']],
+    },
   ], async (v) => {
     if (!v.clientId) v.clientId = null;
+    v.sendToClient = v.sendToClient === 'si';
     await api('reminders', { method: 'POST', body: v });
     await renderReminders();
   });
+});
+
+// ---------------------------------------------------------------------------
+// Automatizaciones
+// ---------------------------------------------------------------------------
+
+const DAY_NAMES = ['D', 'L', 'M', 'X', 'J', 'V', 'S']; // getDay(): 0=domingo
+
+async function renderAutomations() {
+  const s = await api('automations');
+  const daysWrap = $('#auto-days');
+  daysWrap.innerHTML = [1, 2, 3, 4, 5, 6, 0].map((d) =>
+    `<span class="day-chip ${s.businessHours.days.includes(d) ? 'on' : ''}" data-day="${d}">${DAY_NAMES[d]}</span>`).join('');
+  daysWrap.querySelectorAll('.day-chip').forEach((chip) => {
+    chip.addEventListener('click', () => chip.classList.toggle('on'));
+  });
+  $('#auto-open').value = s.businessHours.open;
+  $('#auto-close').value = s.businessHours.close;
+
+  $('#auto-ah-enabled').checked = s.afterHours.enabled;
+  $('#auto-ah-message').value = s.afterHours.message;
+
+  $('#auto-sn-enabled').checked = s.statusNotify.enabled;
+  $('#auto-sn-encurso').checked = s.statusNotify.onEnCurso;
+  $('#auto-sn-encurso-text').value = s.statusNotify.enCursoText;
+  $('#auto-sn-completado').checked = s.statusNotify.onCompletado;
+  $('#auto-sn-completado-text').value = s.statusNotify.completadoText;
+
+  $('#auto-docs-enabled').checked = s.docs.enabled;
+  $('#auto-docs-request').value = s.docs.requestText;
+  $('#auto-docs-days').value = s.docs.followUpDays;
+  $('#auto-docs-followup').value = s.docs.followUpText;
+
+  $('#auto-rem-enabled').checked = s.clientReminders.enabled;
+  $('#auto-rem-text').value = s.clientReminders.text;
+}
+
+$('#btn-auto-save').addEventListener('click', async () => {
+  const days = [...document.querySelectorAll('#auto-days .day-chip.on')]
+    .map((c) => Number(c.dataset.day));
+  try {
+    await api('automations', {
+      method: 'PUT',
+      body: {
+        businessHours: { days, open: $('#auto-open').value, close: $('#auto-close').value },
+        afterHours: { enabled: $('#auto-ah-enabled').checked, message: $('#auto-ah-message').value },
+        statusNotify: {
+          enabled: $('#auto-sn-enabled').checked,
+          onEnCurso: $('#auto-sn-encurso').checked,
+          enCursoText: $('#auto-sn-encurso-text').value,
+          onCompletado: $('#auto-sn-completado').checked,
+          completadoText: $('#auto-sn-completado-text').value,
+        },
+        docs: {
+          enabled: $('#auto-docs-enabled').checked,
+          requestText: $('#auto-docs-request').value,
+          followUpDays: Number($('#auto-docs-days').value) || 3,
+          followUpText: $('#auto-docs-followup').value,
+        },
+        clientReminders: { enabled: $('#auto-rem-enabled').checked, text: $('#auto-rem-text').value },
+      },
+    });
+    alert('Automatizaciones guardadas ✔');
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+$('#btn-auto-run').addEventListener('click', async () => {
+  const result = await api('automations/run', { method: 'POST' });
+  const n = result.executed.length;
+  alert(n ? `Se han ejecutado ${n} tareas (mira los chats).` : 'No había tareas pendientes dentro del horario configurado.');
 });
 
 // ---------------------------------------------------------------------------

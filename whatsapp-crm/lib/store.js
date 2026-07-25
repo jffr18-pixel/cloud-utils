@@ -19,6 +19,8 @@ const EMPTY_DB = {
   reminders: [],
 };
 
+// db.settings es un objeto (configuración de automatizaciones, etc.).
+
 let db = null;
 let saveTimer = null;
 
@@ -32,6 +34,7 @@ function load() {
   for (const key of Object.keys(EMPTY_DB)) {
     if (!Array.isArray(db[key])) db[key] = [];
   }
+  if (!db.settings || typeof db.settings !== 'object') db.settings = {};
   return db;
 }
 

@@ -15,7 +15,21 @@ por WhatsApp. Sin dependencias externas: solo necesitas **Node.js 18 o superior*
   documentación, completado) y fecha límite con aviso de vencidos.
 - **📝 Plantillas**: respuestas frecuentes reutilizables desde el chat, con la
   variable `{nombre}` que se sustituye por el nombre del cliente.
-- **⏰ Recordatorios**: seguimientos con fecha, opcionalmente ligados a un cliente.
+- **⏰ Recordatorios**: seguimientos con fecha, opcionalmente ligados a un
+  cliente, con opción de enviárselos por WhatsApp automáticamente ese día.
+- **⚡ Automatizaciones** (pestaña propia, todas configurables y desactivadas
+  por defecto):
+  - *Respuesta fuera de horario*: contesta automáticamente cuando un cliente
+    escribe fuera del horario configurado (una vez por cliente cada 12 h).
+  - *Avisos de expediente*: al pasar un trámite a «en curso» o «completado»,
+    el cliente recibe el aviso solo.
+  - *Petición y reclamo de documentación*: al poner un expediente en
+    «esperando documentación» se envía la lista de documentos del expediente,
+    y si el cliente no responde en N días se le reclama una vez.
+  - *Recordatorios al cliente*: los recordatorios marcados para enviar se
+    mandan por WhatsApp en su fecha, dentro del horario laboral.
+  Los mensajes automáticos quedan marcados con 🤖 en el chat y las variables
+  `{nombre}`, `{tramite}`, `{documentos}` y `{texto}` se rellenan solas.
 - **📊 Panel**: resumen de clientes, mensajes sin leer, expedientes abiertos y
   vencidos, y recordatorios del día.
 
@@ -115,7 +129,15 @@ Puntos clave:
 > durante las 24 h siguientes al último mensaje del cliente. Pasado ese plazo,
 > Meta solo permite iniciar conversación con *plantillas aprobadas* (HSM).
 > Como en una gestoría casi siempre es el cliente quien escribe, en la práctica
-> esto rara vez es un problema.
+> esto rara vez es un problema. Ten en cuenta que afecta a las automatizaciones
+> que inician conversación (avisos de expediente, reclamos y recordatorios): si
+> el cliente lleva más de 24 h sin escribir, ese envío puede ser rechazado por
+> WhatsApp salvo que uses una plantilla aprobada. El mensaje quedará marcado
+> con ⚠️ error en el chat y podrás reenviarlo a mano o con plantilla.
+
+> **Consejo con Coexistence**: si usas la respuesta automática fuera de horario
+> del CRM, desactiva los mensajes de bienvenida/ausencia de la propia app
+> WhatsApp Business para no enviar respuestas duplicadas.
 
 ## Variables de entorno
 

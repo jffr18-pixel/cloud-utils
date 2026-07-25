@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const { load, save, newId, normalizePhone } = require('./lib/store');
 const wa = require('./lib/whatsapp');
+const auto = require('./lib/automations');
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -96,7 +97,7 @@ function conversationSummaries(db) {
   return out;
 }
 
-async function sendMessageToClient(db, client, text) {
+async function sendMessageToClient(db, client, text, opts = {}) {
   let sendResult = { demo: true, id: null };
   let status = 'demo';
   try {
@@ -115,6 +116,7 @@ async function sendMessageToClient(db, client, text) {
     status, // demo | sent | delivered | read | error
     error: sendResult.error || null,
     waMessageId: sendResult.id,
+    auto: Boolean(opts.auto), // enviado por una automatización
     read: true,
   };
   db.messages.push(msg);
@@ -122,12 +124,19 @@ async function sendMessageToClient(db, client, text) {
   return msg;
 }
 
-function handleWebhookPayload(db, body) {
+// Envío usado por las automatizaciones (marca el mensaje como automático).
+function autoSender(db) {
+  return (client, text) => sendMessageToClient(db, client, text, { auto: true });
+}
+
+async function handleWebhookPayload(db, body) {
   const { incoming, echoes, statuses } = wa.parseWebhook(body);
+  const freshClients = new Map();
   for (const inMsg of incoming) {
     if (db.messages.some((m) => m.waMessageId && m.waMessageId === inMsg.waMessageId)) continue;
     const phone = normalizePhone(inMsg.from);
     const client = ensureClientForPhone(db, phone, inMsg.name);
+    if (!inMsg.historic) freshClients.set(client.id, client);
     db.messages.push({
       id: newId('msg'),
       clientId: client.id,
@@ -167,6 +176,11 @@ function handleWebhookPayload(db, body) {
     }
   }
   if (incoming.length || echoes.length || statuses.length) save();
+
+  // Respuesta automática fuera de horario a los mensajes recién llegados.
+  for (const client of freshClients.values()) {
+    await auto.maybeAutoReply(db, client, autoSender(db));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -310,6 +324,7 @@ async function handleApi(req, res, url) {
       read: false,
     });
     save();
+    await auto.maybeAutoReply(db, client, autoSender(db));
     return json(res, 201, { ok: true, clientId: client.id });
   }
 
@@ -331,23 +346,35 @@ async function handleApi(req, res, url) {
         type: b.type || 'otro', // fiscal | laboral | contabilidad | extranjeria | vehiculos | otro
         status: b.status || 'pendiente', // pendiente | en_curso | esperando_documentacion | completado
         dueDate: b.dueDate || null,
+        docs: b.docs || '', // documentación necesaria (para la automatización)
         notes: b.notes || '',
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
       db.cases.push(item);
       save();
+      if (item.status !== 'pendiente') {
+        const client = db.clients.find((c) => c.id === item.clientId);
+        await auto.onCaseStatusChanged(db, item, client, autoSender(db));
+        save();
+      }
       return json(res, 201, item);
     }
     const item = db.cases.find((c) => c.id === id);
     if (!item) return json(res, 404, { error: 'Expediente no encontrado' });
     if (req.method === 'PUT') {
       const b = await readBody(req);
-      for (const key of ['title', 'type', 'status', 'dueDate', 'notes']) {
+      const oldStatus = item.status;
+      for (const key of ['title', 'type', 'status', 'dueDate', 'docs', 'notes']) {
         if (b[key] !== undefined) item[key] = b[key];
       }
       item.updatedAt = Date.now();
       save();
+      if (item.status !== oldStatus) {
+        const client = db.clients.find((c) => c.id === item.clientId);
+        await auto.onCaseStatusChanged(db, item, client, autoSender(db));
+        save();
+      }
       return json(res, 200, item);
     }
     if (req.method === 'DELETE') {
@@ -384,6 +411,26 @@ async function handleApi(req, res, url) {
     }
   }
 
+  // --- Automatizaciones -----------------------------------------------------
+  if (resource === 'automations') {
+    if (req.method === 'GET' && !id) {
+      return json(res, 200, auto.getSettings(db));
+    }
+    if (req.method === 'PUT' && !id) {
+      const b = await readBody(req);
+      const settings = auto.setSettings(db, b);
+      save();
+      return json(res, 200, settings);
+    }
+    // Ejecuta ya las tareas programadas (reclamos y recordatorios); útil
+    // para probar sin esperar al planificador.
+    if (req.method === 'POST' && id === 'run') {
+      const actions = await auto.runScheduled(db, autoSender(db));
+      if (actions.length) save();
+      return json(res, 200, { executed: actions });
+    }
+  }
+
   // --- Recordatorios --------------------------------------------------------
   if (resource === 'reminders') {
     if (req.method === 'GET') {
@@ -398,6 +445,8 @@ async function handleApi(req, res, url) {
         clientId: b.clientId || null,
         text: String(b.text).trim(),
         dueDate: b.dueDate || null,
+        sendToClient: Boolean(b.sendToClient),
+        sentToClientAt: null,
         done: false,
         createdAt: Date.now(),
       };
@@ -413,6 +462,7 @@ async function handleApi(req, res, url) {
       if (b.dueDate !== undefined) r.dueDate = b.dueDate;
       if (b.done !== undefined) r.done = Boolean(b.done);
       if (b.clientId !== undefined) r.clientId = b.clientId;
+      if (b.sendToClient !== undefined) r.sendToClient = Boolean(b.sendToClient);
       save();
       return json(res, 200, r);
     }
@@ -449,7 +499,7 @@ const server = http.createServer(async (req, res) => {
       }
       if (req.method === 'POST') {
         const body = await readBody(req);
-        handleWebhookPayload(load(), body);
+        await handleWebhookPayload(load(), body);
         return json(res, 200, { ok: true });
       }
     }
@@ -472,6 +522,15 @@ const server = http.createServer(async (req, res) => {
     return json(res, 500, { error: err.message });
   }
 });
+
+// Planificador: cada 5 minutos revisa reclamos de documentación pendientes y
+// recordatorios que haya que enviar al cliente (solo envía en horario laboral).
+setInterval(() => {
+  const db = load();
+  auto.runScheduled(db, autoSender(db))
+    .then((actions) => { if (actions.length) save(); })
+    .catch((err) => console.error('Error en automatizaciones:', err.message));
+}, 5 * 60 * 1000);
 
 server.listen(PORT, () => {
   const mode = wa.isConfigured()
