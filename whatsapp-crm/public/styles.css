@@ -101,13 +101,35 @@ body {
 
 .nav-btn {
   position: relative;
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; gap: 11px;
   background: none; border: none; color: rgba(255, 255, 255, .78);
   padding: 10px 14px; border-radius: 10px;
   font-size: 13.5px; cursor: pointer; text-align: left;
   font-family: inherit; font-weight: 500; letter-spacing: .1px;
   transition: background .15s, color .15s;
 }
+
+/* Iconos de marca: trazo lila, se aclaran a blanco en activo/hover. */
+.nav-ico {
+  width: 20px; height: 20px; min-width: 20px; flex-shrink: 0;
+  fill: none; stroke: #b9a6dd; stroke-width: 1.7;
+  stroke-linecap: round; stroke-linejoin: round;
+  transition: stroke .15s, transform .15s;
+}
+.nav-btn:hover .nav-ico { stroke: #fff; }
+.nav-btn.active .nav-ico { stroke: #fff; }
+.nav-btn.active:hover .nav-ico { transform: none; }
+/* Icono con relleno (día de la agenda) hereda el color del trazo. */
+.nav-ico [fill="currentColor"] { fill: currentColor; color: #b9a6dd; }
+.nav-btn.active .nav-ico [fill="currentColor"], .nav-btn:hover .nav-ico [fill="currentColor"] { color: #fff; }
+
+/* Iconos en botones de la interfaz (adjuntar, nota…). */
+.btn-icon { display: inline-flex; align-items: center; justify-content: center; padding: 8px 11px; }
+.ui-ico {
+  width: 18px; height: 18px; fill: none; stroke: var(--accent-dark);
+  stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+}
+#btn-note-mode.active .ui-ico { stroke: var(--amber); }
 .nav-btn:hover { background: rgba(255, 255, 255, .08); color: #fff; }
 .nav-btn.active {
   background: linear-gradient(90deg, rgba(156, 134, 201, .28), rgba(156, 134, 201, .14));

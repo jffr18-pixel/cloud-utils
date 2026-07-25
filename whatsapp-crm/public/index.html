@@ -11,6 +11,23 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23211e26'/><text x='50' y='62' font-family='Arial,sans-serif' font-size='44' font-weight='bold' fill='%23ffffff' text-anchor='middle'>BZ</text></svg>">
 </head>
 <body>
+  <!-- Iconos de marca (sprite SVG, trazo lila de Burocracia Zero) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <defs>
+      <symbol id="ico-panel" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></symbol>
+      <symbol id="ico-whatsapp" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-12.4 7.5L4 20l1.1-4.4A8.5 8.5 0 1 1 21 11.5Z"/><path d="M8.5 9.2c0 3.4 2.9 6.3 6.3 6.3"/></symbol>
+      <symbol id="ico-clients" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.2a3.2 3.2 0 0 1 0 5.9"/><path d="M17.5 14.2A5.5 5.5 0 0 1 20.5 19"/></symbol>
+      <symbol id="ico-cases" viewBox="0 0 24 24"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2.5h7A1.5 1.5 0 0 1 19 10v7.5A1.5 1.5 0 0 1 17.5 19h-13A1.5 1.5 0 0 1 3 17.5Z"/></symbol>
+      <symbol id="ico-appointments" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3"/><path d="M7.5 13h3v3h-3z" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="ico-templates" viewBox="0 0 24 24"><path d="M6 3.5h8L18.5 8v12.5a0 0 0 0 1 0 0H6a1.5 1.5 0 0 1-1.5-1.5V5A1.5 1.5 0 0 1 6 3.5Z"/><path d="M13.5 3.5V8h4.5M8 12.5h7M8 16h7"/></symbol>
+      <symbol id="ico-reminders" viewBox="0 0 24 24"><circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 1.5M12 3.5V2M9 2.5h6"/></symbol>
+      <symbol id="ico-campaigns" viewBox="0 0 24 24"><path d="M4 10v4a1.5 1.5 0 0 0 1.5 1.5H8l7 4.5V4L8 8.5H5.5A1.5 1.5 0 0 0 4 10Z"/><path d="M18 8.5a5 5 0 0 1 0 7"/></symbol>
+      <symbol id="ico-automations" viewBox="0 0 24 24"><path d="M13 2.5 4.5 13.5H11l-1 8L19.5 10H13Z"/></symbol>
+      <symbol id="ico-logout" viewBox="0 0 24 24"><path d="M14 4.5H6A1.5 1.5 0 0 0 4.5 6v12A1.5 1.5 0 0 0 6 19.5h8"/><path d="M17 8.5 20.5 12 17 15.5M20 12H10"/></symbol>
+      <symbol id="ico-attach" viewBox="0 0 24 24"><path d="M20 11.5 12 19a4.5 4.5 0 0 1-6.5-6.5l8-8a3 3 0 0 1 4.5 4.5l-8 8a1.5 1.5 0 0 1-2-2l7.5-7.5"/></symbol>
+      <symbol id="ico-note" viewBox="0 0 24 24"><path d="M5 4.5h14A1.5 1.5 0 0 1 20.5 6v9L15 20.5H5A1.5 1.5 0 0 1 3.5 19V6A1.5 1.5 0 0 1 5 4.5Z"/><path d="M20 15h-5v5M7 9h10M7 12.5h6"/></symbol>
+    </defs>
+  </svg>
   <div class="app">
     <nav class="sidebar">
       <div class="brand">
@@ -18,17 +35,17 @@
         <div class="brand-tagline">Simplificamos tus trámites</div>
         <div class="brand-sub" id="connection-badge" style="cursor:pointer" title="Clic para probar la conexión con WhatsApp">…</div>
       </div>
-      <button class="nav-btn active" data-view="dashboard">📊 <span class="nav-label">Panel</span></button>
-      <button class="nav-btn" data-view="inbox">💬 <span class="nav-label">WhatsApp</span> <span class="badge hidden" id="nav-unread"></span></button>
-      <button class="nav-btn" data-view="clients">👥 <span class="nav-label">Clientes</span></button>
-      <button class="nav-btn" data-view="cases">📁 <span class="nav-label">Expedientes</span></button>
-      <button class="nav-btn" data-view="appointments">📅 <span class="nav-label">Citas</span></button>
-      <button class="nav-btn" data-view="templates">📝 <span class="nav-label">Plantillas</span></button>
-      <button class="nav-btn" data-view="reminders">⏰ <span class="nav-label">Recordatorios</span></button>
-      <button class="nav-btn" data-view="campaigns">📣 <span class="nav-label">Campañas</span></button>
-      <button class="nav-btn" data-view="automations">⚡ <span class="nav-label">Automatizaciones</span></button>
+      <button class="nav-btn active" data-view="dashboard"><svg class="nav-ico"><use href="#ico-panel"/></svg> <span class="nav-label">Panel</span></button>
+      <button class="nav-btn" data-view="inbox"><svg class="nav-ico"><use href="#ico-whatsapp"/></svg> <span class="nav-label">WhatsApp</span> <span class="badge hidden" id="nav-unread"></span></button>
+      <button class="nav-btn" data-view="clients"><svg class="nav-ico"><use href="#ico-clients"/></svg> <span class="nav-label">Clientes</span></button>
+      <button class="nav-btn" data-view="cases"><svg class="nav-ico"><use href="#ico-cases"/></svg> <span class="nav-label">Expedientes</span></button>
+      <button class="nav-btn" data-view="appointments"><svg class="nav-ico"><use href="#ico-appointments"/></svg> <span class="nav-label">Citas</span></button>
+      <button class="nav-btn" data-view="templates"><svg class="nav-ico"><use href="#ico-templates"/></svg> <span class="nav-label">Plantillas</span></button>
+      <button class="nav-btn" data-view="reminders"><svg class="nav-ico"><use href="#ico-reminders"/></svg> <span class="nav-label">Recordatorios</span></button>
+      <button class="nav-btn" data-view="campaigns"><svg class="nav-ico"><use href="#ico-campaigns"/></svg> <span class="nav-label">Campañas</span></button>
+      <button class="nav-btn" data-view="automations"><svg class="nav-ico"><use href="#ico-automations"/></svg> <span class="nav-label">Automatizaciones</span></button>
       <div style="flex:1"></div>
-      <button class="nav-btn hidden" id="btn-logout">🚪 <span class="nav-label">Cerrar sesión</span></button>
+      <button class="nav-btn hidden" id="btn-logout"><svg class="nav-ico"><use href="#ico-logout"/></svg> <span class="nav-label">Cerrar sesión</span></button>
     </nav>
 
     <main class="main">
@@ -86,8 +103,8 @@
                 <select id="tpl-select" title="Insertar plantilla">
                   <option value="">📝 Plantilla…</option>
                 </select>
-                <button class="btn" id="btn-attach" title="Adjuntar documento o imagen">📎</button>
-                <button class="btn" id="btn-note-mode" title="Nota interna: se guarda en el chat pero NO se envía al cliente">🗒️</button>
+                <button class="btn btn-icon" id="btn-attach" title="Adjuntar documento o imagen"><svg class="ui-ico"><use href="#ico-attach"/></svg></button>
+                <button class="btn btn-icon" id="btn-note-mode" title="Nota interna: se guarda en el chat pero NO se envía al cliente"><svg class="ui-ico"><use href="#ico-note"/></svg></button>
                 <input type="file" id="file-input" class="hidden">
                 <textarea id="chat-input" rows="2" placeholder="Escribe un mensaje…"></textarea>
                 <button class="btn primary" id="btn-send">Enviar</button>
