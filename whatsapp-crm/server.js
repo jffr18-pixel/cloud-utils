@@ -159,6 +159,46 @@ const FICHA_PACKS = {
       notes: 'Posible desde el 16/04/2026 (RD 316/2026, art. 191.7) para titulares de residencia humanitaria anual por protección internacional. ⚠️ Confirmamos tu documentación exacta según tu caso (cuenta ajena o propia).',
     },
   ],
+  // Prestaciones de la Seguridad Social (INSS). Documentación según la sede
+  // electrónica de la Seguridad Social; se confirma según cada caso.
+  'pensiones-v1': [
+    {
+      title: 'Pensión de jubilación', area: 'pensiones',
+      intro: 'Hola {nombre} 👋 Para tramitar tu pensión de jubilación necesitamos:',
+      docs: '• DNI o NIE del solicitante (y del cónyuge si lo hubiera)\n• Número de cuenta bancaria (IBAN) a tu nombre\n• Informe de vida laboral\n• Certificado de empresa o documento de cese en la actividad\n• Libro de familia o certificado de matrimonio (si hay cónyuge a cargo)',
+      notes: 'Puede solicitarse hasta 3 meses antes de la fecha de jubilación. Revisamos tu vida laboral y calculamos la mejor fecha para tu pensión.',
+    },
+    {
+      title: 'Pensión de incapacidad permanente', area: 'pensiones',
+      intro: 'Hola {nombre} 👋 Para tu pensión de incapacidad permanente necesitamos:',
+      docs: '• DNI o NIE\n• Número de cuenta bancaria (IBAN) a tu nombre\n• Informes médicos y pruebas que acrediten tu estado de salud\n• Informe de vida laboral\n• Partes de baja de la incapacidad temporal, si procede',
+      notes: 'El Equipo de Valoración de Incapacidades (EVI) valora el grado. Preparamos y presentamos todo el expediente médico y laboral.',
+    },
+    {
+      title: 'Pensión de viudedad', area: 'pensiones',
+      intro: 'Hola {nombre} 👋 Para tu pensión de viudedad necesitamos:',
+      docs: '• DNI o NIE del solicitante\n• Número de cuenta bancaria (IBAN) a tu nombre\n• Certificado de defunción del cónyuge o pareja\n• Libro de familia o certificado de matrimonio (o de pareja de hecho registrada)\n• Datos o vida laboral de la persona fallecida (si se dispone)',
+      notes: 'Conviene solicitarla cuanto antes. Puede compatibilizarse con otros ingresos. ⚠️ Confirmamos tu caso.',
+    },
+    {
+      title: 'Pensión de orfandad', area: 'pensiones',
+      intro: 'Hola {nombre} 👋 Para la pensión de orfandad necesitamos:',
+      docs: '• DNI o NIE del huérfano (o del representante si es menor)\n• Número de cuenta bancaria (IBAN)\n• Certificado de defunción del progenitor\n• Libro de familia o certificado de nacimiento\n• Si es mayor de edad: justificante de estudios o de la situación que da derecho',
+      notes: 'Se suele solicitar junto con la viudedad cuando procede.',
+    },
+    {
+      title: 'Ingreso Mínimo Vital (IMV)', area: 'pensiones',
+      intro: 'Hola {nombre} 👋 Para solicitar el Ingreso Mínimo Vital necesitamos:',
+      docs: '• DNI o NIE de todos los miembros de la unidad de convivencia\n• Certificado de empadronamiento colectivo histórico\n• Número de cuenta bancaria (IBAN)\n• Justificantes de ingresos y patrimonio de la unidad de convivencia\n• Libro de familia (si hay menores)',
+      notes: '⚠️ La documentación exacta depende de tu unidad de convivencia. Revisamos si cumples los requisitos económicos antes de presentar.',
+    },
+    {
+      title: 'Prestación por nacimiento y cuidado de menor', area: 'pensiones',
+      intro: 'Hola {nombre} 👋 Para la prestación por nacimiento y cuidado de menor (maternidad/paternidad) necesitamos:',
+      docs: '• DNI, NIE o pasaporte de los progenitores\n• Número de cuenta bancaria (IBAN)\n• Libro de familia o certificado de inscripción del hijo en el Registro Civil\n• Informe de maternidad del Servicio Público de Salud\n• Certificado de empresa con la fecha de inicio del descanso (trabajadores por cuenta ajena)',
+      notes: 'Se solicita tras el nacimiento (o la resolución de adopción/acogimiento).',
+    },
+  ],
 };
 
 // Aplica los packs de fichas que aún no se hayan cargado en esta base de datos.

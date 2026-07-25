@@ -625,7 +625,7 @@ async function main() {
 
     console.log('Fichas de trámite');
     const fichas = await req('GET', '/api/fichas');
-    assert(fichas.status === 200 && fichas.data.length >= 19, 'fichas predefinidas precargadas (ejemplos + tráfico + extranjería)');
+    assert(fichas.status === 200 && fichas.data.length >= 25, 'fichas predefinidas precargadas (ejemplos + tráfico + extranjería + prestaciones)');
     assert(fichas.data.some((f) => f.title === 'Arraigo social' && f.area === 'extranjeria'),
       'incluye la ficha de Arraigo social en extranjería');
     // Pack de tráfico (DGT).
@@ -649,6 +649,14 @@ async function main() {
     assert(extranjeria.some((f) => f.title.startsWith('Modificación por razones humanitarias')
       && f.docs.includes('EX-03') && f.notes.includes('316/2026')),
       'ficha de modificación por razones humanitarias con formularios y RD 316/2026');
+
+    // Pack de prestaciones de la Seguridad Social.
+    const pensiones = fichas.data.filter((f) => f.area === 'pensiones');
+    assert(pensiones.length >= 6, 'el pack de prestaciones añade sus fichas');
+    assert(pensiones.some((f) => f.title === 'Pensión de jubilación' && f.docs.includes('vida laboral')),
+      'pensión de jubilación con el informe de vida laboral');
+    assert(pensiones.some((f) => f.title === 'Ingreso Mínimo Vital (IMV)' && f.docs.includes('unidad de convivencia')),
+      'IMV con la documentación de la unidad de convivencia');
 
     // Idempotencia: volver a pedir las fichas no las duplica.
     const fichas2 = await req('GET', '/api/fichas');
