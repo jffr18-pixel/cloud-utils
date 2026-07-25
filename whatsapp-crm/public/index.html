@@ -22,6 +22,7 @@
       <button class="nav-btn" data-view="inbox">💬 WhatsApp <span class="badge hidden" id="nav-unread"></span></button>
       <button class="nav-btn" data-view="clients">👥 Clientes</button>
       <button class="nav-btn" data-view="cases">📁 Expedientes</button>
+      <button class="nav-btn" data-view="appointments">📅 Citas</button>
       <button class="nav-btn" data-view="templates">📝 Plantillas</button>
       <button class="nav-btn" data-view="reminders">⏰ Recordatorios</button>
       <button class="nav-btn" data-view="campaigns">📣 Campañas</button>
@@ -35,6 +36,17 @@
       <section id="view-dashboard" class="view">
         <h1>Panel</h1>
         <div class="cards" id="dash-cards"></div>
+        <div class="charts-row">
+          <div class="chart-card">
+            <h3>Mensajes · últimos 14 días</h3>
+            <div class="chart-legend" id="legend-messages"></div>
+            <div id="chart-messages"></div>
+          </div>
+          <div class="chart-card">
+            <h3>Expedientes por estado</h3>
+            <div id="chart-cases"></div>
+          </div>
+        </div>
         <h2>Conversaciones recientes</h2>
         <div id="dash-recent" class="list"></div>
       </section>
@@ -58,7 +70,15 @@
                   <div class="chat-name" id="chat-name"></div>
                   <div class="chat-phone" id="chat-phone"></div>
                 </div>
-                <button class="btn small" id="btn-open-client">Ver ficha</button>
+                <div class="chat-tools">
+                  <select id="conv-status" title="Estado de la conversación">
+                    <option value="abierta">🟢 Abierta</option>
+                    <option value="pendiente">🟡 Pendiente</option>
+                    <option value="resuelta">⚪ Resuelta</option>
+                  </select>
+                  <select id="conv-assign" title="Asignar a"><option value="">Sin asignar</option></select>
+                  <button class="btn small" id="btn-open-client">Ver ficha</button>
+                </div>
               </div>
               <div class="chat-messages" id="chat-messages"></div>
               <div class="chat-compose">
@@ -66,6 +86,7 @@
                   <option value="">📝 Plantilla…</option>
                 </select>
                 <button class="btn" id="btn-attach" title="Adjuntar documento o imagen">📎</button>
+                <button class="btn" id="btn-note-mode" title="Nota interna: se guarda en el chat pero NO se envía al cliente">🗒️</button>
                 <input type="file" id="file-input" class="hidden">
                 <textarea id="chat-input" rows="2" placeholder="Escribe un mensaje…"></textarea>
                 <button class="btn primary" id="btn-send">Enviar</button>
@@ -125,6 +146,20 @@
         </div>
         <div id="reminder-list" class="list"></div>
       </section>
+      <!-- Citas -->
+      <section id="view-appointments" class="view hidden">
+        <div class="panel-head">
+          <h1>Citas</h1>
+          <button class="btn primary" id="btn-new-appt">＋ Nueva cita</button>
+        </div>
+        <div class="filters" id="appt-filters">
+          <button class="chip active" data-appt="proximas">Próximas</button>
+          <button class="chip" data-appt="pasadas">Pasadas</button>
+          <button class="chip" data-appt="canceladas">Canceladas</button>
+        </div>
+        <div id="appt-list"></div>
+      </section>
+
       <!-- Campañas -->
       <section id="view-campaigns" class="view hidden">
         <h1>Campañas por etiqueta</h1>
@@ -193,6 +228,22 @@
           <h3><label><input type="checkbox" id="auto-rem-enabled"> ⏰ Enviar recordatorios al cliente</label></h3>
           <p class="hint">Los recordatorios con fecha y con la opción «Enviar por WhatsApp al cliente» se mandan automáticamente ese día, dentro del horario.</p>
           <textarea id="auto-rem-text" rows="2"></textarea>
+        </div>
+
+        <div class="auto-card">
+          <h3><label><input type="checkbox" id="auto-appt-enabled"> 📅 Confirmación y recordatorio de citas</label></h3>
+          <p class="hint">Al dar una cita se envía la confirmación al momento, y el recordatorio el día anterior (dentro del horario). Variables: <code>{nombre}</code>, <code>{fecha}</code>, <code>{hora}</code>, <code>{motivo}</code>.</p>
+          <label>Mensaje de confirmación</label>
+          <textarea id="auto-appt-confirm" rows="2"></textarea>
+          <label>Recordatorio del día anterior</label>
+          <textarea id="auto-appt-remind" rows="2"></textarea>
+        </div>
+
+        <div class="auto-card">
+          <h3>💾 Copias de seguridad</h3>
+          <p class="hint">Cada día se guarda automáticamente una copia de todos los datos (clientes, chats, expedientes, citas…) y se conservan las últimas 14. Los archivos adjuntos están en la carpeta <code>data/uploads</code>.</p>
+          <button class="btn small" id="btn-backup-now">＋ Crear copia ahora</button>
+          <div id="backup-list" class="list" style="margin-top:10px"></div>
         </div>
 
         <div class="auto-card">

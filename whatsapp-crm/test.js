@@ -413,6 +413,70 @@ async function main() {
     assert(mariaLast.text.includes('Firma pendiente') && !mariaLast.viaTemplate,
       'con la ventana abierta se sigue usando texto libre');
 
+    console.log('Citas');
+    await req('PUT', '/api/automations', { appointments: { enabled: true } });
+    const tomorrow = (() => {
+      const t = new Date();
+      t.setDate(t.getDate() + 1);
+      return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+    })();
+    const appt = await req('POST', '/api/appointments', {
+      clientId, date: tomorrow, time: '10:30', reason: 'Firma declaración renta',
+    });
+    assert(appt.status === 201 && appt.data.status === 'activa', 'cita creada');
+    assert(Boolean(appt.data.confirmationSentAt), 'confirmación de cita enviada al crearla');
+    let mariaAppt = (await req('GET', `/api/messages?clientId=${clientId}`)).data;
+    assert(mariaAppt[mariaAppt.length - 1].text.includes('10:30'), 'la confirmación incluye la hora');
+    const runAppt = await req('POST', '/api/automations/run');
+    assert(runAppt.data.executed.some((a) => a.type === 'appointment_reminder'),
+      'recordatorio del día anterior enviado');
+    const runAppt2 = await req('POST', '/api/automations/run');
+    assert(!runAppt2.data.executed.some((a) => a.type === 'appointment_reminder'),
+      'el recordatorio de cita no se duplica');
+    const cancel = await req('PUT', `/api/appointments/${appt.data.id}`, { status: 'cancelada' });
+    assert(cancel.data.status === 'cancelada', 'cita cancelable');
+    const badAppt = await req('POST', '/api/appointments', { clientId, date: tomorrow });
+    assert(badAppt.status === 400, 'cita sin hora rechazada');
+
+    console.log('Notas internas y estados de conversación');
+    const note = await req('POST', '/api/messages', { clientId, text: 'Prefiere que la llamemos por las tardes', note: true });
+    assert(note.status === 201 && note.data.direction === 'note', 'nota interna creada sin enviarse');
+    const meta = await req('PUT', `/api/clients/${clientId}`, { convStatus: 'pendiente', assignedTo: 'carmen' });
+    assert(meta.data.convStatus === 'pendiente' && meta.data.assignedTo === 'carmen', 'estado y asignación guardados');
+    const convsMeta = (await req('GET', '/api/conversations')).data.find((c) => c.clientId === clientId);
+    assert(convsMeta.convStatus === 'pendiente' && convsMeta.assignedTo === 'carmen',
+      'la bandeja refleja estado y persona asignada');
+    const badStatus = await req('PUT', `/api/clients/${clientId}`, { convStatus: 'inventado' });
+    assert(badStatus.data.convStatus === 'pendiente', 'estados de conversación no válidos se ignoran');
+
+    console.log('Estadísticas');
+    const stats = await req('GET', '/api/stats');
+    assert(stats.data.messagesByDay.length === 14, 'serie de 14 días');
+    assert(stats.data.messagesThisWeek > 0, 'mensajes de la semana contados');
+    assert((stats.data.casesByStatus.completado || 0) >= 1, 'expedientes por estado');
+    assert(stats.data.avgResponseMinutes === null || typeof stats.data.avgResponseMinutes === 'number',
+      'tiempo medio de respuesta calculado');
+
+    console.log('Copias de seguridad');
+    const bk = await req('POST', '/api/backups');
+    assert(bk.status === 201 && bk.data.name.startsWith('backup-'), 'copia creada bajo demanda');
+    const bkList = await req('GET', '/api/backups');
+    assert(bkList.data.length >= 1, 'listado de copias');
+    const bkDown = await fetch(`${BASE}/api/backups/${bk.data.name}`);
+    assert(bkDown.status === 200 && bkDown.headers.get('content-type') === 'application/gzip',
+      'descarga de la copia en gzip');
+    const bkBad = await fetch(`${BASE}/api/backups/..%2F..%2Fdb.json`);
+    assert(bkBad.status === 404, 'nombres de copia maliciosos rechazados');
+
+    console.log('Documentos por expediente');
+    const link = await req('PUT', `/api/messages/${fileMsg.data.id}`, { caseId: kase.data.id });
+    assert(link.status === 200 && link.data.caseId === kase.data.id, 'adjunto vinculado al expediente');
+    const files = await req('GET', `/api/cases/${kase.data.id}/files`);
+    assert(files.data.length === 1 && files.data[0].filename === 'justificante.pdf',
+      'el expediente lista sus documentos');
+    const badLink = await req('PUT', `/api/messages/${fileMsg.data.id}`, { caseId: 'exp_inexistente' });
+    assert(badLink.status === 404, 'vínculo a expediente inexistente rechazado');
+
     console.log('Prueba de conexión');
     const testConn = await req('GET', '/api/test-connection');
     assert(testConn.status === 200 && testConn.data.ok === false

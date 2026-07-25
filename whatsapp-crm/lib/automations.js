@@ -39,6 +39,12 @@ const DEFAULTS = {
     enabled: false,
     text: '⏰ Recordatorio de tu gestoría: {texto}',
   },
+  // Citas: confirmación al reservar y recordatorio el día anterior.
+  appointments: {
+    enabled: false,
+    confirmText: 'Hola {nombre}, te confirmamos tu cita en Burocracia Zero el {fecha} a las {hora}. Motivo: {motivo}. Si no puedes venir, avísanos por aquí. ¡Gracias!',
+    remindText: 'Hola {nombre}, te recordamos tu cita de mañana ({fecha}) a las {hora} en Burocracia Zero. ¡Te esperamos!',
+  },
   // Plantilla aprobada de Meta para cuando la ventana de 24 h está cerrada
   // (el cliente lleva más de 24 h sin escribir). Debe crearse y aprobarse en
   // YCloud/Meta con dos variables: {{1}} = nombre del cliente, {{2}} = texto.
@@ -48,6 +54,30 @@ const DEFAULTS = {
     lang: 'es',
   },
 };
+
+// "2026-07-25" → "25/07/2026"
+function prettyDate(iso) {
+  if (!iso) return '';
+  const [y, m, d] = String(iso).split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function appointmentVars(client, appt) {
+  return {
+    nombre: firstName(client),
+    fecha: prettyDate(appt.date),
+    hora: appt.time || '',
+    motivo: appt.reason || 'consulta',
+  };
+}
+
+// Confirmación al crear una cita (la llama el servidor).
+async function onAppointmentCreated(db, appt, client, send) {
+  const s = getSettings(db);
+  if (!s.appointments.enabled || !client) return;
+  await send(client, fillTemplate(s.appointments.confirmText, appointmentVars(client, appt)));
+  appt.confirmationSentAt = Date.now();
+}
 
 // La ventana de servicio de WhatsApp: 24 h desde el último mensaje del cliente.
 function isWindowOpen(db, clientId, now = Date.now()) {
@@ -169,6 +199,21 @@ async function runScheduled(db, send, now = new Date()) {
     }
   }
 
+  // Recordatorio de cita: se envía el día anterior.
+  if (s.appointments.enabled) {
+    const t = new Date(now);
+    t.setDate(t.getDate() + 1);
+    const tomorrow = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+    for (const appt of db.appointments) {
+      if (appt.status !== 'activa' || appt.remindedAt || appt.date !== tomorrow) continue;
+      const client = db.clients.find((c) => c.id === appt.clientId);
+      if (!client) continue;
+      await send(client, fillTemplate(s.appointments.remindText, appointmentVars(client, appt)));
+      appt.remindedAt = now.getTime();
+      actions.push({ type: 'appointment_reminder', appointmentId: appt.id });
+    }
+  }
+
   // Recordatorios con fecha de hoy (o vencidos) marcados para enviar al cliente.
   if (s.clientReminders.enabled) {
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -195,7 +240,9 @@ module.exports = {
   isBusinessOpen,
   isWindowOpen,
   fillTemplate,
+  prettyDate,
   maybeAutoReply,
   onCaseStatusChanged,
+  onAppointmentCreated,
   runScheduled,
 };

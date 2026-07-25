@@ -110,8 +110,11 @@ const state = {
   view: 'dashboard',
   clients: [],
   templates: [],
+  users: [],
   activeClientId: null,
   caseFilter: '',
+  apptFilter: 'proximas',
+  noteMode: false,
   lastMessageCount: 0,
 };
 
@@ -134,6 +137,7 @@ async function refreshView() {
     if (state.view === 'inbox') await renderInbox();
     if (state.view === 'clients') await renderClients();
     if (state.view === 'cases') await renderCases();
+    if (state.view === 'appointments') await renderAppointments();
     if (state.view === 'templates') await renderTemplates();
     if (state.view === 'reminders') await renderReminders();
     if (state.view === 'campaigns') await renderCampaigns();
@@ -160,29 +164,109 @@ async function updateUnreadBadge() {
 // ---------------------------------------------------------------------------
 
 async function renderDashboard() {
-  const d = await api('dashboard');
+  const [d, stats] = await Promise.all([api('dashboard'), api('stats')]);
+  const respLbl = stats.avgResponseMinutes === null ? '—'
+    : stats.avgResponseMinutes >= 60
+      ? `${Math.round(stats.avgResponseMinutes / 60)} h`
+      : `${stats.avgResponseMinutes} min`;
   $('#dash-cards').innerHTML = `
     <div class="card"><div class="num">${d.totalClients}</div><div class="lbl">Clientes</div></div>
     <div class="card ${d.unreadMessages ? 'warn' : ''}"><div class="num">${d.unreadMessages}</div><div class="lbl">Mensajes sin leer</div></div>
     <div class="card"><div class="num">${d.openCases}</div><div class="lbl">Expedientes abiertos</div></div>
     <div class="card ${d.casesAwaitingDocs ? 'warn' : ''}"><div class="num">${d.casesAwaitingDocs}</div><div class="lbl">Esperando documentación</div></div>
     <div class="card ${d.overdueCases ? 'alert' : ''}"><div class="num">${d.overdueCases}</div><div class="lbl">Expedientes vencidos</div></div>
-    <div class="card ${d.remindersToday ? 'warn' : ''}"><div class="num">${d.remindersToday}</div><div class="lbl">Recordatorios para hoy</div></div>`;
+    <div class="card ${d.remindersToday ? 'warn' : ''}"><div class="num">${d.remindersToday}</div><div class="lbl">Recordatorios para hoy</div></div>
+    <div class="card"><div class="num">${stats.messagesThisWeek}</div><div class="lbl">Mensajes esta semana</div></div>
+    <div class="card"><div class="num">${respLbl}</div><div class="lbl">Tiempo medio de respuesta (30 d)</div></div>`;
+  renderMessagesChart(stats.messagesByDay);
+  renderCasesChart(stats.casesByStatus);
   $('#dash-recent').innerHTML = d.recentConversations.map(convRowHtml).join('')
     || '<p class="hint">Todavía no hay conversaciones.</p>';
   bindConvRows($('#dash-recent'), true);
+}
+
+// Colores de serie validados (lila de marca + violeta profundo).
+const CHART_IN = '#9c86c9';   // recibidos
+const CHART_OUT = '#5e35b1';  // enviados
+
+// Barras agrupadas: mensajes recibidos/enviados por día.
+function renderMessagesChart(days) {
+  const max = Math.max(1, ...days.map((d) => Math.max(d.in, d.out)));
+  const total = days.reduce((a, d) => a + d.in + d.out, 0);
+  $('#legend-messages').innerHTML = `
+    <span class="key"><span class="swatch" style="background:${CHART_IN}"></span> Recibidos</span>
+    <span class="key"><span class="swatch" style="background:${CHART_OUT}"></span> Enviados</span>`;
+  if (!total) {
+    $('#chart-messages').innerHTML = '<div class="chart-empty">Sin mensajes en los últimos 14 días.</div>';
+    return;
+  }
+  const W = 560; const H = 150; const pad = { l: 4, r: 4, t: 8, b: 18 };
+  const plotH = H - pad.t - pad.b;
+  const group = (W - pad.l - pad.r) / days.length;
+  const barW = Math.max(4, (group - 6) / 2);
+  let bars = '';
+  let labels = '';
+  days.forEach((d, i) => {
+    const x0 = pad.l + i * group + 3;
+    const day = Number(d.date.slice(8));
+    for (const [j, key, color] of [[0, 'in', CHART_IN], [1, 'out', CHART_OUT]]) {
+      const v = d[key];
+      const h = Math.round((v / max) * plotH);
+      const x = x0 + j * (barW + 2);
+      const y = pad.t + plotH - h;
+      if (v > 0) {
+        bars += `<path class="bar" d="M${x},${y + h} v${-Math.max(0, h - 4)} q0,-4 4,-4 h${barW - 8} q4,0 4,4 v${Math.max(0, h - 4)} z" fill="${color}"><title>${d.date}: ${v} ${key === 'in' ? 'recibidos' : 'enviados'}</title></path>`;
+      }
+      if (v === max) {
+        labels += `<text x="${x + barW / 2}" y="${y - 3}" font-size="10" text-anchor="middle" fill="#6f6a78">${v}</text>`;
+      }
+    }
+    if (i % 2 === 0) {
+      labels += `<text x="${x0 + barW}" y="${H - 5}" font-size="9" text-anchor="middle" fill="#6f6a78">${day}</text>`;
+    }
+  });
+  $('#chart-messages').innerHTML =
+    `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Mensajes por día">`
+    + `<line x1="${pad.l}" y1="${pad.t + plotH}" x2="${W - pad.r}" y2="${pad.t + plotH}" stroke="#e2e0d9"/>`
+    + bars + labels + '</svg>';
+}
+
+// Barras horizontales: expedientes por estado (una sola serie, lila).
+function renderCasesChart(byStatus) {
+  const order = ['pendiente', 'en_curso', 'esperando_documentacion', 'completado'];
+  const rows = order.map((s) => ({ s, label: STATUS_LABEL[s], v: byStatus[s] || 0 }));
+  const max = Math.max(1, ...rows.map((r) => r.v));
+  if (!rows.some((r) => r.v)) {
+    $('#chart-cases').innerHTML = '<div class="chart-empty">Todavía no hay expedientes.</div>';
+    return;
+  }
+  const W = 560; const rowH = 34; const labelW = 190; const H = rows.length * rowH + 6;
+  let out = '';
+  rows.forEach((r, i) => {
+    const y = i * rowH + 6;
+    const w = Math.max(r.v ? 6 : 0, Math.round((r.v / max) * (W - labelW - 46)));
+    out += `<text x="${labelW - 8}" y="${y + 15}" font-size="12" text-anchor="end" fill="#211e26">${r.label}</text>`;
+    if (r.v) {
+      out += `<path class="bar" d="M${labelW},${y} h${Math.max(0, w - 4)} q4,0 4,4 v14 q0,4 -4,4 h${-Math.max(0, w - 4)} z" fill="${CHART_IN}"><title>${r.label}: ${r.v}</title></path>`;
+    }
+    out += `<text x="${labelW + w + 8}" y="${y + 15}" font-size="12" fill="#6f6a78">${r.v}</text>`;
+  });
+  $('#chart-cases').innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Expedientes por estado">${out}</svg>`;
 }
 
 // ---------------------------------------------------------------------------
 // Bandeja de WhatsApp
 // ---------------------------------------------------------------------------
 
+const CONV_DOT = { abierta: '🟢', pendiente: '🟡', resuelta: '⚪' };
+
 function convRowHtml(c) {
-  const arrow = c.lastDirection === 'out' ? '↗ ' : '';
+  const arrow = c.lastDirection === 'out' ? '↗ ' : c.lastDirection === 'note' ? '🗒️ ' : '';
   return `
     <div class="row conv-row" data-client-id="${esc(c.clientId)}">
       <div class="grow">
-        <div class="title">${esc(c.clientName)}</div>
+        <div class="title"><span class="conv-dot">${CONV_DOT[c.convStatus] || '🟢'}</span>${esc(c.clientName)}
+          ${c.assignedTo ? `<span class="conv-assigned">· ${esc(c.assignedTo)}</span>` : ''}</div>
         <div class="sub">${arrow}${esc(c.lastMessage)}</div>
       </div>
       <div class="meta">
@@ -227,9 +311,16 @@ async function openConversation(clientId) {
   $('#chat').classList.remove('hidden');
   $('#chat-name').textContent = client.name;
   $('#chat-phone').textContent = '+' + client.phone;
+  $('#conv-status').value = client.convStatus || 'abierta';
+  $('#conv-assign').innerHTML = '<option value="">Sin asignar</option>'
+    + state.users.map((u) => `<option value="${esc(u)}" ${client.assignedTo === u ? 'selected' : ''}>${esc(u)}</option>`).join('');
   state.lastMessageCount = msgs.length;
 
   $('#chat-messages').innerHTML = msgs.map((m) => {
+    if (m.direction === 'note') {
+      return `<div class="msg note">🗒️ ${esc(m.text)}
+        <span class="msg-meta">${esc(m.author || 'equipo')} · ${fmtTime(m.timestamp)} · solo interno</span></div>`;
+    }
     let mediaHtml = '';
     if (m.media) {
       const src = `/api/media/${encodeURIComponent(m.id)}`;
@@ -239,6 +330,7 @@ async function openConversation(clientId) {
         const icon = m.media.kind === 'video' ? '🎬' : m.media.kind === 'audio' ? '🎧' : '📄';
         mediaHtml = `<a class="msg-file" href="${src}" target="_blank" download="${esc(m.media.filename || 'adjunto')}">${icon} ${esc(m.media.filename || 'Adjunto')}</a>`;
       }
+      mediaHtml += `<button class="btn small msg-link-case" data-msg-id="${esc(m.id)}" title="Guardar en un expediente">${m.caseId ? '📁 en expediente' : '📁 asignar a expediente'}</button> `;
     }
     return `
     <div class="msg ${m.direction} ${m.status === 'error' ? 'error' : ''}">${mediaHtml}${esc(m.text)}
@@ -248,9 +340,42 @@ async function openConversation(clientId) {
   const box = $('#chat-messages');
   box.scrollTop = box.scrollHeight;
 
+  box.querySelectorAll('.msg-link-case').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const cases = await api('cases?clientId=' + encodeURIComponent(clientId));
+      if (!cases.length) return alert('Este cliente no tiene expedientes. Crea uno primero.');
+      openDialog('Guardar adjunto en expediente', [{
+        name: 'caseId', label: 'Expediente', type: 'select',
+        options: cases.map((c) => [c.id, c.title]),
+      }], async (v) => {
+        await api('messages/' + btn.dataset.msgId, { method: 'PUT', body: { caseId: v.caseId } });
+        await openConversation(clientId);
+      });
+    });
+  });
+
   await api('messages/read', { method: 'POST', body: { clientId } });
   await updateUnreadBadge();
 }
+
+$('#conv-status').addEventListener('change', async () => {
+  if (!state.activeClientId) return;
+  await api('clients/' + state.activeClientId, { method: 'PUT', body: { convStatus: $('#conv-status').value } });
+});
+
+$('#conv-assign').addEventListener('change', async () => {
+  if (!state.activeClientId) return;
+  await api('clients/' + state.activeClientId, { method: 'PUT', body: { assignedTo: $('#conv-assign').value } });
+});
+
+$('#btn-note-mode').addEventListener('click', () => {
+  state.noteMode = !state.noteMode;
+  $('#btn-note-mode').classList.toggle('active', state.noteMode);
+  $('#chat-input').placeholder = state.noteMode
+    ? 'Nota interna (no se envía al cliente)…'
+    : 'Escribe un mensaje…';
+  $('#chat-input').focus();
+});
 
 $('#btn-send').addEventListener('click', sendCurrentMessage);
 $('#chat-input').addEventListener('keydown', (e) => {
@@ -265,7 +390,10 @@ async function sendCurrentMessage() {
   if (!text || !state.activeClientId) return;
   $('#chat-input').value = '';
   try {
-    await api('messages', { method: 'POST', body: { clientId: state.activeClientId, text } });
+    await api('messages', {
+      method: 'POST',
+      body: { clientId: state.activeClientId, text, note: state.noteMode },
+    });
   } catch (err) {
     alert(err.message);
   }
@@ -626,6 +754,98 @@ $('#btn-new-reminder').addEventListener('click', async () => {
 });
 
 // ---------------------------------------------------------------------------
+// Citas
+// ---------------------------------------------------------------------------
+
+document.querySelectorAll('#appt-filters .chip').forEach((chip) => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('#appt-filters .chip').forEach((c) => c.classList.remove('active'));
+    chip.classList.add('active');
+    state.apptFilter = chip.dataset.appt;
+    renderAppointments();
+  });
+});
+
+function todayIso() {
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+}
+
+async function renderAppointments() {
+  const [appts, clients] = await Promise.all([api('appointments'), api('clients')]);
+  state.clients = clients;
+  const nameOf = (id) => clients.find((c) => c.id === id)?.name || '(cliente eliminado)';
+  const today = todayIso();
+  let list = appts;
+  if (state.apptFilter === 'proximas') list = list.filter((a) => a.status === 'activa' && a.date >= today);
+  if (state.apptFilter === 'pasadas') list = list.filter((a) => a.status !== 'cancelada' && a.date < today);
+  if (state.apptFilter === 'canceladas') list = list.filter((a) => a.status === 'cancelada');
+
+  const byDay = new Map();
+  for (const a of list) {
+    const l = byDay.get(a.date) || [];
+    l.push(a);
+    byDay.set(a.date, l);
+  }
+  const dayTitle = (iso) => {
+    const d = new Date(iso + 'T12:00');
+    const label = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+    return iso === today ? `Hoy · ${label}` : label;
+  };
+  $('#appt-list').innerHTML = [...byDay.entries()].map(([day, items]) => `
+    <div class="appt-day">${esc(dayTitle(day))}</div>
+    <div class="list">${items.map((a) => `
+      <div class="row appt-row" data-id="${esc(a.id)}">
+        <div style="font-family:'Baloo 2',sans-serif;font-weight:700;font-size:17px">${esc(a.time)}</div>
+        <div class="grow">
+          <div class="title">${esc(nameOf(a.clientId))}</div>
+          <div class="sub">${esc(a.reason || 'consulta')}${a.confirmationSentAt ? ' · ✓ confirmación enviada' : ''}${a.remindedAt ? ' · ✓ recordada' : ''}</div>
+        </div>
+        ${a.status === 'cancelada' ? '<span class="status pendiente">Cancelada</span>' : ''}
+      </div>`).join('')}
+    </div>`).join('') || '<p class="hint">No hay citas en esta vista.</p>';
+
+  $('#appt-list').querySelectorAll('.appt-row').forEach((row) => {
+    row.addEventListener('click', () => {
+      const a = appts.find((x) => x.id === row.dataset.id);
+      openDialog('Editar cita', apptFields(a, clients, true), async (v) => {
+        await api('appointments/' + a.id, { method: 'PUT', body: v });
+        await renderAppointments();
+      });
+    });
+  });
+}
+
+function apptFields(a = {}, clients = [], withStatus = false) {
+  const fields = [
+    {
+      name: 'clientId', label: 'Cliente', type: 'select', value: a.clientId,
+      options: clients.map((c) => [c.id, c.name]),
+    },
+    { name: 'date', label: 'Fecha', type: 'date', value: a.date || todayIso(), required: true },
+    { name: 'time', label: 'Hora', type: 'time', value: a.time || '10:00', required: true },
+    { name: 'reason', label: 'Motivo (ej. «Firma declaración renta»)', value: a.reason },
+    { name: 'notes', label: 'Notas internas', type: 'textarea', value: a.notes },
+  ];
+  if (withStatus) {
+    fields.push({
+      name: 'status', label: 'Estado', type: 'select', value: a.status || 'activa',
+      options: [['activa', 'Activa'], ['completada', 'Completada'], ['cancelada', 'Cancelada']],
+    });
+  }
+  return fields;
+}
+
+$('#btn-new-appt').addEventListener('click', async () => {
+  const clients = await api('clients');
+  if (!clients.length) return alert('Primero crea al menos un cliente.');
+  openDialog('Nueva cita', apptFields({}, clients), async (v) => {
+    await api('appointments', { method: 'POST', body: v });
+    await renderAppointments();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Campañas por etiqueta
 // ---------------------------------------------------------------------------
 
@@ -718,7 +938,28 @@ async function renderAutomations() {
   $('#auto-tpl-enabled').checked = s.template24h.enabled;
   $('#auto-tpl-name').value = s.template24h.name;
   $('#auto-tpl-lang').value = s.template24h.lang;
+
+  $('#auto-appt-enabled').checked = s.appointments.enabled;
+  $('#auto-appt-confirm').value = s.appointments.confirmText;
+  $('#auto-appt-remind').value = s.appointments.remindText;
+
+  await renderBackups();
 }
+
+async function renderBackups() {
+  const backups = await api('backups');
+  const fmtSize = (b) => (b > 1024 * 1024 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
+  $('#backup-list').innerHTML = backups.map((b) => `
+    <div class="row" style="cursor:default;padding:8px 14px">
+      <div class="grow"><div class="sub">💾 ${esc(b.name)} · ${fmtSize(b.size)} · ${new Date(b.createdAt).toLocaleString('es-ES')}</div></div>
+      <a class="btn small" href="/api/backups/${encodeURIComponent(b.name)}">⬇ Descargar</a>
+    </div>`).join('') || '<p class="hint">Aún no hay copias. La primera se creará automáticamente, o pulsa «Crear copia ahora».</p>';
+}
+
+$('#btn-backup-now').addEventListener('click', async () => {
+  await api('backups', { method: 'POST' });
+  await renderBackups();
+});
 
 $('#btn-auto-save').addEventListener('click', async () => {
   const days = [...document.querySelectorAll('#auto-days .day-chip.on')]
@@ -747,6 +988,11 @@ $('#btn-auto-save').addEventListener('click', async () => {
           enabled: $('#auto-tpl-enabled').checked,
           name: $('#auto-tpl-name').value.trim(),
           lang: $('#auto-tpl-lang').value.trim() || 'es',
+        },
+        appointments: {
+          enabled: $('#auto-appt-enabled').checked,
+          confirmText: $('#auto-appt-confirm').value,
+          remindText: $('#auto-appt-remind').value,
         },
       },
     });
@@ -777,6 +1023,8 @@ async function init() {
     $('#btn-logout').classList.remove('hidden');
     if (authState.user) $('#btn-logout').textContent = `🚪 Cerrar sesión (${authState.user})`;
   }
+
+  state.users = await api('users').catch(() => []);
 
   const status = await api('status');
   const badge = $('#connection-badge');

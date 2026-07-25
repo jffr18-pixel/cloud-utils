@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const { load, save, newId, normalizePhone, DB_FILE } = require('./lib/store');
 const wa = require('./lib/whatsapp');
 const auto = require('./lib/automations');
+const backup = require('./lib/backup');
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -50,6 +51,10 @@ function parseCookies(req) {
     if (idx > 0) out[part.slice(0, idx).trim()] = part.slice(idx + 1).trim();
   }
   return out;
+}
+
+function sessionUser(req) {
+  return sessions.get(parseCookies(req).crm_session)?.user || null;
 }
 
 function isAuthenticated(req) {
@@ -164,6 +169,8 @@ function conversationSummaries(db) {
       lastDirection: last.direction,
       lastTimestamp: last.timestamp,
       unread,
+      convStatus: client.convStatus || 'abierta',
+      assignedTo: client.assignedTo || null,
     });
   }
   out.sort((a, b) => b.lastTimestamp - a.lastTimestamp);
@@ -443,6 +450,10 @@ async function handleApi(req, res, url) {
       if (b.email !== undefined) client.email = String(b.email).trim();
       if (b.tags !== undefined) client.tags = Array.isArray(b.tags) ? b.tags : [];
       if (b.notes !== undefined) client.notes = String(b.notes);
+      if (b.convStatus !== undefined && ['abierta', 'pendiente', 'resuelta'].includes(b.convStatus)) {
+        client.convStatus = b.convStatus;
+      }
+      if (b.assignedTo !== undefined) client.assignedTo = b.assignedTo || null;
       save();
       return json(res, 200, client);
     }
@@ -451,6 +462,7 @@ async function handleApi(req, res, url) {
       db.messages = db.messages.filter((m) => m.clientId !== id);
       db.cases = db.cases.filter((c) => c.clientId !== id);
       db.reminders = db.reminders.filter((r) => r.clientId !== id);
+      db.appointments = db.appointments.filter((a) => a.clientId !== id);
       save();
       return json(res, 200, { ok: true });
     }
@@ -480,11 +492,43 @@ async function handleApi(req, res, url) {
       if (toMark.length) save();
       return json(res, 200, { marked: toMark.length });
     }
+    // Vincular un adjunto a un expediente.
+    if (req.method === 'PUT' && id) {
+      const b = await readBody(req);
+      const msg = db.messages.find((m) => m.id === id);
+      if (!msg) return json(res, 404, { error: 'Mensaje no encontrado' });
+      if (b.caseId !== undefined) {
+        if (b.caseId && !db.cases.some((c) => c.id === b.caseId)) {
+          return json(res, 404, { error: 'Expediente no encontrado' });
+        }
+        msg.caseId = b.caseId || null;
+      }
+      save();
+      return json(res, 200, msg);
+    }
     if (req.method === 'POST') {
       // Hasta ~25 MB para permitir adjuntos en base64 (límite WhatsApp: 16 MB).
       const b = await readBody(req, 25_000_000);
       const client = db.clients.find((c) => c.id === b.clientId);
       if (!client) return json(res, 404, { error: 'Cliente no encontrado' });
+
+      // Nota interna: se guarda en la conversación pero NO se envía al cliente.
+      if (b.note) {
+        if (!b.text || !String(b.text).trim()) return json(res, 400, { error: 'La nota está vacía' });
+        const noteMsg = {
+          id: newId('msg'),
+          clientId: client.id,
+          direction: 'note',
+          text: String(b.text).trim(),
+          author: sessionUser(req) || 'equipo',
+          timestamp: Date.now(),
+          status: 'note',
+          read: true,
+        };
+        db.messages.push(noteMsg);
+        save();
+        return json(res, 201, noteMsg);
+      }
 
       if (b.file && b.file.data) {
         const data = Buffer.from(b.file.data, 'base64');
@@ -546,6 +590,19 @@ async function handleApi(req, res, url) {
 
   // --- Expedientes / trámites ---------------------------------------------
   if (resource === 'cases') {
+    // Documentos vinculados a un expediente.
+    if (req.method === 'GET' && id && parts[3] === 'files') {
+      const files = db.messages
+        .filter((m) => m.caseId === id && m.media)
+        .map((m) => ({
+          msgId: m.id,
+          filename: m.media.filename || 'adjunto',
+          kind: m.media.kind,
+          direction: m.direction,
+          timestamp: m.timestamp,
+        }));
+      return json(res, 200, files);
+    }
     if (req.method === 'GET' && !id) {
       const clientId = url.searchParams.get('clientId');
       let list = db.cases;
@@ -624,6 +681,145 @@ async function handleApi(req, res, url) {
       db.templates = db.templates.filter((x) => x.id !== id);
       save();
       return json(res, 200, { ok: true });
+    }
+  }
+
+  // --- Citas ----------------------------------------------------------------
+  if (resource === 'appointments') {
+    if (req.method === 'GET' && !id) {
+      const clientId = url.searchParams.get('clientId');
+      let list = db.appointments;
+      if (clientId) list = list.filter((a) => a.clientId === clientId);
+      list = list.slice().sort((a, b) =>
+        `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+      return json(res, 200, list);
+    }
+    if (req.method === 'POST' && !id) {
+      const b = await readBody(req);
+      const client = db.clients.find((c) => c.id === b.clientId);
+      if (!client) return json(res, 404, { error: 'Cliente no encontrado' });
+      if (!b.date || !b.time) return json(res, 400, { error: 'Fecha y hora son obligatorias' });
+      const appt = {
+        id: newId('cit'),
+        clientId: client.id,
+        date: b.date,      // YYYY-MM-DD
+        time: b.time,      // HH:MM
+        reason: (b.reason || '').trim(),
+        notes: b.notes || '',
+        status: 'activa',  // activa | cancelada | completada
+        confirmationSentAt: null,
+        remindedAt: null,
+        createdAt: Date.now(),
+      };
+      db.appointments.push(appt);
+      save();
+      await auto.onAppointmentCreated(db, appt, client, autoSender(db));
+      save();
+      return json(res, 201, appt);
+    }
+    const appt = db.appointments.find((a) => a.id === id);
+    if (!appt) return json(res, 404, { error: 'Cita no encontrada' });
+    if (req.method === 'PUT') {
+      const b = await readBody(req);
+      for (const key of ['date', 'time', 'reason', 'notes']) {
+        if (b[key] !== undefined) appt[key] = b[key];
+      }
+      if (b.status !== undefined && ['activa', 'cancelada', 'completada'].includes(b.status)) {
+        appt.status = b.status;
+      }
+      save();
+      return json(res, 200, appt);
+    }
+    if (req.method === 'DELETE') {
+      db.appointments = db.appointments.filter((a) => a.id !== id);
+      save();
+      return json(res, 200, { ok: true });
+    }
+  }
+
+  // --- Usuarios del equipo (para asignar conversaciones) --------------------
+  if (req.method === 'GET' && resource === 'users') {
+    return json(res, 200, [...authUsers().keys()]);
+  }
+
+  // --- Estadísticas del panel ----------------------------------------------
+  if (req.method === 'GET' && resource === 'stats') {
+    const DAY = 24 * 3600 * 1000;
+    const now = new Date();
+    const dayKey = (ts) => {
+      const d = new Date(ts);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+    const days = [];
+    for (let i = 13; i >= 0; i -= 1) {
+      days.push(dayKey(now.getTime() - i * DAY));
+    }
+    const byDay = Object.fromEntries(days.map((d) => [d, { in: 0, out: 0 }]));
+    for (const m of db.messages) {
+      if (m.direction !== 'in' && m.direction !== 'out') continue;
+      const k = dayKey(m.timestamp);
+      if (byDay[k]) byDay[k][m.direction] += 1;
+    }
+
+    const casesByStatus = {};
+    const casesByType = {};
+    for (const c of db.cases) {
+      casesByStatus[c.status] = (casesByStatus[c.status] || 0) + 1;
+      casesByType[c.type] = (casesByType[c.type] || 0) + 1;
+    }
+
+    // Tiempo medio de primera respuesta (transición entrante→saliente, 30 días).
+    const cutoff = now.getTime() - 30 * DAY;
+    const byClient = new Map();
+    for (const m of db.messages) {
+      if (m.direction !== 'in' && m.direction !== 'out') continue;
+      const list = byClient.get(m.clientId) || [];
+      list.push(m);
+      byClient.set(m.clientId, list);
+    }
+    const gaps = [];
+    for (const msgs of byClient.values()) {
+      msgs.sort((a, b) => a.timestamp - b.timestamp);
+      let pendingIn = null;
+      for (const m of msgs) {
+        if (m.direction === 'in') {
+          if (pendingIn === null) pendingIn = m.timestamp;
+        } else if (pendingIn !== null) {
+          if (m.timestamp >= cutoff) gaps.push(m.timestamp - pendingIn);
+          pendingIn = null;
+        }
+      }
+    }
+    const avgResponseMinutes = gaps.length
+      ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length / 60000)
+      : null;
+
+    const weekAgo = now.getTime() - 7 * DAY;
+    return json(res, 200, {
+      messagesByDay: days.map((d) => ({ date: d, in: byDay[d].in, out: byDay[d].out })),
+      casesByStatus,
+      casesByType,
+      avgResponseMinutes,
+      messagesThisWeek: db.messages.filter((m) =>
+        (m.direction === 'in' || m.direction === 'out') && m.timestamp >= weekAgo).length,
+    });
+  }
+
+  // --- Copias de seguridad --------------------------------------------------
+  if (resource === 'backups') {
+    if (req.method === 'GET' && !id) return json(res, 200, backup.list());
+    if (req.method === 'POST' && !id) {
+      const b = backup.create(true);
+      return json(res, 201, b);
+    }
+    if (req.method === 'GET' && id) {
+      const stream = backup.read(id);
+      if (!stream) return json(res, 404, { error: 'Copia no encontrada' });
+      res.writeHead(200, {
+        'Content-Type': 'application/gzip',
+        'Content-Disposition': `attachment; filename="${id}"`,
+      });
+      return stream.pipe(res);
     }
   }
 
@@ -839,6 +1035,12 @@ setInterval(() => {
   auto.runScheduled(db, autoSender(db))
     .then((actions) => { if (actions.length) save(); })
     .catch((err) => console.error('Error en automatizaciones:', err.message));
+  try {
+    const created = backup.ensureDaily();
+    if (created) console.log(`Copia de seguridad diaria creada: ${created.name}`);
+  } catch (err) {
+    console.error('Error al crear la copia de seguridad:', err.message);
+  }
 }, 5 * 60 * 1000);
 
 server.listen(PORT, () => {

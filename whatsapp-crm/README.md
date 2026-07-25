@@ -39,6 +39,22 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   para Excel (separador `;` y codificación con BOM).
 - **👥 Varios usuarios**: `CRM_USERS="carmen:clave1,juan:clave2"` permite un
   acceso por persona; la sesión muestra quién está conectado.
+- **📅 Citas**: agenda con vista por días, confirmación por WhatsApp al
+  reservar y recordatorio automático el día anterior (activable en
+  Automatizaciones).
+- **🟢 Estados de conversación**: cada chat puede estar Abierta / Pendiente /
+  Resuelta y asignarse a una persona del equipo; se ve en la bandeja.
+- **🗒️ Notas internas**: botón 🗒️ en el chat para guardar notas que el
+  cliente nunca recibe (aparecen en amarillo, con autor).
+- **📊 Panel con gráficas**: mensajes por día (recibidos/enviados),
+  expedientes por estado, mensajes de la semana y tiempo medio de primera
+  respuesta de los últimos 30 días.
+- **💾 Copias de seguridad**: automática diaria (se conservan 14) y bajo
+  demanda, descargables desde Automatizaciones. Los adjuntos viven en
+  `data/uploads`; cópialos aparte para un respaldo completo.
+- **📁 Documentos por expediente**: cualquier adjunto del chat puede
+  guardarse en un expediente («📁 asignar a expediente») y consultarse junto
+  al resto de documentos del trámite.
 - **⚡ Automatizaciones** (pestaña propia, todas configurables y desactivadas
   por defecto):
   - *Respuesta fuera de horario*: contesta automáticamente cuando un cliente
