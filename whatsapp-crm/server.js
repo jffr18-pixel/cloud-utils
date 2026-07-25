@@ -180,6 +180,7 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && resource === 'status') {
     return json(res, 200, {
       whatsappConfigured: wa.isConfigured(),
+      provider: wa.provider(),
       verifyToken: wa.config().verifyToken,
     });
   }
@@ -471,7 +472,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   const mode = wa.isConfigured()
-    ? 'conectado a la API de WhatsApp Business'
+    ? `conectado a la API de WhatsApp Business (proveedor: ${wa.provider()})`
     : 'MODO DEMO (sin credenciales de WhatsApp; los envíos no salen de verdad)';
   console.log(`CRM de WhatsApp para gestoría — http://localhost:${PORT}`);
   console.log(`Estado: ${mode}`);

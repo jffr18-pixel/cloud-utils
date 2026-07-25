@@ -8,31 +8,52 @@
 
 const GRAPH_VERSION = process.env.WHATSAPP_GRAPH_VERSION || 'v20.0';
 
+// Dos formas de conectar:
+//  - Meta directo:   WHATSAPP_TOKEN + WHATSAPP_PHONE_NUMBER_ID
+//  - 360dialog (BSP recomendado para Coexistence): WHATSAPP_360DIALOG_API_KEY
+//    Su API v2 replica la Cloud API de Meta, solo cambian la URL y la cabecera.
 function config() {
   return {
     token: process.env.WHATSAPP_TOKEN || '',
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
+    d360ApiKey: process.env.WHATSAPP_360DIALOG_API_KEY || '',
     verifyToken: process.env.WEBHOOK_VERIFY_TOKEN || 'gestoria-crm',
   };
 }
 
-function isConfigured() {
+function provider() {
   const c = config();
-  return Boolean(c.token && c.phoneNumberId);
+  if (c.d360ApiKey) return '360dialog';
+  if (c.token && c.phoneNumberId) return 'meta';
+  return null;
+}
+
+function isConfigured() {
+  return provider() !== null;
+}
+
+function endpoint() {
+  const c = config();
+  if (provider() === '360dialog') {
+    return {
+      url: 'https://waba-v2.360dialog.io/messages',
+      headers: { 'D360-API-KEY': c.d360ApiKey, 'Content-Type': 'application/json' },
+    };
+  }
+  return {
+    url: `https://graph.facebook.com/${GRAPH_VERSION}/${c.phoneNumberId}/messages`,
+    headers: { Authorization: `Bearer ${c.token}`, 'Content-Type': 'application/json' },
+  };
 }
 
 async function sendText(toPhone, text) {
-  const c = config();
   if (!isConfigured()) {
     return { demo: true, id: null };
   }
-  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${c.phoneNumberId}/messages`;
+  const { url, headers } = endpoint();
   const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${c.token}`,
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
@@ -50,15 +71,11 @@ async function sendText(toPhone, text) {
 }
 
 async function markAsRead(waMessageId) {
-  const c = config();
   if (!isConfigured() || !waMessageId) return;
-  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${c.phoneNumberId}/messages`;
+  const { url, headers } = endpoint();
   await fetch(url, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${c.token}`,
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({
       messaging_product: 'whatsapp',
       status: 'read',
@@ -122,4 +139,4 @@ function parseWebhook(body) {
   return { incoming, echoes, statuses };
 }
 
-module.exports = { config, isConfigured, sendText, markAsRead, parseWebhook };
+module.exports = { config, provider, isConfigured, sendText, markAsRead, parseWebhook };

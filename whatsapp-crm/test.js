@@ -55,6 +55,15 @@ async function main() {
     const status = await req('GET', '/api/status');
     assert(status.status === 200, 'GET /api/status responde 200');
     assert(status.data.whatsappConfigured === false, 'sin credenciales → modo demo');
+    assert(status.data.provider === null, 'sin credenciales → sin proveedor');
+
+    console.log('Detección de proveedor (360dialog)');
+    const wa = require('./lib/whatsapp');
+    process.env.WHATSAPP_360DIALOG_API_KEY = 'clave-de-prueba';
+    assert(wa.provider() === '360dialog', 'API key de 360dialog → proveedor 360dialog');
+    assert(wa.isConfigured() === true, 'API key de 360dialog → configurado');
+    delete process.env.WHATSAPP_360DIALOG_API_KEY;
+    assert(wa.provider() === null, 'sin credenciales de nuevo → sin proveedor');
 
     console.log('Clientes');
     const created = await req('POST', '/api/clients', {

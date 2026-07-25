@@ -95,10 +95,14 @@ Puntos clave:
 | Variable | Descripción | Por defecto |
 | --- | --- | --- |
 | `PORT` | Puerto del servidor | `3000` |
-| `WHATSAPP_TOKEN` | Token de acceso de la Cloud API | *(vacío → modo demo)* |
-| `WHATSAPP_PHONE_NUMBER_ID` | ID del número de WhatsApp Business | *(vacío → modo demo)* |
+| `WHATSAPP_360DIALOG_API_KEY` | API key de 360dialog (BSP recomendado para Coexistence; tiene prioridad si está definida) | *(vacío)* |
+| `WHATSAPP_TOKEN` | Token de acceso de la Cloud API (Meta directo) | *(vacío → modo demo)* |
+| `WHATSAPP_PHONE_NUMBER_ID` | ID del número de WhatsApp Business (Meta directo) | *(vacío → modo demo)* |
 | `WEBHOOK_VERIFY_TOKEN` | Token que verifica el webhook de Meta | `gestoria-crm` |
 | `WHATSAPP_GRAPH_VERSION` | Versión de la Graph API | `v20.0` |
+
+La elección de proveedor y los precios están comparados en
+[`COMPARATIVA-BSP.md`](COMPARATIVA-BSP.md).
 
 ## Datos
 
