@@ -123,7 +123,7 @@ async function sendMessageToClient(db, client, text) {
 }
 
 function handleWebhookPayload(db, body) {
-  const { incoming, statuses } = wa.parseWebhook(body);
+  const { incoming, echoes, statuses } = wa.parseWebhook(body);
   for (const inMsg of incoming) {
     if (db.messages.some((m) => m.waMessageId && m.waMessageId === inMsg.waMessageId)) continue;
     const phone = normalizePhone(inMsg.from);
@@ -139,13 +139,31 @@ function handleWebhookPayload(db, body) {
       read: false,
     });
   }
+  // Coexistence: mensajes que la gestoría envió desde la app del móvil.
+  // Se registran como salientes para que la conversación se vea completa.
+  for (const echo of echoes) {
+    if (db.messages.some((m) => m.waMessageId && m.waMessageId === echo.waMessageId)) continue;
+    const phone = normalizePhone(echo.to);
+    const client = ensureClientForPhone(db, phone, '');
+    db.messages.push({
+      id: newId('msg'),
+      clientId: client.id,
+      direction: 'out',
+      text: echo.text,
+      timestamp: echo.timestamp,
+      status: 'sent',
+      viaApp: true,
+      waMessageId: echo.waMessageId,
+      read: true,
+    });
+  }
   for (const st of statuses) {
     const msg = db.messages.find((m) => m.waMessageId === st.waMessageId);
     if (msg && ['sent', 'delivered', 'read'].includes(st.status)) {
       msg.status = st.status;
     }
   }
-  if (incoming.length || statuses.length) save();
+  if (incoming.length || echoes.length || statuses.length) save();
 }
 
 // ---------------------------------------------------------------------------

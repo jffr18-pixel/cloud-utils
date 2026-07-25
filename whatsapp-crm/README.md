@@ -59,6 +59,31 @@ de Meta). Pasos:
    - Token de verificación: el mismo valor de `WEBHOOK_VERIFY_TOKEN`
    - Suscríbete al campo **messages**.
 
+### Modo Coexistence: seguir usando la app del móvil con el mismo número
+
+Desde finales de 2025, Meta permite en Europa el modo **Coexistence**
+(«API Solutions for Business App Users»): el mismo número funciona a la vez en
+la **app WhatsApp Business del móvil** y en la **Cloud API** que usa este CRM.
+Los chats se sincronizan en ambos sentidos y, al activarlo, puedes importar
+los últimos 6 meses de historial.
+
+Puntos clave:
+
+- **Alta a través de un BSP**: la coexistencia solo puede activarse con el
+  flujo *Embedded Signup* de un proveedor oficial de WhatsApp (BSP), como
+  360dialog, Twilio, Wati, Gupshup, etc. No basta con crear la app en
+  developers.facebook.com a mano. El BSP te dará igualmente un token y un
+  Phone Number ID compatibles con este CRM.
+- **Requisitos**: app WhatsApp Business actualizada (2.24.17 o superior) y un
+  número con actividad reciente (no recién dado de alta).
+- **Ecos de la app**: cuando respondes desde el móvil, Meta envía un «eco» al
+  webhook (campo `message_echoes`). Este CRM ya lo procesa: esos mensajes
+  aparecen en la conversación marcados con 📱 «desde el móvil». En la
+  configuración de webhooks del BSP/Meta, suscríbete también a ese campo
+  además de `messages`.
+- **Llamadas**: las llamadas y videollamadas siguen siendo solo de la app;
+  la API no las gestiona.
+
 > **Regla de las 24 horas de WhatsApp**: puedes responder con texto libre
 > durante las 24 h siguientes al último mensaje del cliente. Pasado ese plazo,
 > Meta solo permite iniciar conversación con *plantillas aprobadas* (HSM).

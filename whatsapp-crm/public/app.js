@@ -228,7 +228,7 @@ async function openConversation(clientId) {
 
   $('#chat-messages').innerHTML = msgs.map((m) => `
     <div class="msg ${m.direction} ${m.status === 'error' ? 'error' : ''}">${esc(m.text)}
-      <span class="msg-meta">${fmtTime(m.timestamp)} ${MSG_STATUS[m.status] || ''}${m.error ? ' · ' + esc(m.error) : ''}</span>
+      <span class="msg-meta">${m.viaApp ? '📱 desde el móvil · ' : ''}${fmtTime(m.timestamp)} ${MSG_STATUS[m.status] || ''}${m.error ? ' · ' + esc(m.error) : ''}</span>
     </div>`).join('');
   const box = $('#chat-messages');
   box.scrollTop = box.scrollHeight;

@@ -112,6 +112,25 @@ async function main() {
     const msgsLucia = await req('GET', `/api/messages?clientId=${lucia.clientId}`);
     assert(msgsLucia.data.length === 1, 'mensajes duplicados del webhook ignorados');
 
+    console.log('Coexistence (ecos de la app del móvil)');
+    const echoHook = await req('POST', '/webhook', {
+      entry: [{ changes: [{ value: {
+        message_echoes: [{ from: '34911222333', to: '34655443322', id: 'wamid.ECHO1', timestamp: '1753500100', type: 'text', text: { body: 'Respondido desde el móvil' } }],
+      } }] }],
+    });
+    assert(echoHook.status === 200, 'webhook de eco aceptado');
+    const msgsLucia2 = await req('GET', `/api/messages?clientId=${lucia.clientId}`);
+    const echoMsg = msgsLucia2.data.find((m) => m.waMessageId === 'wamid.ECHO1');
+    assert(echoMsg && echoMsg.direction === 'out' && echoMsg.viaApp === true,
+      'eco registrado como mensaje saliente enviado desde la app');
+    await req('POST', '/webhook', {
+      entry: [{ changes: [{ value: {
+        message_echoes: [{ from: '34911222333', to: '34655443322', id: 'wamid.ECHO1', timestamp: '1753500100', type: 'text', text: { body: 'Respondido desde el móvil' } }],
+      } }] }],
+    });
+    const msgsLucia3 = await req('GET', `/api/messages?clientId=${lucia.clientId}`);
+    assert(msgsLucia3.data.length === msgsLucia2.data.length, 'ecos duplicados ignorados');
+
     console.log('Expedientes');
     const kase = await req('POST', '/api/cases', {
       clientId, title: 'Declaración renta 2025', type: 'fiscal', dueDate: '2026-06-30',

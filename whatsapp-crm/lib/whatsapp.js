@@ -67,10 +67,26 @@ async function markAsRead(waMessageId) {
   }).catch(() => {});
 }
 
+// Extrae el texto de un mensaje del webhook sea cual sea su tipo.
+function extractText(msg) {
+  if (msg.type === 'text') return msg.text?.body || '';
+  if (msg.type === 'button') return msg.button?.text || '';
+  if (msg.type === 'interactive') {
+    return msg.interactive?.button_reply?.title
+      || msg.interactive?.list_reply?.title || '';
+  }
+  return `[${msg.type}] (contenido no textual)`;
+}
+
 // Extrae los mensajes entrantes de la carga del webhook de Meta.
-// Devuelve [{ from, name, text, waMessageId, timestamp }]
+// Con el modo Coexistence activado (mismo número en la app WhatsApp Business
+// y en la API), Meta también envía "ecos" de los mensajes que la gestoría
+// manda desde el móvil (campo smb_message_echoes / message_echoes), para que
+// el CRM pueda reflejarlos y la conversación se vea completa.
+// Devuelve { incoming, echoes, statuses }.
 function parseWebhook(body) {
   const incoming = [];
+  const echoes = [];
   const statuses = [];
   for (const entry of body?.entry || []) {
     for (const change of entry?.changes || []) {
@@ -81,19 +97,19 @@ function parseWebhook(body) {
         contactNames[contact.wa_id] = contact?.profile?.name || '';
       }
       for (const msg of value.messages || []) {
-        let text = '';
-        if (msg.type === 'text') text = msg.text?.body || '';
-        else if (msg.type === 'button') text = msg.button?.text || '';
-        else if (msg.type === 'interactive') {
-          text = msg.interactive?.button_reply?.title
-            || msg.interactive?.list_reply?.title || '';
-        } else {
-          text = `[${msg.type}] (contenido no textual)`;
-        }
         incoming.push({
           from: msg.from,
           name: contactNames[msg.from] || '',
-          text,
+          text: extractText(msg),
+          waMessageId: msg.id,
+          timestamp: Number(msg.timestamp) * 1000 || Date.now(),
+        });
+      }
+      // Ecos de mensajes enviados desde la app del móvil (Coexistence).
+      for (const msg of value.message_echoes || value.smb_message_echoes || []) {
+        echoes.push({
+          to: msg.to,
+          text: extractText(msg),
           waMessageId: msg.id,
           timestamp: Number(msg.timestamp) * 1000 || Date.now(),
         });
@@ -103,7 +119,7 @@ function parseWebhook(body) {
       }
     }
   }
-  return { incoming, statuses };
+  return { incoming, echoes, statuses };
 }
 
 module.exports = { config, isConfigured, sendText, markAsRead, parseWebhook };
