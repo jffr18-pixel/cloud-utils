@@ -206,8 +206,8 @@ async function renderDashboard() {
 }
 
 // Colores de serie validados (lila de marca + violeta profundo).
-const CHART_IN = '#9c86c9';   // recibidos
-const CHART_OUT = '#5e35b1';  // enviados
+const CHART_IN = '#9272b0';   // recibidos (morado de marca)
+const CHART_OUT = '#e9cf3c';  // enviados (amarillo de marca)
 
 // Barras agrupadas: mensajes recibidos/enviados por día.
 function renderMessagesChart(days) {
@@ -238,11 +238,11 @@ function renderMessagesChart(days) {
         bars += `<path class="bar" d="M${x},${y + h} v${-Math.max(0, h - 4)} q0,-4 4,-4 h${barW - 8} q4,0 4,4 v${Math.max(0, h - 4)} z" fill="${color}"><title>${d.date}: ${v} ${key === 'in' ? 'recibidos' : 'enviados'}</title></path>`;
       }
       if (v === max) {
-        labels += `<text x="${x + barW / 2}" y="${y - 3}" font-size="10" text-anchor="middle" fill="#6f6a78">${v}</text>`;
+        labels += `<text x="${x + barW / 2}" y="${y - 3}" font-size="10" text-anchor="middle" fill="#6f6d75">${v}</text>`;
       }
     }
     if (i % 2 === 0) {
-      labels += `<text x="${x0 + barW}" y="${H - 5}" font-size="9" text-anchor="middle" fill="#6f6a78">${day}</text>`;
+      labels += `<text x="${x0 + barW}" y="${H - 5}" font-size="9" text-anchor="middle" fill="#6f6d75">${day}</text>`;
     }
   });
   $('#chart-messages').innerHTML =
@@ -265,11 +265,11 @@ function renderCasesChart(byStatus) {
   rows.forEach((r, i) => {
     const y = i * rowH + 6;
     const w = Math.max(r.v ? 6 : 0, Math.round((r.v / max) * (W - labelW - 46)));
-    out += `<text x="${labelW - 8}" y="${y + 15}" font-size="12" text-anchor="end" fill="#211e26">${r.label}</text>`;
+    out += `<text x="${labelW - 8}" y="${y + 15}" font-size="12" text-anchor="end" fill="#1d1d1b">${r.label}</text>`;
     if (r.v) {
       out += `<path class="bar" d="M${labelW},${y} h${Math.max(0, w - 4)} q4,0 4,4 v14 q0,4 -4,4 h${-Math.max(0, w - 4)} z" fill="${CHART_IN}"><title>${r.label}: ${r.v}</title></path>`;
     }
-    out += `<text x="${labelW + w + 8}" y="${y + 15}" font-size="12" fill="#6f6a78">${r.v}</text>`;
+    out += `<text x="${labelW + w + 8}" y="${y + 15}" font-size="12" fill="#6f6d75">${r.v}</text>`;
   });
   $('#chart-cases').innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Expedientes por estado">${out}</svg>`;
 }

@@ -1758,32 +1758,30 @@ function statusPageShell(title, bodyHtml, lang = 'es', token = '') {
 <title>${escHtml(title)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  :root { --charcoal:#1d1a22; --cream:#f4f2ec; --lilac:#9c86c9; --lilac-dark:#5e35b1; --muted:#6f6a78; --ok:#1d7a34; --danger:#c0392b; --font-brand:"Baloo 2",-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+  :root { --charcoal:#1d1d1b; --cream:#f5f4f7; --lilac:#9272b0; --lilac-dark:#77599c; --yellow:#ffea63; --muted:#6f6d75; --ok:#1d7a34; --danger:#c0392b; --font-brand:"Lexend",-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
   * { box-sizing: border-box; }
-  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; background:var(--cream); color:var(--charcoal); line-height:1.5; }
+  body { margin:0; font-family:"Lexend",-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; background:var(--cream); color:var(--charcoal); line-height:1.5; }
   .wrap { max-width:640px; margin:0 auto; padding:24px 18px 60px; }
   header { text-align:center; padding:22px 0 18px; }
-  .logo { display:inline-flex; align-items:center; gap:13px; }
-  .logo-mark { width:52px; height:52px; flex:none; }
-  .logo-word { text-align:start; font-family:var(--font-brand); line-height:.92; }
-  .logo-word b { display:block; font-weight:800; font-size:27px; letter-spacing:.2px; color:var(--charcoal); }
-  .logo-word span { display:block; font-weight:600; font-size:16px; letter-spacing:5px; color:var(--lilac-dark); text-transform:uppercase; margin-top:1px; }
-  html[dir="rtl"] .logo-word span { letter-spacing:1px; }
+  /* Wordmark oficial: «Burocracia» en Lexend grueso, «Zero» debajo en fino. */
+  .logo-word { font-family:var(--font-brand); line-height:.86; display:inline-block; }
+  .logo-word b { display:block; font-weight:800; font-size:34px; letter-spacing:-1px; color:var(--charcoal); }
+  .logo-word span { display:block; font-weight:300; font-size:26px; letter-spacing:0; color:var(--charcoal); margin-top:1px; }
   .sub { color:var(--muted); font-size:14px; margin-top:14px; }
   .langs { display:flex; flex-wrap:wrap; justify-content:center; gap:6px; margin-top:16px; }
-  .langs a { font-size:12.5px; font-weight:600; color:var(--muted); text-decoration:none; padding:4px 11px; border-radius:999px; border:1px solid #e0dcd2; background:#fff; }
-  .langs a.on { background:var(--lilac-dark); color:#fff; border-color:var(--lilac-dark); }
-  h1 { font-size:19px; margin:22px 0 4px; }
+  .langs a { font-size:12.5px; font-weight:600; color:var(--muted); text-decoration:none; padding:4px 11px; border-radius:999px; border:1px solid #e7e5ea; background:#fff; }
+  .langs a.on { background:var(--charcoal); color:#fff; border-color:var(--charcoal); }
+  h1 { font-size:19px; margin:22px 0 4px; font-weight:700; }
   .lead { color:var(--muted); font-size:14px; margin:0 0 18px; }
-  .case { background:#fff; border:1px solid #e6e3db; border-radius:14px; padding:16px 16px 14px; margin-bottom:14px; box-shadow:0 1px 2px rgba(0,0,0,.03); }
+  .case { background:#fff; border:1px solid #e7e5ea; border-radius:14px; padding:16px 16px 14px; margin-bottom:14px; box-shadow:0 1px 2px rgba(0,0,0,.03); }
   .case-top { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
   .case-lead { display:flex; gap:12px; align-items:flex-start; min-width:0; }
-  .case-ico { width:42px; height:42px; border-radius:12px; background:#efeaf8; color:var(--lilac-dark); display:flex; align-items:center; justify-content:center; flex:none; }
+  .case-ico { width:42px; height:42px; border-radius:12px; background:var(--lilac); color:#fff; display:flex; align-items:center; justify-content:center; flex:none; }
   .case-ico svg { width:23px; height:23px; }
   .case-title { font-weight:700; font-size:16px; }
-  .area { display:inline-block; background:#efeaf8; color:var(--lilac-dark); border-radius:6px; padding:1px 8px; font-size:12px; font-weight:600; margin-top:4px; }
+  .area { display:inline-block; background:#f2edf8; color:var(--lilac-dark); border-radius:6px; padding:1px 8px; font-size:12px; font-weight:600; margin-top:4px; }
   .st { border-radius:999px; padding:3px 11px; font-size:12.5px; font-weight:700; white-space:nowrap; }
   .st.pendiente { background:#fdecea; color:var(--danger); }
   .st.en_curso { background:#eef2fb; color:#3f5bd6; }
@@ -1802,32 +1800,19 @@ function statusPageShell(title, bodyHtml, lang = 'es', token = '') {
   .chk li.done .ic { color:var(--ok); }
   .chk li .item { flex:1; }
   .up-btn { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:700; color:#fff; background:var(--lilac-dark); border:0; border-radius:8px; padding:5px 12px; cursor:pointer; white-space:nowrap; }
-  .up-btn:hover { background:#4d2b93; }
+  .up-btn:hover { background:#5f4585; }
   .up-btn input { display:none; }
   .up-btn.busy { opacity:.6; pointer-events:none; }
   .up-hint { font-size:11px; color:var(--muted); font-weight:400; }
   .empty { background:#fff; border:1px solid #e6e3db; border-radius:14px; padding:26px; text-align:center; color:var(--muted); }
   footer { text-align:center; color:var(--muted); font-size:12.5px; margin-top:26px; }
-  .bar { height:6px; background:#efeaf8; border-radius:99px; overflow:hidden; margin-top:10px; }
+  .bar { height:6px; background:#f2edf8; border-radius:99px; overflow:hidden; margin-top:10px; }
   .bar > i { display:block; height:100%; background:var(--lilac); }
 </style>
 </head><body>
 <div class="wrap" data-token="${escHtml(token)}" data-uploading="${escHtml(t.uploading)}" data-uploaderr="${escHtml(t.uploadErr)}">
 <header>
-  <div class="logo">
-    <svg class="logo-mark" viewBox="0 0 52 52" role="img" aria-label="Burocracia Zero">
-      <defs>
-        <linearGradient id="bz" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="#9c86c9"/><stop offset="1" stop-color="#5e35b1"/>
-        </linearGradient>
-      </defs>
-      <rect x="1" y="1" width="50" height="50" rx="14" fill="url(#bz)"/>
-      <path d="M19 15h11l7 7v15a2 2 0 0 1-2 2H19a2 2 0 0 1-2-2V17a2 2 0 0 1 2-2Z" fill="#fff" opacity="0.96"/>
-      <path d="M30 15v7h7" fill="none" stroke="#efeaf8" stroke-width="1.6" stroke-linejoin="round"/>
-      <path d="M21.5 30.5l2.4 2.4 4.6-4.9" fill="none" stroke="#5e35b1" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-    <div class="logo-word"><b>Burocracia</b><span>Zero</span></div>
-  </div>
+  <div class="logo-word" role="img" aria-label="Burocracia Zero"><b>Burocracia</b><span>Zero</span></div>
   <div class="sub">${escHtml(t.tagline)}</div>
   ${langSwitcher(lang, token)}
 </header>
