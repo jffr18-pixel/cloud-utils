@@ -1,24 +1,25 @@
-# cloud-utils
+# Burocracia Zero · CRM de WhatsApp
 
-A small collection of Python utility functions for everyday use.
+CRM de WhatsApp para la gestoría **Burocracia Zero**: atención por WhatsApp,
+expedientes, citas, agenda, fichas de trámite, informes, portal del cliente
+(seguimiento, reserva de cita, subida de documentos, consentimiento RGPD y
+multi-idioma), automatizaciones, seguridad con CAPTCHA y utilidades de
+productividad interna.
 
-## Funcions
+## Estructura
 
-- `calculator.py` — basic arithmetic operations (add, subtract, multiply, divide)
+- **`whatsapp-crm/`** — la aplicación (servidor Node.js sin dependencias,
+  interfaz web y pruebas). Ver [`whatsapp-crm/README.md`](whatsapp-crm/README.md)
+  para arrancarlo y configurarlo.
+- **`render.yaml`** — blueprint de despliegue en [Render](https://render.com).
 
-## Usage
-
-```python
-from calculator import add, subtract, multiply, divide
-
-print(add(3, 5))       # 8
-print(subtract(10, 4)) # 6
-print(multiply(2, 7))  # 14
-print(divide(9, 3))    # 3.0
-```
-
-## Runing tests
+## Arranque rápido
 
 ```bash
-python -m pytest tests/
+cd whatsapp-crm
+node server.js        # http://localhost:3000
+node test.js          # pruebas
 ```
+
+Las variables de entorno (WhatsApp/YCloud, acceso, Microsoft 365, etc.) se
+documentan en `whatsapp-crm/README.md` y en `render.yaml`.
