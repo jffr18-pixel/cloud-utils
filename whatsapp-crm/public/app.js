@@ -2200,4 +2200,11 @@ document.addEventListener('keydown', (e) => {
 $('#palette').addEventListener('mousedown', (e) => { if (e.target.id === 'palette') closePalette(); });
 $('#shortcuts').addEventListener('mousedown', (e) => { if (e.target.id === 'shortcuts') $('#shortcuts').classList.add('hidden'); });
 
+// Registro del service worker (hace la app instalable en el móvil).
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => { /* sin PWA, el CRM funciona igual */ });
+  });
+}
+
 init();

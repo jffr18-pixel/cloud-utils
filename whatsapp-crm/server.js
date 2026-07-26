@@ -453,6 +453,7 @@ const MIME = {
   '.ico': 'image/x-icon',
   '.webp': 'image/webp',
   '.json': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
 };
