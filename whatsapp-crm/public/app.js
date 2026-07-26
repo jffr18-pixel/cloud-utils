@@ -156,6 +156,7 @@ async function refreshView() {
     if (state.view === 'appointments') await renderAppointments();
     if (state.view === 'templates') await renderTemplates();
     if (state.view === 'fichas') await renderFichas();
+    if (state.view === 'reports') await renderReports();
     if (state.view === 'reminders') await renderReminders();
     if (state.view === 'campaigns') await renderCampaigns();
     if (state.view === 'automations') await renderAutomations();
@@ -929,6 +930,76 @@ $('#btn-new-template').addEventListener('click', () => {
     await renderTemplates();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Informes de trámites
+// ---------------------------------------------------------------------------
+
+const state_report = { from: '', to: '' };
+
+document.querySelectorAll('.report-filters [data-range]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const now = new Date();
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    if (btn.dataset.range === 'mes') {
+      state_report.from = iso(new Date(now.getFullYear(), now.getMonth(), 1));
+      state_report.to = iso(now);
+    } else if (btn.dataset.range === 'anio') {
+      state_report.from = iso(new Date(now.getFullYear(), 0, 1));
+      state_report.to = iso(now);
+    } else {
+      state_report.from = '';
+      state_report.to = '';
+    }
+    $('#rep-from').value = state_report.from;
+    $('#rep-to').value = state_report.to;
+    renderReports();
+  });
+});
+$('#rep-from').addEventListener('change', () => { state_report.from = $('#rep-from').value; renderReports(); });
+$('#rep-to').addEventListener('change', () => { state_report.to = $('#rep-to').value; renderReports(); });
+$('#btn-export-report').addEventListener('click', () => {
+  location.href = `/api/export/informe.csv?${reportQuery()}`;
+});
+function reportQuery() {
+  const p = [];
+  if (state_report.from) p.push('from=' + state_report.from);
+  if (state_report.to) p.push('to=' + state_report.to);
+  return p.join('&');
+}
+
+// Barras horizontales sencillas (etiqueta · barra · valor).
+function barList(entries, labelMap) {
+  const max = Math.max(1, ...entries.map(([, v]) => v));
+  return entries.map(([k, v]) => `
+    <div class="rep-bar-row">
+      <span class="rep-bar-label">${esc(labelMap ? (labelMap[k] || k) : k)}</span>
+      <span class="rep-bar-track"><span class="rep-bar-fill" style="width:${Math.round((v / max) * 100)}%"></span></span>
+      <span class="rep-bar-val">${v}</span>
+    </div>`).join('') || '<p class="chart-empty">Sin datos en este periodo.</p>';
+}
+
+async function renderReports() {
+  const r = await api('reports?' + reportQuery());
+  $('#rep-cards').innerHTML = `
+    <div class="card"><div class="num">${r.total}</div><div class="lbl">Trámites en el periodo</div></div>
+    <div class="card"><div class="num">${r.completados}</div><div class="lbl">Completados</div></div>
+    <div class="card"><div class="num">${r.total ? Math.round(r.completados / r.total * 100) : 0}%</div><div class="lbl">Tasa de finalización</div></div>
+    <div class="card"><div class="num">${Object.keys(r.byArea).length}</div><div class="lbl">Áreas con actividad</div></div>`;
+
+  const areaEntries = Object.entries(r.byArea).sort((a, b) => b[1] - a[1]);
+  $('#rep-chart-area').innerHTML = barList(areaEntries, TYPE_LABEL);
+  const segEntries = Object.entries(r.bySegment).sort((a, b) => b[1] - a[1]);
+  $('#rep-chart-seg').innerHTML = barList(segEntries, SEGMENT_LABEL);
+
+  $('#rep-table').innerHTML = r.byTitle.length ? `
+    <table class="rep-table">
+      <thead><tr><th>Área</th><th>Trámite</th><th class="num">Total</th><th class="num">Completados</th></tr></thead>
+      <tbody>${r.byTitle.map((t) => `
+        <tr><td>${esc(TYPE_LABEL[t.type] || t.type)}</td><td>${esc(t.title)}</td>
+        <td class="num">${t.count}</td><td class="num">${t.completados}</td></tr>`).join('')}</tbody>
+    </table>` : '<p class="hint">No hay expedientes en este periodo.</p>';
+}
 
 // ---------------------------------------------------------------------------
 // Fichas de trámite

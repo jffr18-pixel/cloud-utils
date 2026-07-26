@@ -1292,6 +1292,47 @@ async function handleApi(req, res, url) {
   }
 
   // --- Estadísticas del panel ----------------------------------------------
+  // Informe de trámites: recuento de expedientes por área, estado y segmento
+  // en un rango de fechas (?from=YYYY-MM-DD&to=YYYY-MM-DD, ambos opcionales).
+  if (req.method === 'GET' && resource === 'reports') {
+    const from = url.searchParams.get('from');
+    const to = url.searchParams.get('to');
+    const fromTs = from ? new Date(from + 'T00:00:00').getTime() : -Infinity;
+    const toTs = to ? new Date(to + 'T23:59:59').getTime() : Infinity;
+    const segOf = (cid) => db.clients.find((c) => c.id === cid)?.segment || 'particular';
+
+    const cases = db.cases.filter((c) => c.createdAt >= fromTs && c.createdAt <= toTs);
+    const byArea = {};
+    const byStatus = {};
+    const bySegment = {};
+    const byMonth = {};
+    for (const c of cases) {
+      byArea[c.type] = (byArea[c.type] || 0) + 1;
+      byStatus[c.status] = (byStatus[c.status] || 0) + 1;
+      bySegment[segOf(c.clientId)] = (bySegment[segOf(c.clientId)] || 0) + 1;
+      const d = new Date(c.createdAt);
+      const m = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      byMonth[m] = (byMonth[m] || 0) + 1;
+    }
+    // Detalle por título de trámite (los expedientes concretos más frecuentes).
+    const byTitle = {};
+    for (const c of cases) {
+      const key = `${c.type}||${c.title.trim()}`;
+      byTitle[key] = byTitle[key] || { type: c.type, title: c.title.trim(), count: 0, completados: 0 };
+      byTitle[key].count += 1;
+      if (c.status === 'completado') byTitle[key].completados += 1;
+    }
+    return json(res, 200, {
+      total: cases.length,
+      completados: cases.filter((c) => c.status === 'completado').length,
+      byArea,
+      byStatus,
+      bySegment,
+      byMonth,
+      byTitle: Object.values(byTitle).sort((a, b) => b.count - a.count),
+    });
+  }
+
   if (req.method === 'GET' && resource === 'stats') {
     const DAY = 24 * 3600 * 1000;
     const now = new Date();
@@ -1421,6 +1462,26 @@ async function handleApi(req, res, url) {
         ['Cliente', 'Título', 'Tipo', 'Estado', 'Fecha límite', 'Documentación', 'Notas', 'Creado'],
         db.cases.map((c) => [clientName(c.clientId), c.title, c.type,
           STATUS[c.status] || c.status, c.dueDate || '', c.docs || '', c.notes, fmtDate(c.createdAt)]),
+      );
+    }
+    if (id === 'informe.csv') {
+      name = 'informe-tramites';
+      const AREA = { extranjeria: 'Extranjería', vehiculos: 'Tráfico / Vehículos', fiscal: 'Fiscal / Impuestos', laboral: 'Laboral / Nóminas', contabilidad: 'Contabilidad', pensiones: 'Pensiones / Prestaciones', social: 'Servicios sociales (JCCM)', otro: 'Otros trámites' };
+      const from = url.searchParams.get('from');
+      const to = url.searchParams.get('to');
+      const fromTs = from ? new Date(from + 'T00:00:00').getTime() : -Infinity;
+      const toTs = to ? new Date(to + 'T23:59:59').getTime() : Infinity;
+      const inRange = db.cases.filter((c) => c.createdAt >= fromTs && c.createdAt <= toTs);
+      const agg = {};
+      for (const c of inRange) {
+        const key = `${c.type}||${c.title.trim()}`;
+        agg[key] = agg[key] || { area: AREA[c.type] || c.type, title: c.title.trim(), count: 0, completados: 0 };
+        agg[key].count += 1;
+        if (c.status === 'completado') agg[key].completados += 1;
+      }
+      csv = toCsv(
+        ['Área', 'Trámite', 'Total', 'Completados'],
+        Object.values(agg).sort((a, b) => b.count - a.count).map((r) => [r.area, r.title, r.count, r.completados]),
       );
     }
     if (csv === null) return json(res, 404, { error: 'Exportación no disponible' });

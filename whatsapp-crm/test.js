@@ -595,6 +595,20 @@ async function main() {
     const badStatus = await req('PUT', `/api/clients/${clientId}`, { convStatus: 'inventado' });
     assert(badStatus.data.convStatus === 'pendiente', 'estados de conversación no válidos se ignoran');
 
+    console.log('Informes de trámites');
+    const report = await req('GET', '/api/reports');
+    assert(report.status === 200 && typeof report.data.total === 'number', 'informe de trámites responde');
+    assert(report.data.byArea && typeof report.data.byArea === 'object', 'informe agrupa por área');
+    assert(Array.isArray(report.data.byTitle), 'informe incluye el detalle por trámite');
+    // Con un rango de fechas imposible, no hay trámites.
+    const emptyReport = await req('GET', '/api/reports?from=1999-01-01&to=1999-12-31');
+    assert(emptyReport.data.total === 0, 'el filtro de fechas del informe acota los resultados');
+    // Exportación CSV del informe.
+    const repCsv = await fetch(`${BASE}/api/export/informe.csv`);
+    assert(repCsv.status === 200 && repCsv.headers.get('content-type').includes('text/csv'),
+      'exportación del informe responde CSV');
+    assert((await repCsv.text()).includes('Trámite'), 'el CSV del informe incluye la cabecera');
+
     console.log('Estadísticas');
     const stats = await req('GET', '/api/stats');
     assert(stats.data.messagesByDay.length === 14, 'serie de 14 días');
