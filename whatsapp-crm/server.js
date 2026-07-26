@@ -1683,6 +1683,9 @@ function statusPageShell(title, bodyHtml) {
   .lead { color:var(--muted); font-size:14px; margin:0 0 18px; }
   .case { background:#fff; border:1px solid #e6e3db; border-radius:14px; padding:16px 16px 14px; margin-bottom:14px; box-shadow:0 1px 2px rgba(0,0,0,.03); }
   .case-top { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+  .case-lead { display:flex; gap:12px; align-items:flex-start; min-width:0; }
+  .case-ico { width:42px; height:42px; border-radius:12px; background:#efeaf8; color:var(--lilac-dark); display:flex; align-items:center; justify-content:center; flex:none; }
+  .case-ico svg { width:23px; height:23px; }
   .case-title { font-weight:700; font-size:16px; }
   .area { display:inline-block; background:#efeaf8; color:var(--lilac-dark); border-radius:6px; padding:1px 8px; font-size:12px; font-weight:600; margin-top:4px; }
   .st { border-radius:999px; padding:3px 11px; font-size:12.5px; font-weight:700; white-space:nowrap; }
@@ -1690,15 +1693,17 @@ function statusPageShell(title, bodyHtml) {
   .st.en_curso { background:#eef2fb; color:#3f5bd6; }
   .st.esperando_documentacion { background:#fdf2e3; color:#a8690a; }
   .st.completado { background:#e4f5e8; color:var(--ok); }
-  .due { color:var(--muted); font-size:13px; margin-top:10px; }
-  .due.over { color:var(--danger); font-weight:700; }
+  .ic { flex:none; }
+  .due { display:flex; align-items:center; gap:7px; color:var(--muted); font-size:13px; margin-top:12px; }
+  .due .ic { width:17px; height:17px; color:var(--lilac-dark); }
+  .due.over, .due.over .ic { color:var(--danger); font-weight:700; }
   .chk { margin-top:12px; border-top:1px dashed #e6e3db; padding-top:10px; }
   .chk-h { font-size:12.5px; color:var(--muted); font-weight:600; margin-bottom:6px; }
   .chk ul { list-style:none; margin:0; padding:0; }
-  .chk li { font-size:14px; padding:2px 0; display:flex; gap:8px; align-items:baseline; }
+  .chk li { font-size:14px; padding:3px 0; display:flex; gap:9px; align-items:center; }
   .chk li.done { color:var(--muted); }
-  .mark { font-weight:700; }
-  .mark.y { color:var(--ok); } .mark.n { color:var(--lilac-dark); }
+  .chk li .ic { width:18px; height:18px; color:var(--lilac); }
+  .chk li.done .ic { color:var(--ok); }
   .empty { background:#fff; border:1px solid #e6e3db; border-radius:14px; padding:26px; text-align:center; color:var(--muted); }
   footer { text-align:center; color:var(--muted); font-size:12.5px; margin-top:26px; }
   .bar { height:6px; background:#efeaf8; border-radius:99px; overflow:hidden; margin-top:10px; }
@@ -1727,6 +1732,28 @@ ${bodyHtml}
 </div></body></html>`;
 }
 
+// Iconos de línea a medida (mismo estilo que el resto del CRM), coloreados
+// con currentColor para heredar el lila de la marca desde el CSS.
+const SVG_ICON = {
+  cal: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3"/></svg>',
+  check: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8.3 12.3l2.5 2.5 4.9-5.3"/></svg>',
+  dot: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/></svg>',
+};
+// Un icono por área de trámite (dentro del tile lila de cada expediente).
+const AREA_ICON_PATH = {
+  extranjeria: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.6 2.6 14.4 0 17M12 3.5c-2.6 2.6-2.6 14.4 0 17"/>',
+  vehiculos: '<path d="M5 16v-3l1.7-4.1A2 2 0 0 1 8.6 7.6h6.8a2 2 0 0 1 1.9 1.3L19 13v3"/><path d="M4 16h16"/><circle cx="8" cy="16.5" r="1.5"/><circle cx="16" cy="16.5" r="1.5"/>',
+  fiscal: '<path d="M7 3.5h10v17l-2.5-1.6L12 20.5l-2.5-1.6L7 20.5z"/><path d="M9.8 8.5h4.4M9.8 12h4.4"/>',
+  laboral: '<rect x="3.5" y="7.5" width="17" height="12" rx="2"/><path d="M8.5 7.5V6a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v1.5"/>',
+  contabilidad: '<path d="M4 20V4M4 20h16"/><path d="M8 17v-4M12 17V9M16 17v-2"/>',
+  pensiones: '<path d="M12 3.5l7 2.5v5c0 4.8-3 7.8-7 9.5-4-1.7-7-4.7-7-9.5V6z"/><path d="M9 12l2 2 4-4.5"/>',
+  social: '<circle cx="9" cy="9.5" r="3"/><path d="M3.8 18.5c0-2.9 2.3-4.8 5.2-4.8s5.2 1.9 5.2 4.8"/><path d="M16 7a3 3 0 0 1 0 6M17.2 14c2 .5 3 2.2 3 4.5"/>',
+  otro: '<path d="M7.5 3.5h6L17.5 8v12.5h-10z"/><path d="M13.5 3.5V8h4"/>',
+};
+function areaIconSvg(type) {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${AREA_ICON_PATH[type] || AREA_ICON_PATH.otro}</svg>`;
+}
+
 function renderStatusPage(db, client) {
   const cases = db.cases
     .filter((c) => c.clientId === client.id)
@@ -1742,18 +1769,21 @@ function renderStatusPage(db, client) {
       <div class="chk">
         <div class="chk-h">Documentación (${done}/${chk.length})</div>
         <div class="bar"><i style="width:${pct}%"></i></div>
-        <ul>${chk.map((x) => `<li class="${x.done ? 'done' : ''}"><span class="mark ${x.done ? 'y' : 'n'}">${x.done ? '✓' : '•'}</span> ${escHtml(x.item)}</li>`).join('')}</ul>
+        <ul>${chk.map((x) => `<li class="${x.done ? 'done' : ''}">${x.done ? SVG_ICON.check : SVG_ICON.dot} ${escHtml(x.item)}</li>`).join('')}</ul>
       </div>` : '';
     return `
     <div class="case">
       <div class="case-top">
-        <div>
-          <div class="case-title">${escHtml(c.title)}</div>
-          <div class="area">${escHtml(PUBLIC_TYPE_LABEL[c.type] || c.type)}</div>
+        <div class="case-lead">
+          <span class="case-ico">${areaIconSvg(c.type)}</span>
+          <div>
+            <div class="case-title">${escHtml(c.title)}</div>
+            <div class="area">${escHtml(PUBLIC_TYPE_LABEL[c.type] || c.type)}</div>
+          </div>
         </div>
         <span class="st ${escHtml(c.status)}">${escHtml(PUBLIC_STATUS_LABEL[c.status] || c.status)}</span>
       </div>
-      ${c.dueDate ? `<div class="due ${overdue ? 'over' : ''}">📅 Fecha límite: ${fmtDateEs(c.dueDate)}${overdue ? ' · pendiente' : ''}</div>` : ''}
+      ${c.dueDate ? `<div class="due ${overdue ? 'over' : ''}">${SVG_ICON.cal} Fecha límite: ${fmtDateEs(c.dueDate)}${overdue ? ' · pendiente' : ''}</div>` : ''}
       ${chkHtml}
     </div>`;
   }).join('') : '<div class="empty">Todavía no hay trámites registrados a tu nombre.</div>';
