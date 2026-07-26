@@ -50,6 +50,7 @@ const TYPE_LABEL = {
   laboral: 'Laboral / Nóminas',
   contabilidad: 'Contabilidad',
   pensiones: 'Pensiones / Prestaciones',
+  social: 'Servicios sociales (JCCM)',
   otro: 'Otros trámites',
 };
 // Segmentos = bloques de expedientes (tipo de cliente).

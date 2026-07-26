@@ -625,7 +625,7 @@ async function main() {
 
     console.log('Fichas de trámite');
     const fichas = await req('GET', '/api/fichas');
-    assert(fichas.status === 200 && fichas.data.length >= 25, 'fichas predefinidas precargadas (ejemplos + tráfico + extranjería + prestaciones)');
+    assert(fichas.status === 200 && fichas.data.length >= 32, 'fichas predefinidas precargadas (todos los packs)');
     assert(fichas.data.some((f) => f.title === 'Arraigo social' && f.area === 'extranjeria'),
       'incluye la ficha de Arraigo social en extranjería');
     // Pack de tráfico (DGT).
@@ -657,6 +657,18 @@ async function main() {
       'pensión de jubilación con el informe de vida laboral');
     assert(pensiones.some((f) => f.title === 'Ingreso Mínimo Vital (IMV)' && f.docs.includes('unidad de convivencia')),
       'IMV con la documentación de la unidad de convivencia');
+
+    // Packs de SEPE y de la Junta de CLM.
+    assert(pensiones.some((f) => f.title.includes('paro contributivo') && f.docs.includes('Certificado de empresa')),
+      'SEPE: prestación por desempleo con certificado de empresa');
+    const social = fichas.data.filter((f) => f.area === 'social');
+    assert(social.length >= 5, 'el pack de la Junta de CLM añade sus fichas de servicios sociales');
+    assert(social.some((f) => f.title.includes('dependencia') && f.notes.includes('Decreto 1/2019')),
+      'dependencia CLM con el Decreto 1/2019');
+    assert(social.some((f) => f.title.includes('discapacidad') && f.notes.includes('Orden 81/2023')),
+      'discapacidad CLM con la Orden 81/2023');
+    assert(social.some((f) => f.title.includes('familia monoparental')),
+      'incluye el título de familia monoparental de CLM');
 
     // Idempotencia: volver a pedir las fichas no las duplica.
     const fichas2 = await req('GET', '/api/fichas');

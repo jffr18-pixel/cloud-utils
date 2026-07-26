@@ -199,6 +199,55 @@ const FICHA_PACKS = {
       notes: 'Se solicita tras el nacimiento (o la resolución de adopción/acogimiento).',
     },
   ],
+  // Prestaciones por desempleo (SEPE).
+  'sepe-v1': [
+    {
+      title: 'Prestación por desempleo (paro contributivo)', area: 'pensiones',
+      intro: 'Hola {nombre} 👋 Para solicitar el paro (prestación contributiva) necesitamos:',
+      docs: '• DNI o NIE (y de los hijos a cargo, si los hay)\n• Certificado de empresa del último trabajo\n• Carta de despido o documento de fin de contrato\n• Número de cuenta bancaria (IBAN) a tu nombre\n• Libro de familia (si hay hijos a cargo)',
+      notes: 'Debes solicitarlo en los 15 días hábiles siguientes al cese y estar inscrito como demandante de empleo. Lo tramitamos en el SEPE por ti.',
+    },
+    {
+      title: 'Subsidio por desempleo', area: 'pensiones',
+      intro: 'Hola {nombre} 👋 Para el subsidio por desempleo necesitamos:',
+      docs: '• DNI o NIE de todos los miembros de la unidad familiar\n• Justificantes de ingresos de la unidad familiar\n• Libro de familia o certificado del Registro Civil\n• Número de cuenta bancaria (IBAN)\n• Documentación específica de tu caso (agotamiento de la prestación, retorno de emigrante, excarcelación…)',
+      notes: '⚠️ Requiere no superar el límite de rentas. Revisamos si tienes derecho y a qué modalidad de subsidio.',
+    },
+  ],
+  // Servicios sociales y trámites de la Junta de Comunidades de Castilla-La
+  // Mancha (JCCM). Documentación según la sede electrónica de la JCCM.
+  'jccm-social-v1': [
+    {
+      title: 'Reconocimiento de la situación de dependencia', area: 'social',
+      intro: 'Hola {nombre} 👋 Para solicitar el reconocimiento de dependencia en Castilla-La Mancha necesitamos:',
+      docs: '• DNI o NIE de la persona dependiente (y del representante, si lo hay)\n• Informe de salud (SESCAM, MUFACE, ISFAS o MUGEJU)\n• Certificado de empadronamiento\n• Documento que acredite la representación, si actúa otra persona',
+      notes: 'Regulado por el Decreto 1/2019 de CLM. La solicitud incluye declaraciones responsables; la mayoría de datos se consultan de oficio salvo que te opongas. Se presenta en Servicios Sociales o en la sede electrónica.',
+    },
+    {
+      title: 'Reconocimiento del grado de discapacidad', area: 'social',
+      intro: 'Hola {nombre} 👋 Para el reconocimiento del grado de discapacidad en Castilla-La Mancha necesitamos:',
+      docs: '• DNI o NIE de la persona interesada (y del representante, si lo hay)\n• Informes médicos y/o psicológicos que acrediten las deficiencias alegadas\n• Certificado de empadronamiento',
+      notes: 'Regulado por la Orden 81/2023 de CLM. Te valoran los equipos multiprofesionales de la delegación provincial. Preparamos y presentamos el expediente.',
+    },
+    {
+      title: 'Ingreso Mínimo de Solidaridad (IMS) — CLM', area: 'social',
+      intro: 'Hola {nombre} 👋 Para el Ingreso Mínimo de Solidaridad de Castilla-La Mancha necesitamos:',
+      docs: '• DNI o NIE de todos los miembros de la unidad familiar\n• Certificado de empadronamiento\n• Justificantes de ingresos y de la situación de la unidad familiar\n• Número de cuenta bancaria (IBAN)',
+      notes: 'Se tramita a través de los Servicios Sociales de tu localidad, que valoran el caso (Ley 5/1995 de CLM). ⚠️ La documentación exacta la determina el trabajador social.',
+    },
+    {
+      title: 'Título de familia numerosa (CLM)', area: 'social',
+      intro: 'Hola {nombre} 👋 Para el título de familia numerosa necesitamos:',
+      docs: '• DNI o NIE de los progenitores e hijos (DNI los mayores de 14 años)\n• Libro de familia completo\n• Certificado de empadronamiento de la unidad familiar\n• Fotografías tamaño carné (si las solicitan)\n• Justificantes en su caso (discapacidad, estudios de hijos mayores de 21…)',
+      notes: 'Da acceso a descuentos y beneficios. Lo tramitamos en la Junta de Comunidades de CLM.',
+    },
+    {
+      title: 'Título de familia monoparental (CLM)', area: 'social',
+      intro: 'Hola {nombre} 👋 Para el título de familia monoparental necesitamos:',
+      docs: '• DNI o NIE del progenitor e hijos\n• Libro de familia\n• Documentación que acredite la monoparentalidad (sentencia, certificado de defunción, etc.)\n• Certificado de empadronamiento',
+      notes: 'Título propio de Castilla-La Mancha con beneficios para familias monoparentales.',
+    },
+  ],
 };
 
 // Aplica los packs de fichas que aún no se hayan cargado en esta base de datos.
