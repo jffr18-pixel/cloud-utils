@@ -734,3 +734,43 @@ kbd {
 .qr-item.sel, .qr-item:hover { background: var(--accent-light); }
 .qr-name { font-size: 13px; font-weight: 700; }
 .qr-text { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------------------------------------------------------------------------
+   Hoy · fijar conversaciones · etiquetas
+--------------------------------------------------------------------------- */
+.today-date { color: var(--muted); font-size: 13.5px; font-weight: 600; }
+.ty-block { margin-bottom: 22px; }
+.ty-head {
+  font-family: var(--font-brand); font-weight: 700; font-size: 14.5px;
+  margin-bottom: 9px; display: flex; align-items: center; gap: 8px;
+}
+.ty-block.ty-alert .ty-head { color: var(--danger); }
+.ty-row { cursor: pointer; }
+.ty-time {
+  font-family: var(--font-brand); font-weight: 700; font-size: 16px;
+  background: var(--accent-light); color: var(--accent-dark);
+  border-radius: 8px; padding: 4px 9px; min-width: 54px; text-align: center;
+}
+.ty-who { color: var(--muted); }
+.ty-over { color: var(--danger); font-weight: 700; }
+.today-clear {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+  padding: 40px; text-align: center; color: var(--muted); font-size: 15px;
+}
+
+.conv-row.pinned { background: linear-gradient(90deg, var(--accent-light), transparent 70%); }
+.conv-pin { margin-right: 3px; }
+#btn-pin.active { background: var(--accent); border-color: var(--accent); }
+.conv-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.conv-tag {
+  font-size: 10.5px; font-weight: 600; background: var(--accent-light);
+  color: var(--accent-dark); border-radius: 5px; padding: 1px 6px; cursor: pointer;
+}
+.conv-tag:hover { background: var(--accent); color: #fff; }
+.tag-filter-bar {
+  display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600;
+  color: var(--accent-dark); background: var(--accent-light);
+  border-radius: 9px; padding: 6px 11px; margin-bottom: 8px;
+}
+.tag-clear { margin-left: auto; border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 13px; }
+.tag-clear:hover { color: var(--danger); }

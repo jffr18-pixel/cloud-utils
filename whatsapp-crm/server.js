@@ -531,9 +531,11 @@ function conversationSummaries(db) {
       unread,
       convStatus: client.convStatus || 'abierta',
       assignedTo: client.assignedTo || null,
+      pinned: Boolean(client.pinned),
     });
   }
-  out.sort((a, b) => b.lastTimestamp - a.lastTimestamp);
+  // Las conversaciones fijadas van primero; el resto, por actividad reciente.
+  out.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.lastTimestamp - a.lastTimestamp);
   return out;
 }
 
@@ -849,6 +851,39 @@ async function handleApi(req, res, url) {
     return json(res, 200, { ...result, configured: msgraph.isConfigured() });
   }
 
+  // Panel «Hoy»: lista accionable del día (citas, recordatorios, vencimientos,
+  // documentación pendiente, caducidades próximas y chats sin responder).
+  if (req.method === 'GET' && resource === 'today') {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const soon = new Date(now); soon.setDate(soon.getDate() + 30);
+    const soonIso = `${soon.getFullYear()}-${pad(soon.getMonth() + 1)}-${pad(soon.getDate())}`;
+    const nameOf = (cid) => (db.clients.find((c) => c.id === cid) || {}).name || '';
+    const citas = db.appointments
+      .filter((a) => a.status === 'activa' && a.date === today)
+      .sort((a, b) => String(a.time).localeCompare(String(b.time)))
+      .map((a) => ({ clientId: a.clientId, who: nameOf(a.clientId), time: a.time, reason: a.reason || 'Consulta' }));
+    const recordatorios = db.reminders
+      .filter((r) => !r.done && r.dueDate && r.dueDate <= today)
+      .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)))
+      .map((r) => ({ id: r.id, text: r.text, who: nameOf(r.clientId), dueDate: r.dueDate, overdue: r.dueDate < today }));
+    const vencimientos = db.cases
+      .filter((c) => c.status !== 'completado' && c.dueDate && c.dueDate <= today)
+      .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)))
+      .map((c) => ({ id: c.id, title: c.title, who: nameOf(c.clientId), dueDate: c.dueDate, overdue: c.dueDate < today }));
+    const docs = db.cases
+      .filter((c) => c.status === 'esperando_documentacion')
+      .map((c) => ({ id: c.id, title: c.title, who: nameOf(c.clientId) }));
+    const caducidades = db.cases
+      .filter((c) => c.expiryDate && c.expiryDate <= soonIso)
+      .sort((a, b) => String(a.expiryDate).localeCompare(String(b.expiryDate)))
+      .map((c) => ({ id: c.id, title: c.title, who: nameOf(c.clientId), expiryDate: c.expiryDate, expired: c.expiryDate < today }));
+    const sinResponder = conversationSummaries(db)
+      .filter((c) => c.lastDirection === 'in')
+      .map((c) => ({ clientId: c.clientId, who: c.clientName, lastMessage: c.lastMessage, unread: c.unread }));
+    return json(res, 200, { date: today, citas, recordatorios, vencimientos, docs, caducidades, sinResponder });
+  }
   if (req.method === 'GET' && resource === 'dashboard') {
     const now = Date.now();
     const endOfToday = new Date();
@@ -940,6 +975,7 @@ async function handleApi(req, res, url) {
         client.convStatus = b.convStatus;
       }
       if (b.assignedTo !== undefined) client.assignedTo = b.assignedTo || null;
+      if (b.pinned !== undefined) client.pinned = Boolean(b.pinned);
       save();
       return json(res, 200, client);
     }

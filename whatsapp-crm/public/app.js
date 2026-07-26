@@ -131,6 +131,7 @@ const state = {
   segFilter: '',
   apptFilter: 'proximas',
   inboxFilter: '',
+  tagFilter: '',
   noteMode: false,
   lastMessageCount: 0,
   convOrder: [],
@@ -152,6 +153,7 @@ document.querySelectorAll('.nav-btn').forEach((btn) => {
 async function refreshView() {
   try {
     if (state.view === 'dashboard') await renderDashboard();
+    if (state.view === 'today') await renderToday();
     if (state.view === 'inbox') await renderInbox();
     if (state.view === 'clients') await renderClients();
     if (state.view === 'cases') await renderCases();
@@ -178,6 +180,13 @@ async function updateUnreadBadge() {
   } else {
     badge.classList.add('hidden');
   }
+  // Insignia de «Hoy»: lo urgente del día (vencidos, citas, chats sin responder).
+  try {
+    const t = await api('today');
+    const urgent = t.vencimientos.filter((x) => x.overdue).length + t.citas.length + t.sinResponder.length;
+    const tb = $('#nav-today');
+    if (urgent) { tb.textContent = urgent; tb.classList.remove('hidden'); } else tb.classList.add('hidden');
+  } catch { /* ignore */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -205,6 +214,77 @@ async function renderDashboard() {
   $('#dash-recent').innerHTML = d.recentConversations.map(convRowHtml).join('')
     || '<p class="hint">Todavía no hay conversaciones.</p>';
   bindConvRows($('#dash-recent'), true);
+}
+
+// ---------------------------------------------------------------------------
+// Hoy: lista de tareas del día
+// ---------------------------------------------------------------------------
+
+async function renderToday() {
+  const t = await api('today');
+  const d = new Date(t.date + 'T12:00');
+  let label = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  $('#today-date').textContent = label.charAt(0).toUpperCase() + label.slice(1);
+
+  const total = t.citas.length + t.recordatorios.length + t.vencimientos.length
+    + t.docs.length + t.caducidades.length + t.sinResponder.length;
+  const badge = $('#nav-today');
+  const urgent = t.vencimientos.filter((x) => x.overdue).length + t.citas.length + t.sinResponder.length;
+  if (urgent) { badge.textContent = urgent; badge.classList.remove('hidden'); } else badge.classList.add('hidden');
+
+  const who = (w) => (w ? `<span class="ty-who">${esc(w)}</span>` : '');
+  const goInbox = (id) => `data-go="inbox" data-client="${esc(id)}"`;
+  const goView = (v) => `data-go="${v}"`;
+
+  const block = (title, ico, cls, items, rowFn) => items.length ? `
+    <div class="ty-block ${cls}">
+      <div class="ty-head">${ico} ${title} <span class="block-count">${items.length}</span></div>
+      <div class="list">${items.map(rowFn).join('')}</div>
+    </div>` : '';
+
+  const html = [
+    block('Sin responder', '💬', 'ty-alert', t.sinResponder, (x) => `
+      <div class="row ty-row" ${goInbox(x.clientId)}>
+        <div class="grow"><div class="title">${esc(x.who)}</div><div class="sub">${esc(x.lastMessage || '')}</div></div>
+        ${x.unread ? `<span class="unread-dot">${x.unread}</span>` : ''}
+      </div>`),
+    block('Citas de hoy', '📅', '', t.citas, (x) => `
+      <div class="row ty-row" ${goInbox(x.clientId)}>
+        <span class="ty-time">${esc(x.time)}</span>
+        <div class="grow"><div class="title">${esc(x.who)}</div><div class="sub">${esc(x.reason)}</div></div>
+      </div>`),
+    block('Vencimientos', '📁', 'ty-alert', t.vencimientos, (x) => `
+      <div class="row ty-row" ${goView('cases')}>
+        <div class="grow"><div class="title">${esc(x.title)}</div><div class="sub">${who(x.who)}</div></div>
+        <div class="meta ${x.overdue ? 'ty-over' : ''}">📅 ${fmtDate(x.dueDate)}${x.overdue ? ' ¡vencido!' : ''}</div>
+      </div>`),
+    block('Recordatorios', '⏰', '', t.recordatorios, (x) => `
+      <div class="row ty-row" ${goView('reminders')}>
+        <div class="grow"><div class="title">${esc(x.text)}</div><div class="sub">${who(x.who)}</div></div>
+        <div class="meta ${x.overdue ? 'ty-over' : ''}">📅 ${fmtDate(x.dueDate)}</div>
+      </div>`),
+    block('Esperando documentación', '📎', '', t.docs, (x) => `
+      <div class="row ty-row" ${goView('cases')}>
+        <div class="grow"><div class="title">${esc(x.title)}</div><div class="sub">${who(x.who)}</div></div>
+      </div>`),
+    block('Caducan pronto', '🔄', '', t.caducidades, (x) => `
+      <div class="row ty-row" ${goView('cases')}>
+        <div class="grow"><div class="title">${esc(x.title)}</div><div class="sub">${who(x.who)}</div></div>
+        <div class="meta ${x.expired ? 'ty-over' : ''}">🔄 ${fmtDate(x.expiryDate)}</div>
+      </div>`),
+  ].join('');
+
+  $('#today-content').innerHTML = total
+    ? html
+    : '<div class="today-clear">✨ Nada pendiente para hoy. ¡Buen trabajo!</div>';
+
+  $('#today-content').querySelectorAll('.ty-row').forEach((row) => {
+    row.addEventListener('click', () => {
+      const go = row.dataset.go;
+      if (go === 'inbox') { showView('inbox'); if (row.dataset.client) openConversation(row.dataset.client); }
+      else showView(go);
+    });
+  });
 }
 
 // Colores de serie validados (lila de marca + violeta profundo).
@@ -293,13 +373,15 @@ function avatarHtml(name) {
 
 function convRowHtml(c) {
   const arrow = c.lastDirection === 'out' ? '↗ ' : c.lastDirection === 'note' ? '🗒️ ' : '';
+  const tags = (c.tags || []).slice(0, 2).map((t) => `<span class="conv-tag">${esc(t)}</span>`).join('');
   return `
-    <div class="row conv-row" data-client-id="${esc(c.clientId)}">
+    <div class="row conv-row ${c.pinned ? 'pinned' : ''}" data-client-id="${esc(c.clientId)}">
       ${avatarHtml(c.clientName)}
       <div class="grow">
-        <div class="title"><span class="conv-dot">${CONV_DOT[c.convStatus] || '🟢'}</span>${esc(c.clientName)}
+        <div class="title">${c.pinned ? '<span class="conv-pin">📌</span>' : ''}<span class="conv-dot">${CONV_DOT[c.convStatus] || '🟢'}</span>${esc(c.clientName)}
           ${c.assignedTo ? `<span class="conv-assigned">· ${esc(c.assignedTo)}</span>` : ''}</div>
         <div class="sub">${arrow}${esc(c.lastMessage)}</div>
+        ${tags ? `<div class="conv-tags">${tags}</div>` : ''}
       </div>
       <div class="meta">
         <div>${fmtTime(c.lastTimestamp)}</div>
@@ -318,13 +400,30 @@ function bindConvRows(container, jumpToInbox) {
   });
 }
 
-// Filtro de triaje de la bandeja de entrada.
+// Filtro de triaje de la bandeja de entrada (estado + etiqueta).
 function filterConvs(convs) {
+  let list = convs;
   const f = state.inboxFilter;
-  if (f === 'unanswered') return convs.filter((c) => c.lastDirection === 'in');
-  if (f === 'pendiente') return convs.filter((c) => c.convStatus === 'pendiente');
-  if (f === 'resuelta') return convs.filter((c) => c.convStatus === 'resuelta');
-  return convs;
+  if (f === 'unanswered') list = list.filter((c) => c.lastDirection === 'in');
+  else if (f === 'pendiente') list = list.filter((c) => c.convStatus === 'pendiente');
+  else if (f === 'resuelta') list = list.filter((c) => c.convStatus === 'resuelta');
+  if (state.tagFilter) list = list.filter((c) => (c.tags || []).includes(state.tagFilter));
+  return list;
+}
+
+// Al hacer clic en una etiqueta de una conversación, se filtra por ella.
+function bindConvTags(container) {
+  container.querySelectorAll('.conv-tag').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.tagFilter = el.textContent;
+      renderInbox();
+    });
+  });
+}
+function tagFilterBar() {
+  return state.tagFilter
+    ? `<div class="tag-filter-bar">🏷️ ${esc(state.tagFilter)} <button class="tag-clear" id="tag-clear">✕</button></div>` : '';
 }
 
 async function renderInbox() {
@@ -333,9 +432,12 @@ async function renderInbox() {
   state.templates = templates;
   const list = filterConvs(convs);
   state.convOrder = list.map((c) => c.clientId);
-  $('#conv-list').innerHTML = list.map(convRowHtml).join('')
-    || '<p class="hint">No hay conversaciones con este filtro.</p>';
+  $('#conv-list').innerHTML = tagFilterBar() + (list.map(convRowHtml).join('')
+    || '<p class="hint">No hay conversaciones con este filtro.</p>');
   bindConvRows($('#conv-list'), false);
+  bindConvTags($('#conv-list'));
+  const clr = $('#tag-clear');
+  if (clr) clr.addEventListener('click', () => { state.tagFilter = ''; renderInbox(); });
 
   const sel = $('#tpl-select');
   sel.innerHTML = '<option value="">📝 Plantilla…</option>'
@@ -359,6 +461,8 @@ async function openConversation(clientId) {
   $('#conv-status').value = client.convStatus || 'abierta';
   $('#conv-assign').innerHTML = '<option value="">Sin asignar</option>'
     + state.users.map((u) => `<option value="${esc(u)}" ${client.assignedTo === u ? 'selected' : ''}>${esc(u)}</option>`).join('');
+  $('#btn-pin').classList.toggle('active', Boolean(client.pinned));
+  $('#btn-pin').title = client.pinned ? 'Desfijar conversación' : 'Fijar conversación arriba';
   state.lastMessageCount = msgs.length;
 
   $('#chat-messages').innerHTML = msgs.map((m) => {
@@ -486,6 +590,15 @@ $('#tpl-select').addEventListener('change', async () => {
 
 $('#btn-open-client').addEventListener('click', () => {
   if (state.activeClientId) openClientDetail(state.activeClientId);
+});
+
+$('#btn-pin').addEventListener('click', async () => {
+  if (!state.activeClientId) return;
+  const nowPinned = !$('#btn-pin').classList.contains('active');
+  $('#btn-pin').classList.toggle('active', nowPinned);
+  $('#btn-pin').title = nowPinned ? 'Desfijar conversación' : 'Fijar conversación arriba';
+  await api('clients/' + state.activeClientId, { method: 'PUT', body: { pinned: nowPinned } });
+  await renderInbox();
 });
 
 $('#btn-back-conv').addEventListener('click', () => {
@@ -1859,9 +1972,12 @@ setInterval(async () => {
       if ($('#conv-search').value.trim()) return; // no pisar los resultados de búsqueda
       const convs = filterConvs(await api('conversations'));
       state.convOrder = convs.map((c) => c.clientId);
-      $('#conv-list').innerHTML = convs.map(convRowHtml).join('')
-        || '<p class="hint">No hay conversaciones con este filtro.</p>';
+      $('#conv-list').innerHTML = tagFilterBar() + (convs.map(convRowHtml).join('')
+        || '<p class="hint">No hay conversaciones con este filtro.</p>');
       bindConvRows($('#conv-list'), false);
+      bindConvTags($('#conv-list'));
+      const clr2 = $('#tag-clear');
+      if (clr2) clr2.addEventListener('click', () => { state.tagFilter = ''; renderInbox(); });
       if (state.activeClientId) {
         const msgs = await api('messages?clientId=' + encodeURIComponent(state.activeClientId));
         if (msgs.length !== state.lastMessageCount) {

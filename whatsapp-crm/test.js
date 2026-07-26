@@ -1012,6 +1012,24 @@ async function main() {
     assert(gShort.data.clients.length === 0 && gShort.data.cases.length === 0,
       'la búsqueda global ignora consultas de menos de 2 letras');
 
+    console.log('Panel «Hoy»');
+    const nowT = new Date();
+    const todayIsoT = `${nowT.getFullYear()}-${String(nowT.getMonth() + 1).padStart(2, '0')}-${String(nowT.getDate()).padStart(2, '0')}`;
+    await req('POST', '/api/appointments', { clientId, date: todayIsoT, time: '10:00', reason: 'Revisión' });
+    const todayResp = await req('GET', '/api/today');
+    assert(todayResp.data.date === todayIsoT, 'el panel Hoy responde con la fecha de hoy');
+    assert(todayResp.data.citas.some((c) => c.time === '10:00'), 'el panel Hoy incluye las citas de hoy');
+    assert(Array.isArray(todayResp.data.sinResponder) && Array.isArray(todayResp.data.vencimientos),
+      'el panel Hoy agrupa vencimientos y chats sin responder');
+
+    console.log('Fijar conversaciones');
+    const pinned = await req('PUT', `/api/clients/${clientId}`, { pinned: true });
+    assert(pinned.data.pinned === true, 'una conversación se puede fijar');
+    const convsPinned = await req('GET', '/api/conversations');
+    assert(convsPinned.data[0].clientId === clientId && convsPinned.data[0].pinned === true,
+      'las conversaciones fijadas aparecen primero');
+    await req('PUT', `/api/clients/${clientId}`, { pinned: false });
+
     console.log('Exportación CSV');
     const csvClients = await fetch(`${BASE}/api/export/clients.csv`);
     const csvClientsText = await csvClients.text();
