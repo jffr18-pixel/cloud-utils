@@ -367,6 +367,19 @@ async function main() {
     const upd = await req('PUT', `/api/cases/${kase.data.id}`, { status: 'en_curso' });
     assert(upd.data.status === 'en_curso', 'actualizar estado del expediente');
 
+    // Honorarios + checklist de documentación.
+    const feed = await req('POST', '/api/cases', {
+      clientId, title: 'Arraigo social', type: 'extranjeria', fee: 250, paid: true,
+      checklist: [{ item: 'Pasaporte', done: true }, { item: 'Empadronamiento', done: false }, { item: '', done: true }],
+    });
+    assert(feed.data.fee === 250 && feed.data.paid === true, 'expediente guarda honorario y estado de cobro');
+    assert(feed.data.checklist.length === 2 && feed.data.checklist[0].done === true,
+      'checklist filtra ítems vacíos y conserva marcas');
+    const feed2 = await req('PUT', `/api/cases/${feed.data.id}`, {
+      paid: false, checklist: [{ item: 'Pasaporte', done: true }], status: 'completado',
+    });
+    assert(feed2.data.paid === false && feed2.data.checklist.length === 1, 'editar honorario/checklist del expediente');
+
     console.log('Plantillas y recordatorios');
     const tpl = await req('POST', '/api/templates', { name: 'Saludo', text: 'Hola {nombre}' });
     assert(tpl.status === 201, 'crear plantilla');
@@ -600,6 +613,11 @@ async function main() {
     assert(report.status === 200 && typeof report.data.total === 'number', 'informe de trámites responde');
     assert(report.data.byArea && typeof report.data.byArea === 'object', 'informe agrupa por área');
     assert(Array.isArray(report.data.byTitle), 'informe incluye el detalle por trámite');
+    // Ingresos: el expediente de 250 € (extranjería) ya no está cobrado (paid:false).
+    assert(report.data.facturado >= 250, 'informe suma lo facturado');
+    assert(report.data.pendiente === report.data.facturado - report.data.cobrado, 'pendiente = facturado − cobrado');
+    assert(report.data.incomeByArea.extranjeria && report.data.incomeByArea.extranjeria.facturado >= 250,
+      'informe desglosa la facturación por área');
     // Con un rango de fechas imposible, no hay trámites.
     const emptyReport = await req('GET', '/api/reports?from=1999-01-01&to=1999-12-31');
     assert(emptyReport.data.total === 0, 'el filtro de fechas del informe acota los resultados');
@@ -608,6 +626,24 @@ async function main() {
     assert(repCsv.status === 200 && repCsv.headers.get('content-type').includes('text/csv'),
       'exportación del informe responde CSV');
     assert((await repCsv.text()).includes('Trámite'), 'el CSV del informe incluye la cabecera');
+
+    console.log('Estado del trámite (página pública)');
+    const linkRes = await req('POST', `/api/clients/${clientId}/estado-link`);
+    assert(linkRes.status === 200 && typeof linkRes.data.token === 'string' && linkRes.data.token.length >= 16,
+      'genera un token de estado para el cliente');
+    const token = linkRes.data.token;
+    const again = await req('POST', `/api/clients/${clientId}/estado-link`);
+    assert(again.data.token === token, 'el token del enlace es estable entre llamadas');
+    const page = await fetch(`${BASE}/estado/${token}`);
+    const pageHtml = await page.text();
+    assert(page.status === 200 && page.headers.get('content-type').includes('text/html'),
+      'la página de estado responde HTML');
+    assert(pageHtml.includes('Burocracia') && pageHtml.includes('Declaración renta 2025'),
+      'la página muestra los trámites del cliente');
+    assert(!pageHtml.includes('250') && !/honorario/i.test(pageHtml),
+      'la página pública no filtra honorarios ni datos internos');
+    const badPage = await fetch(`${BASE}/estado/token-inexistente-1234567890`);
+    assert(badPage.status === 404, 'token inválido → 404 en la página de estado');
 
     console.log('Estadísticas');
     const stats = await req('GET', '/api/stats');

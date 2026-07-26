@@ -804,6 +804,14 @@ async function handleApi(req, res, url) {
     }
     const client = db.clients.find((c) => c.id === id);
     if (!client) return json(res, 404, { error: 'Cliente no encontrado' });
+    // Enlace privado de «Estado del trámite» para compartir con el cliente.
+    if (req.method === 'POST' && parts[3] === 'estado-link') {
+      if (!client.statusToken) { client.statusToken = crypto.randomBytes(20).toString('hex'); save(); }
+      const proto = (req.headers['x-forwarded-proto'] || '').split(',')[0].trim()
+        || (req.socket && req.socket.encrypted ? 'https' : 'http');
+      const host = req.headers.host || `localhost:${PORT}`;
+      return json(res, 200, { token: client.statusToken, url: `${proto}://${host}/estado/${client.statusToken}` });
+    }
     if (req.method === 'GET') return json(res, 200, client);
     if (req.method === 'PUT') {
       const b = await readBody(req);
@@ -1067,6 +1075,12 @@ async function handleApi(req, res, url) {
         status: b.status || 'pendiente', // pendiente | en_curso | esperando_documentacion | completado
         dueDate: b.dueDate || null,
         docs: b.docs || '', // documentación necesaria (para la automatización)
+        fee: Number(b.fee) || 0, // honorario del trámite (€)
+        paid: Boolean(b.paid), // cobrado o pendiente
+        // Checklist de documentación recibida: [{ item, done }]
+        checklist: Array.isArray(b.checklist)
+          ? b.checklist.map((c) => ({ item: String(c.item || '').trim(), done: Boolean(c.done) })).filter((c) => c.item)
+          : [],
         notes: b.notes || '',
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -1087,6 +1101,13 @@ async function handleApi(req, res, url) {
       const oldStatus = item.status;
       for (const key of ['title', 'type', 'status', 'dueDate', 'docs', 'notes']) {
         if (b[key] !== undefined) item[key] = b[key];
+      }
+      if (b.fee !== undefined) item.fee = Number(b.fee) || 0;
+      if (b.paid !== undefined) item.paid = Boolean(b.paid);
+      if (Array.isArray(b.checklist)) {
+        item.checklist = b.checklist
+          .map((c) => ({ item: String(c.item || '').trim(), done: Boolean(c.done) }))
+          .filter((c) => c.item);
       }
       item.updatedAt = Date.now();
       save();
@@ -1306,6 +1327,9 @@ async function handleApi(req, res, url) {
     const byStatus = {};
     const bySegment = {};
     const byMonth = {};
+    const incomeByArea = {}; // { area: { facturado, cobrado } }
+    let facturado = 0;
+    let cobrado = 0;
     for (const c of cases) {
       byArea[c.type] = (byArea[c.type] || 0) + 1;
       byStatus[c.status] = (byStatus[c.status] || 0) + 1;
@@ -1313,6 +1337,12 @@ async function handleApi(req, res, url) {
       const d = new Date(c.createdAt);
       const m = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       byMonth[m] = (byMonth[m] || 0) + 1;
+      const fee = Number(c.fee) || 0;
+      facturado += fee;
+      if (c.paid) cobrado += fee;
+      incomeByArea[c.type] = incomeByArea[c.type] || { facturado: 0, cobrado: 0 };
+      incomeByArea[c.type].facturado += fee;
+      if (c.paid) incomeByArea[c.type].cobrado += fee;
     }
     // Detalle por título de trámite (los expedientes concretos más frecuentes).
     const byTitle = {};
@@ -1329,6 +1359,10 @@ async function handleApi(req, res, url) {
       byStatus,
       bySegment,
       byMonth,
+      facturado,
+      cobrado,
+      pendiente: facturado - cobrado,
+      incomeByArea,
       byTitle: Object.values(byTitle).sort((a, b) => b.count - a.count),
     });
   }
@@ -1596,6 +1630,120 @@ async function handleApi(req, res, url) {
 }
 
 // ---------------------------------------------------------------------------
+// Página pública «Estado del trámite» (solo lectura, sin datos internos)
+// ---------------------------------------------------------------------------
+
+const PUBLIC_STATUS_LABEL = {
+  pendiente: 'Pendiente de iniciar',
+  en_curso: 'En curso',
+  esperando_documentacion: 'Esperando documentación',
+  completado: 'Completado',
+};
+const PUBLIC_TYPE_LABEL = {
+  extranjeria: 'Extranjería', vehiculos: 'Tráfico / Vehículos', fiscal: 'Fiscal / Impuestos',
+  laboral: 'Laboral / Nóminas', contabilidad: 'Contabilidad', pensiones: 'Pensiones / Prestaciones',
+  social: 'Servicios sociales', otro: 'Otros trámites',
+};
+
+function escHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function fmtDateEs(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return '—';
+  return d.toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
+}
+
+function statusPageShell(title, bodyHtml) {
+  return `<!doctype html>
+<html lang="es"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>${escHtml(title)}</title>
+<style>
+  :root { --charcoal:#1d1a22; --cream:#f4f2ec; --lilac:#9c86c9; --lilac-dark:#5e35b1; --muted:#6f6a78; --ok:#1d7a34; --danger:#c0392b; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; background:var(--cream); color:var(--charcoal); line-height:1.5; }
+  .wrap { max-width:640px; margin:0 auto; padding:24px 18px 60px; }
+  header { text-align:center; padding:26px 0 18px; }
+  .brand { font-weight:800; font-size:22px; letter-spacing:.3px; color:var(--charcoal); }
+  .brand span { color:var(--lilac-dark); }
+  .sub { color:var(--muted); font-size:14px; margin-top:4px; }
+  h1 { font-size:19px; margin:22px 0 4px; }
+  .lead { color:var(--muted); font-size:14px; margin:0 0 18px; }
+  .case { background:#fff; border:1px solid #e6e3db; border-radius:14px; padding:16px 16px 14px; margin-bottom:14px; box-shadow:0 1px 2px rgba(0,0,0,.03); }
+  .case-top { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+  .case-title { font-weight:700; font-size:16px; }
+  .area { display:inline-block; background:#efeaf8; color:var(--lilac-dark); border-radius:6px; padding:1px 8px; font-size:12px; font-weight:600; margin-top:4px; }
+  .st { border-radius:999px; padding:3px 11px; font-size:12.5px; font-weight:700; white-space:nowrap; }
+  .st.pendiente { background:#fdecea; color:var(--danger); }
+  .st.en_curso { background:#eef2fb; color:#3f5bd6; }
+  .st.esperando_documentacion { background:#fdf2e3; color:#a8690a; }
+  .st.completado { background:#e4f5e8; color:var(--ok); }
+  .due { color:var(--muted); font-size:13px; margin-top:10px; }
+  .due.over { color:var(--danger); font-weight:700; }
+  .chk { margin-top:12px; border-top:1px dashed #e6e3db; padding-top:10px; }
+  .chk-h { font-size:12.5px; color:var(--muted); font-weight:600; margin-bottom:6px; }
+  .chk ul { list-style:none; margin:0; padding:0; }
+  .chk li { font-size:14px; padding:2px 0; display:flex; gap:8px; align-items:baseline; }
+  .chk li.done { color:var(--muted); }
+  .mark { font-weight:700; }
+  .mark.y { color:var(--ok); } .mark.n { color:var(--lilac-dark); }
+  .empty { background:#fff; border:1px solid #e6e3db; border-radius:14px; padding:26px; text-align:center; color:var(--muted); }
+  footer { text-align:center; color:var(--muted); font-size:12.5px; margin-top:26px; }
+  .bar { height:6px; background:#efeaf8; border-radius:99px; overflow:hidden; margin-top:10px; }
+  .bar > i { display:block; height:100%; background:var(--lilac); }
+</style>
+</head><body><div class="wrap">
+<header>
+  <div class="brand">Burocracia <span>Zero</span></div>
+  <div class="sub">Seguimiento de tus trámites</div>
+</header>
+${bodyHtml}
+<footer>Esta página es privada y solo para ti. Para cualquier duda, escríbenos por WhatsApp.</footer>
+</div></body></html>`;
+}
+
+function renderStatusPage(db, client) {
+  const cases = db.cases
+    .filter((c) => c.clientId === client.id)
+    .sort((a, b) => (a.status === 'completado' ? 1 : 0) - (b.status === 'completado' ? 1 : 0)
+      || String(a.dueDate || '9999').localeCompare(String(b.dueDate || '9999')));
+  const now = new Date();
+  const body = cases.length ? cases.map((c) => {
+    const overdue = c.dueDate && c.status !== 'completado' && new Date(c.dueDate) < now;
+    const chk = Array.isArray(c.checklist) ? c.checklist : [];
+    const done = chk.filter((x) => x.done).length;
+    const pct = chk.length ? Math.round(done / chk.length * 100) : 0;
+    const chkHtml = chk.length ? `
+      <div class="chk">
+        <div class="chk-h">Documentación (${done}/${chk.length})</div>
+        <div class="bar"><i style="width:${pct}%"></i></div>
+        <ul>${chk.map((x) => `<li class="${x.done ? 'done' : ''}"><span class="mark ${x.done ? 'y' : 'n'}">${x.done ? '✓' : '•'}</span> ${escHtml(x.item)}</li>`).join('')}</ul>
+      </div>` : '';
+    return `
+    <div class="case">
+      <div class="case-top">
+        <div>
+          <div class="case-title">${escHtml(c.title)}</div>
+          <div class="area">${escHtml(PUBLIC_TYPE_LABEL[c.type] || c.type)}</div>
+        </div>
+        <span class="st ${escHtml(c.status)}">${escHtml(PUBLIC_STATUS_LABEL[c.status] || c.status)}</span>
+      </div>
+      ${c.dueDate ? `<div class="due ${overdue ? 'over' : ''}">📅 Fecha límite: ${fmtDateEs(c.dueDate)}${overdue ? ' · pendiente' : ''}</div>` : ''}
+      ${chkHtml}
+    </div>`;
+  }).join('') : '<div class="empty">Todavía no hay trámites registrados a tu nombre.</div>';
+  const greeting = `<h1>Hola, ${escHtml((client.name || '').split(' ')[0] || client.name)} 👋</h1>
+    <p class="lead">Aquí puedes ver el estado de tus trámites en tiempo real.</p>`;
+  return statusPageShell(`Estado de tus trámites · ${client.name}`, greeting + body);
+}
+
+// ---------------------------------------------------------------------------
 // Servidor
 // ---------------------------------------------------------------------------
 
@@ -1641,6 +1789,24 @@ const server = http.createServer(async (req, res) => {
         return json(res, 429, { error: 'Demasiadas peticiones, espera un momento' });
       }
       return await handleApi(req, res, url);
+    }
+
+    // Página pública de estado del trámite (enlace privado por cliente).
+    if (url.pathname.startsWith('/estado/')) {
+      if (!security.rateLimit(`estado:${ipOf(req)}`, Number(process.env.RATE_LIMIT_API || 600))) {
+        res.writeHead(429, { 'Content-Type': 'text/plain; charset=utf-8' });
+        return res.end('Demasiadas peticiones');
+      }
+      const token = url.pathname.slice('/estado/'.length).split('/')[0];
+      const db = load();
+      const client = token && token.length >= 16 ? db.clients.find((c) => c.statusToken === token) : null;
+      if (!client) {
+        res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+        return res.end(statusPageShell('Enlace no válido',
+          '<div class="empty">Este enlace no es válido o ha caducado. Contáctanos por WhatsApp para obtener uno nuevo.</div>'));
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(renderStatusPage(db, client));
     }
 
     // Ficheros estáticos de la interfaz.

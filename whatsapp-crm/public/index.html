@@ -21,6 +21,7 @@
       <symbol id="ico-appointments" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3"/><path d="M7.5 13h3v3h-3z" fill="currentColor" stroke="none"/></symbol>
       <symbol id="ico-templates" viewBox="0 0 24 24"><path d="M6 3.5h8L18.5 8v12.5a0 0 0 0 1 0 0H6a1.5 1.5 0 0 1-1.5-1.5V5A1.5 1.5 0 0 1 6 3.5Z"/><path d="M13.5 3.5V8h4.5M8 12.5h7M8 16h7"/></symbol>
       <symbol id="ico-reminders" viewBox="0 0 24 24"><circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 1.5M12 3.5V2M9 2.5h6"/></symbol>
+      <symbol id="ico-agenda" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3"/><path d="M8 13h2M8 16.5h2M13 13l1.3 1.3L17 12" stroke-width="1.8"/></symbol>
       <symbol id="ico-campaigns" viewBox="0 0 24 24"><path d="M4 10v4a1.5 1.5 0 0 0 1.5 1.5H8l7 4.5V4L8 8.5H5.5A1.5 1.5 0 0 0 4 10Z"/><path d="M18 8.5a5 5 0 0 1 0 7"/></symbol>
       <symbol id="ico-automations" viewBox="0 0 24 24"><path d="M13 2.5 4.5 13.5H11l-1 8L19.5 10H13Z"/></symbol>
       <symbol id="ico-logout" viewBox="0 0 24 24"><path d="M14 4.5H6A1.5 1.5 0 0 0 4.5 6v12A1.5 1.5 0 0 0 6 19.5h8"/><path d="M17 8.5 20.5 12 17 15.5M20 12H10"/></symbol>
@@ -43,6 +44,7 @@
       <button class="nav-btn" data-view="clients"><svg class="nav-ico"><use href="#ico-clients"/></svg> <span class="nav-label">Clientes</span></button>
       <button class="nav-btn" data-view="cases"><svg class="nav-ico"><use href="#ico-cases"/></svg> <span class="nav-label">Expedientes</span></button>
       <button class="nav-btn" data-view="appointments"><svg class="nav-ico"><use href="#ico-appointments"/></svg> <span class="nav-label">Citas</span></button>
+      <button class="nav-btn" data-view="agenda"><svg class="nav-ico"><use href="#ico-agenda"/></svg> <span class="nav-label">Agenda</span> <span class="badge hidden" id="nav-agenda"></span></button>
       <button class="nav-btn" data-view="templates"><svg class="nav-ico"><use href="#ico-templates"/></svg> <span class="nav-label">Plantillas</span></button>
       <button class="nav-btn" data-view="fichas"><svg class="nav-ico"><use href="#ico-fichas"/></svg> <span class="nav-label">Fichas de trámite</span></button>
       <button class="nav-btn" data-view="reports"><svg class="nav-ico"><use href="#ico-reports"/></svg> <span class="nav-label">Informes</span></button>
@@ -187,6 +189,8 @@
           <button class="btn small" data-range="todo">Todo</button>
         </div>
         <div class="cards" id="rep-cards"></div>
+        <h2>Ingresos</h2>
+        <div class="cards" id="rep-income-cards"></div>
         <div class="charts-row">
           <div class="chart-card">
             <h3>Trámites por área</h3>
@@ -196,9 +200,23 @@
             <h3>Por tipo de cliente</h3>
             <div id="rep-chart-seg"></div>
           </div>
+          <div class="chart-card">
+            <h3>Facturación por área</h3>
+            <div id="rep-chart-income"></div>
+          </div>
         </div>
         <h2>Detalle por trámite</h2>
         <div id="rep-table"></div>
+      </section>
+
+      <!-- Agenda de vencimientos -->
+      <section id="view-agenda" class="view hidden">
+        <div class="panel-head">
+          <h1>Agenda de vencimientos</h1>
+        </div>
+        <p class="hint">Todo lo que vence — fechas límite de expedientes, citas y recordatorios — en un solo sitio, ordenado por fecha.</p>
+        <div class="cards" id="agenda-cards"></div>
+        <div id="agenda-list"></div>
       </section>
 
       <!-- Fichas de trámite -->

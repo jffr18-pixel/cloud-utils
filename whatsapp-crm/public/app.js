@@ -154,6 +154,7 @@ async function refreshView() {
     if (state.view === 'clients') await renderClients();
     if (state.view === 'cases') await renderCases();
     if (state.view === 'appointments') await renderAppointments();
+    if (state.view === 'agenda') await renderAgenda();
     if (state.view === 'templates') await renderTemplates();
     if (state.view === 'fichas') await renderFichas();
     if (state.view === 'reports') await renderReports();
@@ -774,11 +775,61 @@ async function openClientDetail(id) {
   openDialog(`Ficha de ${client.name}`, [
     ...clientFields(client),
     { name: '_cases', label: 'Expedientes (solo lectura, gestión en la pestaña Expedientes)', type: 'textarea', value: casesTxt },
+    estadoLinkField(client),
   ], async (v) => {
     delete v._cases;
+    delete v._estado;
     await api('clients/' + id, { method: 'PUT', body: parseClientValues(v) });
     await refreshView();
   });
+}
+
+// Campo personalizado: enlace privado «Estado del trámite» del cliente.
+// Genera el enlace, permite copiarlo y enviarlo al cliente por WhatsApp.
+function estadoLinkField(client) {
+  let box;
+  const render = (data) => {
+    if (!data) {
+      box.innerHTML = `<button type="button" class="btn small" id="est-gen">🔗 Generar enlace de seguimiento</button>
+        <p class="hint" style="margin:6px 0 0">Página privada (solo lectura) donde el cliente ve el estado de sus trámites.</p>`;
+      box.querySelector('#est-gen').addEventListener('click', async () => {
+        try { render(await api('clients/' + client.id + '/estado-link', { method: 'POST' })); }
+        catch (e) { alert(e.message); }
+      });
+      return;
+    }
+    box.innerHTML = `
+      <div class="est-link">
+        <input type="text" id="est-url" value="${esc(data.url)}" readonly>
+        <button type="button" class="btn small" id="est-copy">Copiar</button>
+      </div>
+      <div class="est-actions">
+        <a class="btn small" href="${esc(data.url)}" target="_blank" rel="noopener">Abrir</a>
+        <button type="button" class="btn small primary" id="est-send">📲 Enviar al cliente por WhatsApp</button>
+      </div>`;
+    box.querySelector('#est-copy').addEventListener('click', async () => {
+      const inp = box.querySelector('#est-url');
+      inp.select();
+      try { await navigator.clipboard.writeText(data.url); } catch { document.execCommand('copy'); }
+      box.querySelector('#est-copy').textContent = '¡Copiado!';
+      setTimeout(() => { const b = box.querySelector('#est-copy'); if (b) b.textContent = 'Copiar'; }, 1500);
+    });
+    box.querySelector('#est-send').addEventListener('click', async () => {
+      const name = (client.name || '').split(' ')[0] || '';
+      const text = `Hola ${name} 👋 Puedes seguir el estado de tus trámites en tiempo real aquí: ${data.url}`;
+      try {
+        await api('messages', { method: 'POST', body: { clientId: client.id, text } });
+        alert('Enlace enviado al cliente por WhatsApp.');
+      } catch (e) { alert(e.message); }
+    });
+  };
+  return {
+    name: '_estado',
+    label: 'Estado del trámite (enlace para el cliente)',
+    type: 'custom',
+    mount(el) { box = el; render(client.statusToken ? { token: client.statusToken, url: location.origin + '/estado/' + client.statusToken } : null); },
+    getValue() { return undefined; },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -802,7 +853,7 @@ document.querySelectorAll('#seg-filters .chip').forEach((chip) => {
   });
 });
 
-function caseFields(item = {}, clients = []) {
+function caseFields(item = {}, clients = [], fichas = []) {
   return [
     {
       name: 'clientId', label: 'Cliente', type: 'select',
@@ -819,13 +870,81 @@ function caseFields(item = {}, clients = []) {
       options: Object.entries(STATUS_LABEL),
     },
     { name: 'dueDate', label: 'Fecha límite', type: 'date', value: item.dueDate },
+    { name: 'fee', label: 'Honorario (€)', type: 'number', value: item.fee || '' },
+    {
+      name: 'paid', label: 'Cobrado', type: 'select', value: item.paid ? 'si' : 'no',
+      options: [['no', 'Pendiente de cobro'], ['si', 'Cobrado']],
+    },
+    checklistField(item, fichas),
     { name: 'docs', label: 'Documentación necesaria (una línea por documento; se usa en la automatización)', type: 'textarea', value: item.docs },
     { name: 'notes', label: 'Notas', type: 'textarea', value: item.notes },
   ];
 }
 
+// Campo personalizado: checklist de documentación recibida.
+// Permite añadir ítems a mano o cargarlos de una ficha de trámite, y marcarlos.
+function checklistField(item = {}, fichas = []) {
+  let items = Array.isArray(item.checklist) ? item.checklist.map((c) => ({ ...c })) : [];
+  let box;
+  const render = () => {
+    const rows = items.map((c, i) => `
+      <label class="chk-row">
+        <input type="checkbox" data-i="${i}" ${c.done ? 'checked' : ''}>
+        <span class="${c.done ? 'chk-done' : ''}">${esc(c.item)}</span>
+        <button type="button" class="chk-del" data-i="${i}" title="Quitar">✕</button>
+      </label>`).join('');
+    const fichaOpts = fichas.map((f) => `<option value="${esc(f.id)}">${esc(f.title)}</option>`).join('');
+    box.innerHTML = `
+      <div class="chk-list">${rows || '<p class="hint" style="margin:0">Sin documentos en la lista.</p>'}</div>
+      <div class="chk-add">
+        <input type="text" class="chk-new" placeholder="Añadir documento…">
+        <button type="button" class="btn small chk-add-btn">Añadir</button>
+      </div>
+      ${fichas.length ? `<div class="chk-load">
+        <select class="chk-ficha"><option value="">Cargar de una ficha…</option>${fichaOpts}</select>
+      </div>` : ''}`;
+    box.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+      cb.addEventListener('change', () => { items[Number(cb.dataset.i)].done = cb.checked; render(); });
+    });
+    box.querySelectorAll('.chk-del').forEach((b) => {
+      b.addEventListener('click', () => { items.splice(Number(b.dataset.i), 1); render(); });
+    });
+    const addNew = () => {
+      const inp = box.querySelector('.chk-new');
+      const v = inp.value.trim();
+      if (v) { items.push({ item: v, done: false }); render(); }
+    };
+    box.querySelector('.chk-add-btn').addEventListener('click', addNew);
+    box.querySelector('.chk-new').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); addNew(); }
+    });
+    const sel = box.querySelector('.chk-ficha');
+    if (sel) sel.addEventListener('change', () => {
+      const f = fichas.find((x) => x.id === sel.value);
+      if (!f) return;
+      const lines = (f.docs || '').split('\n').map((l) => l.trim()).filter(Boolean);
+      const have = new Set(items.map((c) => c.item.toLowerCase()));
+      for (const l of lines) if (!have.has(l.toLowerCase())) items.push({ item: l, done: false });
+      sel.value = '';
+      render();
+    });
+  };
+  return {
+    name: 'checklist',
+    label: 'Checklist de documentación recibida',
+    type: 'custom',
+    mount(el) { box = el; render(); },
+    getValue() { return items; },
+  };
+}
+
+// Normaliza los valores del formulario de expediente antes de enviarlos.
+function caseBody(v) {
+  return { ...v, fee: Number(v.fee) || 0, paid: v.paid === 'si' };
+}
+
 async function renderCases() {
-  const [cases, clients] = await Promise.all([api('cases'), api('clients')]);
+  const [cases, clients, fichas] = await Promise.all([api('cases'), api('clients'), api('fichas')]);
   state.clients = clients;
   const clientOf = (id) => clients.find((c) => c.id === id);
   const nameOf = (id) => clientOf(id)?.name || '(cliente eliminado)';
@@ -837,11 +956,18 @@ async function renderCases() {
 
   const caseRow = (c) => {
     const overdue = c.dueDate && c.status !== 'completado' && new Date(c.dueDate) < new Date();
+    const chk = Array.isArray(c.checklist) ? c.checklist : [];
+    const done = chk.filter((x) => x.done).length;
+    const chkBadge = chk.length
+      ? `<span class="chk-badge ${done === chk.length ? 'ok' : ''}" title="Documentación recibida">📎 ${done}/${chk.length}</span>` : '';
+    const fee = Number(c.fee) || 0;
+    const feeBadge = fee
+      ? `<span class="fee-badge ${c.paid ? 'paid' : 'due'}" title="${c.paid ? 'Cobrado' : 'Pendiente de cobro'}">${fee.toLocaleString('es-ES')} € ${c.paid ? '✓' : '•'}</span>` : '';
     return `
     <div class="row case-row" data-id="${esc(c.id)}">
       <div class="grow">
         <div class="title">${esc(c.title)}</div>
-        <div class="sub">${esc(nameOf(c.clientId))} · <span class="area-badge">${esc(TYPE_LABEL[c.type] || c.type)}</span></div>
+        <div class="sub">${esc(nameOf(c.clientId))} · <span class="area-badge">${esc(TYPE_LABEL[c.type] || c.type)}</span> ${chkBadge} ${feeBadge}</div>
       </div>
       <div class="meta">
         <span class="status ${esc(c.status)}">${esc(STATUS_LABEL[c.status] || c.status)}</span>
@@ -866,8 +992,8 @@ async function renderCases() {
   $('#case-list').querySelectorAll('.case-row').forEach((row) => {
     row.addEventListener('click', () => {
       const item = cases.find((c) => c.id === row.dataset.id);
-      openDialog('Editar expediente', caseFields(item, clients), async (v) => {
-        await api('cases/' + item.id, { method: 'PUT', body: v });
+      openDialog('Editar expediente', caseFields(item, clients, fichas), async (v) => {
+        await api('cases/' + item.id, { method: 'PUT', body: caseBody(v) });
         await renderCases();
       });
     });
@@ -875,10 +1001,10 @@ async function renderCases() {
 }
 
 $('#btn-new-case').addEventListener('click', async () => {
-  const clients = await api('clients');
+  const [clients, fichas] = await Promise.all([api('clients'), api('fichas')]);
   if (!clients.length) return alert('Primero crea al menos un cliente.');
-  openDialog('Nuevo expediente', caseFields({}, clients), async (v) => {
-    await api('cases', { method: 'POST', body: v });
+  openDialog('Nuevo expediente', caseFields({}, clients, fichas), async (v) => {
+    await api('cases', { method: 'POST', body: caseBody(v) });
     await renderCases();
   });
 });
@@ -969,13 +1095,13 @@ function reportQuery() {
 }
 
 // Barras horizontales sencillas (etiqueta · barra · valor).
-function barList(entries, labelMap) {
+function barList(entries, labelMap, fmt) {
   const max = Math.max(1, ...entries.map(([, v]) => v));
   return entries.map(([k, v]) => `
     <div class="rep-bar-row">
       <span class="rep-bar-label">${esc(labelMap ? (labelMap[k] || k) : k)}</span>
       <span class="rep-bar-track"><span class="rep-bar-fill" style="width:${Math.round((v / max) * 100)}%"></span></span>
-      <span class="rep-bar-val">${v}</span>
+      <span class="rep-bar-val">${fmt ? fmt(v) : v}</span>
     </div>`).join('') || '<p class="chart-empty">Sin datos en este periodo.</p>';
 }
 
@@ -992,6 +1118,18 @@ async function renderReports() {
   const segEntries = Object.entries(r.bySegment).sort((a, b) => b[1] - a[1]);
   $('#rep-chart-seg').innerHTML = barList(segEntries, SEGMENT_LABEL);
 
+  // Ingresos: facturado / cobrado / pendiente + facturación por área.
+  const eur = (n) => (Number(n) || 0).toLocaleString('es-ES') + ' €';
+  $('#rep-income-cards').innerHTML = `
+    <div class="card"><div class="num">${eur(r.facturado)}</div><div class="lbl">Facturado</div></div>
+    <div class="card ${r.cobrado ? 'ok' : ''}"><div class="num">${eur(r.cobrado)}</div><div class="lbl">Cobrado</div></div>
+    <div class="card ${r.pendiente ? 'warn' : ''}"><div class="num">${eur(r.pendiente)}</div><div class="lbl">Pendiente de cobro</div></div>`;
+  const incEntries = Object.entries(r.incomeByArea || {})
+    .map(([k, v]) => [k, v.facturado])
+    .filter(([, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1]);
+  $('#rep-chart-income').innerHTML = barList(incEntries, TYPE_LABEL, eur);
+
   $('#rep-table').innerHTML = r.byTitle.length ? `
     <table class="rep-table">
       <thead><tr><th>Área</th><th>Trámite</th><th class="num">Total</th><th class="num">Completados</th></tr></thead>
@@ -999,6 +1137,91 @@ async function renderReports() {
         <tr><td>${esc(TYPE_LABEL[t.type] || t.type)}</td><td>${esc(t.title)}</td>
         <td class="num">${t.count}</td><td class="num">${t.completados}</td></tr>`).join('')}</tbody>
     </table>` : '<p class="hint">No hay expedientes en este periodo.</p>';
+}
+
+// ---------------------------------------------------------------------------
+// Agenda de vencimientos (expedientes + citas + recordatorios)
+// ---------------------------------------------------------------------------
+
+async function renderAgenda() {
+  const [cases, appts, reminders, clients] = await Promise.all([
+    api('cases'), api('appointments'), api('reminders'), api('clients'),
+  ]);
+  const nameOf = (id) => clients.find((c) => c.id === id)?.name || '';
+
+  // Unificamos todo lo que tiene fecha en una sola lista de eventos.
+  const events = [];
+  for (const c of cases) {
+    if (c.dueDate && c.status !== 'completado') {
+      events.push({ date: c.dueDate, kind: 'case', icon: '📁', label: 'Expediente',
+        title: c.title, who: nameOf(c.clientId), view: 'cases' });
+    }
+  }
+  const today = todayIso();
+  for (const a of appts) {
+    if (a.status === 'cancelada' || a.date < today) continue;
+    events.push({ date: a.date, time: a.time, kind: 'appt', icon: '📆', label: 'Cita',
+      title: (a.reason || 'Consulta') + (a.time ? ` · ${a.time}` : ''), who: nameOf(a.clientId), view: 'appointments' });
+  }
+  for (const r of reminders) {
+    if (r.done || !r.dueDate) continue;
+    events.push({ date: r.dueDate, kind: 'reminder', icon: '⏰', label: 'Recordatorio',
+      title: r.text, who: nameOf(r.clientId), view: 'reminders' });
+  }
+
+  events.sort((a, b) => String(a.date).localeCompare(String(b.date))
+    || String(a.time || '').localeCompare(String(b.time || '')));
+
+  // Buckets: vencidos, hoy, próximos 7 días, más adelante.
+  const now = new Date(today + 'T00:00');
+  const in7 = new Date(now); in7.setDate(in7.getDate() + 7);
+  const bucketOf = (iso) => {
+    const d = new Date(iso + 'T00:00');
+    if (d < now) return 'vencidos';
+    if (iso === today) return 'hoy';
+    if (d < in7) return 'semana';
+    return 'despues';
+  };
+  const groups = { vencidos: [], hoy: [], semana: [], despues: [] };
+  for (const e of events) groups[bucketOf(e.date)].push(e);
+
+  $('#agenda-cards').innerHTML = `
+    <div class="card ${groups.vencidos.length ? 'alert' : ''}"><div class="num">${groups.vencidos.length}</div><div class="lbl">Vencidos</div></div>
+    <div class="card ${groups.hoy.length ? 'warn' : ''}"><div class="num">${groups.hoy.length}</div><div class="lbl">Para hoy</div></div>
+    <div class="card"><div class="num">${groups.semana.length}</div><div class="lbl">Próximos 7 días</div></div>
+    <div class="card"><div class="num">${events.length}</div><div class="lbl">Total pendiente</div></div>`;
+
+  const badge = $('#nav-agenda');
+  const urgent = groups.vencidos.length + groups.hoy.length;
+  if (urgent) { badge.textContent = urgent; badge.classList.remove('hidden'); }
+  else badge.classList.add('hidden');
+
+  const row = (e) => `
+    <div class="row agenda-row" data-view="${esc(e.view)}">
+      <span class="agenda-ico" title="${esc(e.label)}">${e.icon}</span>
+      <div class="grow">
+        <div class="title">${esc(e.title)}</div>
+        <div class="sub">${esc(e.label)}${e.who ? ' · 👤 ' + esc(e.who) : ''}</div>
+      </div>
+      <div class="meta"><div>📅 ${fmtDate(e.date)}</div></div>
+    </div>`;
+
+  const section = (key, label, cls) => groups[key].length ? `
+    <div class="agenda-group ${cls}">
+      <div class="agenda-head">${label} <span class="block-count">${groups[key].length}</span></div>
+      <div class="list">${groups[key].map(row).join('')}</div>
+    </div>` : '';
+
+  $('#agenda-list').innerHTML =
+    section('vencidos', '⚠️ Vencidos', 'g-alert')
+    + section('hoy', 'Hoy', 'g-warn')
+    + section('semana', 'Próximos 7 días', '')
+    + section('despues', 'Más adelante', '')
+    || '<p class="hint">No hay vencimientos pendientes. 🎉</p>';
+
+  $('#agenda-list').querySelectorAll('.agenda-row').forEach((r) => {
+    r.addEventListener('click', () => showView(r.dataset.view));
+  });
 }
 
 // ---------------------------------------------------------------------------
