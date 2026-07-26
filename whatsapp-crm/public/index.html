@@ -398,6 +398,14 @@
         <label for="login-password">Contraseña</label>
         <input id="login-password" type="password" autocomplete="current-password" required>
       </div>
+      <div class="field" id="login-captcha-field" style="display:none">
+        <label for="login-captcha">Escribe el código de la imagen</label>
+        <div class="captcha-row">
+          <img id="login-captcha-img" class="captcha-img" alt="Código de verificación" width="200" height="64">
+          <button type="button" id="login-captcha-refresh" class="btn small" title="Generar otro código">↻</button>
+        </div>
+        <input id="login-captcha" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" maxlength="5">
+      </div>
       <div id="login-error" class="login-error hidden"></div>
       <button type="submit" class="btn primary" style="width:100%">Entrar</button>
     </form>

@@ -104,7 +104,8 @@ async function testAuthServer() {
   const server = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
     env: {
       ...process.env, PORT: String(AUTH_PORT), DATA_DIR: authDataDir,
-      CRM_PASSWORD: 'secreto123', WHATSAPP_TOKEN: '', WHATSAPP_PHONE_NUMBER_ID: '',
+      CRM_PASSWORD: 'secreto123', CRM_CAPTCHA: 'off',
+      WHATSAPP_TOKEN: '', WHATSAPP_PHONE_NUMBER_ID: '',
     },
     stdio: 'ignore',
   });
@@ -146,7 +147,7 @@ async function testAuthServer() {
   const multiServer = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
     env: {
       ...process.env, PORT: String(MULTI_PORT), DATA_DIR: multiDataDir,
-      CRM_USERS: 'carmen:clave1,juan:clave2', CRM_PASSWORD: '',
+      CRM_USERS: 'carmen:clave1,juan:clave2', CRM_PASSWORD: '', CRM_CAPTCHA: 'off',
       WHATSAPP_TOKEN: '', WHATSAPP_PHONE_NUMBER_ID: '',
     },
     stdio: 'ignore',
@@ -171,6 +172,55 @@ async function testAuthServer() {
   } finally {
     multiServer.kill();
     fs.rmSync(multiDataDir, { recursive: true, force: true });
+  }
+}
+
+// CAPTCHA del acceso: obligatorio, de un solo uso y con caducidad.
+async function testCaptchaServer() {
+  const CAP_PORT = 3781;
+  const CAP_BASE = `http://127.0.0.1:${CAP_PORT}`;
+  const capDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crm-cap-'));
+  const server = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
+    env: {
+      ...process.env, PORT: String(CAP_PORT), DATA_DIR: capDataDir,
+      CRM_PASSWORD: 'secreto123', CRM_CAPTCHA: 'on', CRM_CAPTCHA_TEST: '1',
+      WHATSAPP_TOKEN: '', WHATSAPP_PHONE_NUMBER_ID: '',
+    },
+    stdio: 'ignore',
+  });
+  const post = (body) => fetch(CAP_BASE + '/api/login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  try {
+    for (let i = 0; i < 50; i += 1) {
+      try { await fetch(CAP_BASE + '/api/auth'); break; } catch { await new Promise((r) => setTimeout(r, 100)); }
+    }
+    const cap = await (await fetch(CAP_BASE + '/api/captcha')).json();
+    assert(cap.enabled === true && typeof cap.id === 'string', 'el CAPTCHA está activado y genera un id');
+    assert(String(cap.image).startsWith('data:image/svg+xml;base64,'), 'el CAPTCHA se sirve como imagen SVG en línea');
+    assert(typeof cap.answer === 'string' && cap.answer.length === 5, 'CRM_CAPTCHA_TEST expone la respuesta para las pruebas');
+
+    const noCaptcha = await post({ user: 'admin', password: 'secreto123' });
+    assert(noCaptcha.status === 400, 'sin CAPTCHA no se puede iniciar sesión');
+
+    const cap2 = await (await fetch(CAP_BASE + '/api/captcha')).json();
+    const wrong = await post({ user: 'admin', password: 'secreto123', captchaId: cap2.id, captcha: 'ZZZZZ' });
+    assert(wrong.status === 400, 'CAPTCHA incorrecto → rechazado');
+
+    const cap3 = await (await fetch(CAP_BASE + '/api/captcha')).json();
+    const good = await post({ user: 'admin', password: 'secreto123', captchaId: cap3.id, captcha: cap3.answer.toLowerCase() });
+    assert(good.status === 200, 'CAPTCHA correcto (sin distinguir mayúsculas) + contraseña → acceso');
+    assert((good.headers.get('set-cookie') || '').startsWith('crm_session='), 'se emite la cookie de sesión');
+
+    const reuse = await post({ user: 'admin', password: 'secreto123', captchaId: cap3.id, captcha: cap3.answer });
+    assert(reuse.status === 400, 'un CAPTCHA no se puede reutilizar (un solo uso)');
+
+    const cap4 = await (await fetch(CAP_BASE + '/api/captcha')).json();
+    const rightCapWrongPass = await post({ user: 'admin', password: 'mala', captchaId: cap4.id, captcha: cap4.answer });
+    assert(rightCapWrongPass.status === 401, 'CAPTCHA correcto pero contraseña mala → 401');
+  } finally {
+    server.kill();
+    fs.rmSync(capDataDir, { recursive: true, force: true });
   }
 }
 
@@ -962,6 +1012,9 @@ async function main() {
     const authOff = await req('GET', '/api/auth');
     assert(authOff.data.required === false, 'sin CRM_PASSWORD la autenticación está desactivada');
     await testAuthServer();
+
+    console.log('CAPTCHA del acceso');
+    await testCaptchaServer();
 
     console.log('Borrado en cascada');
     await req('DELETE', `/api/clients/${clientId}`);

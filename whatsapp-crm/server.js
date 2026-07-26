@@ -386,6 +386,63 @@ function recordAttempt(ip) {
   loginAttempts.set(ip, rec);
 }
 
+// --- CAPTCHA propio (imagen SVG, sin dependencias ni terceros) -------------
+// Protege el formulario de acceso frente a bots de fuerza bruta. Complementa
+// el límite de intentos por IP. Se puede desactivar con CRM_CAPTCHA=off.
+const captchas = new Map(); // id -> { answer, createdAt }
+const CAPTCHA_TTL_MS = 5 * 60 * 1000;
+// Sin caracteres ambiguos (0/O, 1/I/L) para que sea legible.
+const CAPTCHA_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+function captchaEnabled() {
+  return authRequired() && String(process.env.CRM_CAPTCHA || 'on').toLowerCase() !== 'off';
+}
+
+function purgeCaptchas() {
+  const now = Date.now();
+  for (const [id, c] of captchas) if (now - c.createdAt > CAPTCHA_TTL_MS) captchas.delete(id);
+}
+
+function renderCaptchaSvg(text) {
+  const W = 200; const H = 64;
+  const colors = ['#1d1d1b', '#77599c', '#5f4585'];
+  let noise = '';
+  for (let i = 0; i < 5; i += 1) {
+    noise += `<path d="M${crypto.randomInt(W)} ${crypto.randomInt(H)} Q ${crypto.randomInt(W)} ${crypto.randomInt(H)} ${crypto.randomInt(W)} ${crypto.randomInt(H)}" stroke="${colors[crypto.randomInt(colors.length)]}" stroke-width="1" fill="none" opacity="0.35"/>`;
+  }
+  for (let i = 0; i < 45; i += 1) {
+    noise += `<circle cx="${crypto.randomInt(W)}" cy="${crypto.randomInt(H)}" r="1" fill="#9272b0" opacity="0.4"/>`;
+  }
+  let glyphs = '';
+  const step = (W - 34) / text.length;
+  for (let i = 0; i < text.length; i += 1) {
+    const x = 22 + i * step + crypto.randomInt(6) - 3;
+    const y = 42 + crypto.randomInt(12) - 6;
+    const rot = crypto.randomInt(46) - 23;
+    const size = 30 + crypto.randomInt(8);
+    glyphs += `<text x="${x}" y="${y}" font-family="Lexend,Arial,sans-serif" font-size="${size}" font-weight="800" fill="${colors[crypto.randomInt(colors.length)]}" transform="rotate(${rot} ${x} ${y})">${text[i]}</text>`;
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="captcha"><rect width="${W}" height="${H}" rx="10" fill="#f5f4f7"/>${noise}${glyphs}</svg>`;
+}
+
+function makeCaptcha() {
+  purgeCaptchas();
+  let text = '';
+  for (let i = 0; i < 5; i += 1) text += CAPTCHA_CHARS[crypto.randomInt(CAPTCHA_CHARS.length)];
+  const id = crypto.randomBytes(18).toString('hex');
+  captchas.set(id, { answer: text, createdAt: Date.now() });
+  return { id, text, svg: renderCaptchaSvg(text) };
+}
+
+// Verificación de un solo uso: el código se consume aunque falle.
+function verifyCaptcha(id, answer) {
+  const c = id && captchas.get(id);
+  if (!c) return false;
+  captchas.delete(id);
+  if (Date.now() - c.createdAt > CAPTCHA_TTL_MS) return false;
+  return String(answer || '').trim().toUpperCase() === c.answer;
+}
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -646,6 +703,19 @@ async function handleApi(req, res, url) {
       user: session?.user || null,
     });
   }
+  // Genera un nuevo CAPTCHA para el formulario de acceso (ruta pública).
+  if (req.method === 'GET' && resource === 'captcha') {
+    if (!captchaEnabled()) return json(res, 200, { enabled: false });
+    const c = makeCaptcha();
+    const payload = {
+      enabled: true,
+      id: c.id,
+      image: `data:image/svg+xml;base64,${Buffer.from(c.svg).toString('base64')}`,
+    };
+    // Solo para pruebas automatizadas (CRM_CAPTCHA_TEST=1); nunca en producción.
+    if (process.env.CRM_CAPTCHA_TEST === '1') payload.answer = c.text;
+    return json(res, 200, payload);
+  }
   if (req.method === 'POST' && resource === 'login') {
     const ip = ipOf(req);
     if (tooManyAttempts(ip)) {
@@ -653,6 +723,12 @@ async function handleApi(req, res, url) {
     }
     const b = await readBody(req);
     if (!authRequired()) return json(res, 200, { ok: true });
+    // Verificación anti-bot: el código de la imagen debe ser correcto.
+    if (captchaEnabled() && !verifyCaptcha(b.captchaId, b.captcha)) {
+      recordAttempt(ip);
+      security.audit('captcha_fallido', { ip });
+      return json(res, 400, { error: 'El código de verificación no es correcto. Inténtalo de nuevo.', captcha: true });
+    }
     const userName = String(b.user || '').trim();
     const users = authUsers();
     // Comparación en tiempo constante también con usuarios inexistentes,
@@ -2041,5 +2117,11 @@ server.listen(PORT, () => {
   console.log(`Estado: ${mode}`);
   for (const warning of security.startupWarnings({ authUsers: authUsers() })) {
     console.warn(warning);
+  }
+  if (authRequired()) {
+    console.log(`Seguridad del acceso: CAPTCHA ${captchaEnabled() ? 'activado' : 'desactivado (CRM_CAPTCHA=off)'}`);
+  }
+  if (process.env.CRM_CAPTCHA_TEST === '1') {
+    console.warn('⚠️  CRM_CAPTCHA_TEST=1: el CAPTCHA revela su respuesta. Úsalo SOLO en pruebas, nunca en producción.');
   }
 });

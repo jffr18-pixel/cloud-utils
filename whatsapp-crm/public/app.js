@@ -1705,10 +1705,29 @@ $('#btn-auto-run').addEventListener('click', async () => {
 // Arranque y refresco automático
 // ---------------------------------------------------------------------------
 
+let captchaId = null;
+
+// Carga (o recarga) el CAPTCHA en el formulario de acceso.
+async function loadCaptcha() {
+  const field = $('#login-captcha-field');
+  try {
+    const c = await api('captcha');
+    if (!c.enabled) { field.style.display = 'none'; captchaId = null; return; }
+    captchaId = c.id;
+    $('#login-captcha-img').src = c.image;
+    $('#login-captcha').value = '';
+    field.style.display = '';
+  } catch {
+    field.style.display = 'none';
+    captchaId = null;
+  }
+}
+
 async function init() {
   const authState = await api('auth');
   if (authState.required && !authState.authenticated) {
     $('#login-overlay').classList.remove('hidden');
+    await loadCaptcha();
     $('#login-password').focus();
     return; // el resto se carga tras iniciar sesión
   }
@@ -1738,15 +1757,24 @@ $('#login-form').addEventListener('submit', async (e) => {
   try {
     await api('login', {
       method: 'POST',
-      body: { user: $('#login-user').value.trim(), password: $('#login-password').value },
+      body: {
+        user: $('#login-user').value.trim(),
+        password: $('#login-password').value,
+        captchaId,
+        captcha: $('#login-captcha').value.trim(),
+      },
     });
     location.reload();
   } catch (err) {
     const box = $('#login-error');
     box.textContent = err.message;
     box.classList.remove('hidden');
+    // El código es de un solo uso: siempre se genera uno nuevo tras un fallo.
+    if (captchaId) await loadCaptcha();
   }
 });
+
+$('#login-captcha-refresh').addEventListener('click', loadCaptcha);
 
 $('#btn-logout').addEventListener('click', async () => {
   await api('logout', { method: 'POST' });

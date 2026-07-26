@@ -568,8 +568,8 @@ input[type="checkbox"] {
 .login-overlay {
   position: fixed; inset: 0; z-index: 50;
   background:
-    radial-gradient(700px 480px at 78% 18%, rgba(156, 134, 201, .3), transparent 62%),
-    radial-gradient(560px 420px at 12% 88%, rgba(94, 53, 177, .22), transparent 60%),
+    radial-gradient(700px 480px at 78% 18%, rgba(146, 114, 176, .32), transparent 62%),
+    radial-gradient(560px 420px at 12% 88%, rgba(95, 69, 133, .24), transparent 60%),
     linear-gradient(165deg, var(--ink-2), var(--ink) 70%);
   display: flex; align-items: center; justify-content: center;
 }
@@ -578,15 +578,23 @@ input[type="checkbox"] {
   width: min(380px, 92vw); box-shadow: var(--shadow-3);
 }
 .login-brand {
-  font-family: var(--font-brand); font-weight: 800; font-size: 30px;
-  line-height: .95; text-align: center; margin-bottom: 4px;
+  font-family: var(--font-brand); font-weight: 800; font-size: 32px;
+  line-height: .86; text-align: center; margin-bottom: 4px; letter-spacing: -.8px;
 }
-.login-brand span { display: block; font-weight: 400; font-size: 24px; letter-spacing: 3px; color: var(--accent-dark); }
+.login-brand span { display: block; font-weight: 300; font-size: 25px; letter-spacing: 0; color: var(--ink); }
 .login-tagline {
   text-align: center; color: var(--muted); font-size: 10.5px; font-weight: 600;
   letter-spacing: 1.2px; text-transform: uppercase; margin: 10px 0 24px;
 }
 .login-error { color: var(--danger); font-size: 12.5px; margin-bottom: 10px; }
+/* CAPTCHA del acceso */
+.captcha-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.captcha-img {
+  border: 1px solid var(--border); border-radius: 10px; background: #fff;
+  height: 56px; width: auto; flex: 1; object-fit: contain;
+}
+#login-captcha-refresh { padding: 8px 12px; font-size: 16px; line-height: 1; }
+#login-captcha { letter-spacing: 3px; text-transform: uppercase; font-weight: 700; text-align: center; }
 
 /* ---------------------------------------------------------------------------
    Diálogo
