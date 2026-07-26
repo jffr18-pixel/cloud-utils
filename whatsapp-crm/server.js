@@ -1339,7 +1339,7 @@ async function handleApi(req, res, url) {
       const msCal = auto.getSettings(db).microsoft.calendar;
       if (msgraph.isConfigured() && msCal.enabled && msCal.user) {
         try {
-          appt.msEventId = await msgraph.createCalendarEvent(msCal.user, appt, client);
+          appt.msEventId = await msgraph.createCalendarEvent(msCal.user, appt, client, msCal.calendarName);
         } catch (err) {
           console.error('No se pudo crear el evento en Outlook:', err.message);
         }
@@ -2183,7 +2183,7 @@ async function createAppointment(db, client, { date, time, reason }) {
   await auto.onAppointmentCreated(db, appt, client, autoSender(db));
   const msCal = auto.getSettings(db).microsoft.calendar;
   if (msgraph.isConfigured() && msCal.enabled && msCal.user) {
-    try { appt.msEventId = await msgraph.createCalendarEvent(msCal.user, appt, client); }
+    try { appt.msEventId = await msgraph.createCalendarEvent(msCal.user, appt, client, msCal.calendarName); }
     catch (err) { console.error('No se pudo crear el evento en Outlook:', err.message); }
   }
   save();

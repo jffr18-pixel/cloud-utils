@@ -162,6 +162,8 @@ const DEFAULTS = {
     calendar: {
       enabled: false,
       user: 'jose@burocraciazero.es',
+      // Calendario destino por nombre (vacío = calendario principal del usuario).
+      calendarName: 'CITAS BZ COMPARTIDO',
     },
     sharepoint: {
       enabled: false,

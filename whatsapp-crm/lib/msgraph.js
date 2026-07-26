@@ -97,11 +97,34 @@ function buildEventPayload(appt, client, durationMinutes = 30) {
   };
 }
 
-async function createCalendarEvent(calendarUser, appt, client) {
-  const event = await graph(`/users/${encodeURIComponent(calendarUser)}/calendar/events`, {
-    method: 'POST',
-    body: buildEventPayload(appt, client),
-  });
+// Resuelve el id de un calendario por su nombre dentro del buzón indicado
+// (p. ej. «CITAS BZ COMPARTIDO»). Devuelve null si no existe. Con caché.
+const calendarIdCache = new Map();
+async function resolveCalendarId(calendarUser, calendarName) {
+  const name = String(calendarName || '').trim();
+  if (!name) return null;
+  const key = `${calendarUser}::${name.toLowerCase()}`;
+  if (calendarIdCache.has(key)) return calendarIdCache.get(key);
+  const data = await graph(`/users/${encodeURIComponent(calendarUser)}/calendars?$select=id,name&$top=100`);
+  const want = name.toLowerCase();
+  const cal = (data.value || []).find((c) => String(c.name || '').trim().toLowerCase() === want);
+  const id = cal ? cal.id : null;
+  if (id) calendarIdCache.set(key, id);
+  return id;
+}
+
+async function createCalendarEvent(calendarUser, appt, client, calendarName = '') {
+  // Por defecto, el calendario principal; si se indica un nombre, ese calendario.
+  let path = `/users/${encodeURIComponent(calendarUser)}/calendar/events`;
+  if (calendarName) {
+    const calId = await resolveCalendarId(calendarUser, calendarName);
+    if (calId) {
+      path = `/users/${encodeURIComponent(calendarUser)}/calendars/${calId}/events`;
+    } else {
+      console.warn(`Calendario «${calendarName}» no encontrado en ${calendarUser}; se usa el calendario principal.`);
+    }
+  }
+  const event = await graph(path, { method: 'POST', body: buildEventPayload(appt, client) });
   return event.id || null;
 }
 
@@ -253,7 +276,15 @@ async function testConnection(settings) {
     }
     if (settings.calendar.enabled) {
       const user = await graph(`/users/${encodeURIComponent(settings.calendar.user)}`);
-      parts.push(`Calendario ✓ (${user.displayName || settings.calendar.user})`);
+      const calName = String(settings.calendar.calendarName || '').trim();
+      if (calName) {
+        const calId = await resolveCalendarId(settings.calendar.user, calName);
+        parts.push(calId
+          ? `Calendario ✓ (${user.displayName || settings.calendar.user} → «${calName}»)`
+          : `Calendario ⚠ (${user.displayName || settings.calendar.user}: no se encontró «${calName}»; se usaría el principal)`);
+      } else {
+        parts.push(`Calendario ✓ (${user.displayName || settings.calendar.user}, principal)`);
+      }
     }
     if (!parts.length) parts.push('Credenciales válidas (activa calendario o SharePoint para usarlas).');
     return { ok: true, detail: parts.join(' · ') };
@@ -268,6 +299,7 @@ module.exports = {
   buildFolderPath,
   listFolders,
   createFolder,
+  resolveCalendarId,
   createCalendarEvent,
   updateCalendarEvent,
   deleteCalendarEvent,

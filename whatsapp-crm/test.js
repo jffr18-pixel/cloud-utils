@@ -939,11 +939,13 @@ async function main() {
     assert(msTest.status === 200 && msTest.data.configured === false && msTest.data.ok === false,
       'sin credenciales de Microsoft, la prueba lo indica');
     const msSettings = await req('PUT', '/api/automations', {
-      microsoft: { calendar: { enabled: true, user: 'jose@burocraciazero.es' } },
+      microsoft: { calendar: { enabled: true, user: 'jose@burocraciazero.es', calendarName: 'CITAS BZ COMPARTIDO' } },
     });
     assert(msSettings.data.microsoft.calendar.enabled === true
       && msSettings.data.microsoft.sharepoint.hostname === 'ejerciendolaciudadania.sharepoint.com',
       'configuración de Microsoft 365 guardada con los valores del sitio');
+    assert(msSettings.data.microsoft.calendar.calendarName === 'CITAS BZ COMPARTIDO',
+      'se guarda el calendario destino (CITAS BZ COMPARTIDO)');
     // Cita con calendario activado pero sin credenciales → se crea sin evento.
     const apptNoMs = await req('POST', '/api/appointments', {
       clientId, date: tomorrow, time: '17:00', reason: 'Consulta laboral',

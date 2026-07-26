@@ -1741,6 +1741,7 @@ async function renderAutomations() {
 
   $('#auto-ms-cal').checked = s.microsoft.calendar.enabled;
   $('#auto-ms-cal-user').value = s.microsoft.calendar.user;
+  $('#auto-ms-cal-name').value = s.microsoft.calendar.calendarName || '';
   $('#auto-ms-sp').checked = s.microsoft.sharepoint.enabled;
   $('#auto-ms-sp-site').value = s.microsoft.sharepoint.sitePath;
   $('#auto-ms-sp-folder').value = s.microsoft.sharepoint.folderTemplate;
@@ -1847,6 +1848,7 @@ $('#btn-auto-save').addEventListener('click', async () => {
           calendar: {
             enabled: $('#auto-ms-cal').checked,
             user: $('#auto-ms-cal-user').value.trim(),
+            calendarName: $('#auto-ms-cal-name').value.trim(),
           },
           sharepoint: {
             enabled: $('#auto-ms-sp').checked,
