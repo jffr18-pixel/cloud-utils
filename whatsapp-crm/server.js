@@ -1588,6 +1588,29 @@ async function handleApi(req, res, url) {
     return json(res, 200, results);
   }
 
+  // Búsqueda global: clientes + expedientes + mensajes (para la paleta Ctrl+K).
+  if (req.method === 'GET' && resource === 'search') {
+    const q = (url.searchParams.get('q') || '').toLowerCase().trim();
+    if (q.length < 2) return json(res, 200, { clients: [], cases: [], messages: [] });
+    const nameOf = (cid) => (db.clients.find((c) => c.id === cid) || {}).name || '';
+    const clients = db.clients
+      .filter((c) => [c.name, c.phone, c.nif, c.email, (c.tags || []).join(' ')].join(' ').toLowerCase().includes(q))
+      .slice(0, 8)
+      .map((c) => ({ id: c.id, name: c.name, phone: c.phone, segment: c.segment || 'particular' }));
+    const cases = db.cases
+      .filter((c) => (c.title || '').toLowerCase().includes(q))
+      .slice(0, 8)
+      .map((c) => ({ id: c.id, title: c.title, type: c.type, status: c.status, clientId: c.clientId, clientName: nameOf(c.clientId) }));
+    const messages = [];
+    for (let i = db.messages.length - 1; i >= 0 && messages.length < 6; i -= 1) {
+      const m = db.messages[i];
+      if (!`${m.text || ''} ${m.media?.filename || ''}`.toLowerCase().includes(q)) continue;
+      if (!db.clients.some((c) => c.id === m.clientId)) continue;
+      messages.push({ clientId: m.clientId, clientName: nameOf(m.clientId), text: m.text, timestamp: m.timestamp });
+    }
+    return json(res, 200, { clients, cases, messages });
+  }
+
   // --- Exportación CSV ------------------------------------------------------
   if (req.method === 'GET' && resource === 'export' && id) {
     const csvCell = (v) => `"${String(v ?? '').replaceAll('"', '""')}"`;

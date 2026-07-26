@@ -84,6 +84,12 @@
               <button class="btn small" id="btn-simulate" title="Simular un mensaje entrante (modo demo)">＋ Simular entrada</button>
             </div>
             <input type="search" id="conv-search" class="search conv-search" placeholder="Buscar en los mensajes…">
+            <div class="filters inbox-filters" id="inbox-filters">
+              <button class="chip active" data-inbox="">Todas</button>
+              <button class="chip" data-inbox="unanswered">Sin responder</button>
+              <button class="chip" data-inbox="pendiente">Pendientes</button>
+              <button class="chip" data-inbox="resuelta">Resueltas</button>
+            </div>
             <div id="conv-list" class="list"></div>
           </div>
           <div class="chat-panel">
@@ -107,6 +113,7 @@
               </div>
               <div class="chat-messages" id="chat-messages"></div>
               <div class="chat-compose">
+                <div id="quick-replies" class="pop-panel hidden"></div>
                 <div id="emoji-panel" class="pop-panel hidden"></div>
                 <div id="sticker-panel" class="pop-panel sticker-grid hidden"></div>
                 <select id="tpl-select" title="Insertar plantilla">
@@ -415,6 +422,33 @@
         </div>
       </section>
     </main>
+  </div>
+
+  <!-- Paleta de comandos / buscador global (Ctrl/Cmd+K) -->
+  <div id="palette" class="palette hidden">
+    <div class="palette-box">
+      <input id="palette-input" type="text" autocomplete="off" spellcheck="false"
+        placeholder="Buscar clientes, expedientes, mensajes… o una acción">
+      <div id="palette-results" class="palette-results"></div>
+      <div class="palette-foot"><span><kbd>↑</kbd><kbd>↓</kbd> moverse</span><span><kbd>↵</kbd> abrir</span><span><kbd>esc</kbd> cerrar</span></div>
+    </div>
+  </div>
+
+  <!-- Ayuda de atajos de teclado -->
+  <div id="shortcuts" class="palette hidden">
+    <div class="palette-box shortcuts-box">
+      <h2>Atajos de teclado</h2>
+      <table class="shortcuts-table">
+        <tr><td><kbd>Ctrl/⌘</kbd> + <kbd>K</kbd></td><td>Buscar y comandos</td></tr>
+        <tr><td><kbd>/</kbd></td><td>Buscar (fuera de un campo)</td></tr>
+        <tr><td><kbd>j</kbd> / <kbd>k</kbd></td><td>Conversación siguiente / anterior</td></tr>
+        <tr><td><kbd>r</kbd></td><td>Responder (ir al mensaje)</td></tr>
+        <tr><td><kbd>e</kbd></td><td>Marcar conversación como resuelta</td></tr>
+        <tr><td><kbd>/</kbd> en el chat</td><td>Respuesta rápida (plantilla)</td></tr>
+        <tr><td><kbd>?</kbd></td><td>Mostrar esta ayuda</td></tr>
+        <tr><td><kbd>esc</kbd></td><td>Cerrar</td></tr>
+      </table>
+    </div>
   </div>
 
   <!-- Pantalla de acceso -->

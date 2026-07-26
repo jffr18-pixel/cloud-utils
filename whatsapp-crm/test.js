@@ -1002,6 +1002,16 @@ async function main() {
     const shortQ = await req('GET', '/api/search-messages?q=a');
     assert(shortQ.data.length === 0, 'consultas de menos de 2 letras no buscan');
 
+    console.log('Búsqueda global (paleta Ctrl+K)');
+    const gAna = await req('GET', '/api/search?q=Ana');
+    assert(gAna.data.clients.some((c) => c.name === 'Ana Torres'), 'la búsqueda global encuentra clientes por nombre');
+    const gCase = await req('GET', '/api/search?q=renta');
+    assert(Array.isArray(gCase.data.cases) && gCase.data.cases.some((c) => /renta/i.test(c.title)),
+      'la búsqueda global encuentra expedientes por título');
+    const gShort = await req('GET', '/api/search?q=a');
+    assert(gShort.data.clients.length === 0 && gShort.data.cases.length === 0,
+      'la búsqueda global ignora consultas de menos de 2 letras');
+
     console.log('Exportación CSV');
     const csvClients = await fetch(`${BASE}/api/export/clients.csv`);
     const csvClientsText = await csvClients.text();

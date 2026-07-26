@@ -674,3 +674,63 @@ dialog h2 { font-family: var(--font-brand); font-size: 19px; font-weight: 700; m
 @media (min-width: 761px) {
   .inbox .chat-panel { display: flex; }
 }
+
+/* ---------------------------------------------------------------------------
+   Productividad: paleta de comandos, respuestas rápidas, atajos
+--------------------------------------------------------------------------- */
+.palette {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(29, 29, 27, .42);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding-top: 12vh;
+}
+.palette.hidden { display: none; }
+.palette-box {
+  background: var(--panel); width: min(600px, 94vw); border-radius: 16px;
+  box-shadow: var(--shadow-3); overflow: hidden; border: 1px solid var(--border);
+}
+#palette-input {
+  width: 100%; border: 0; border-bottom: 1px solid var(--border);
+  padding: 17px 20px; font-size: 16px; font-family: inherit; outline: none;
+  background: transparent; color: var(--text);
+}
+.palette-results { max-height: 52vh; overflow-y: auto; padding: 6px; }
+.pal-group { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
+  color: var(--muted); padding: 10px 12px 4px; }
+.pal-item {
+  display: flex; align-items: center; gap: 11px; padding: 9px 12px;
+  border-radius: 10px; cursor: pointer;
+}
+.pal-item.sel { background: var(--accent-light); }
+.pal-ico {
+  width: 30px; height: 30px; border-radius: 8px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-light); color: var(--accent-dark); font-size: 15px;
+}
+.pal-item.sel .pal-ico { background: var(--accent); color: #fff; }
+.pal-main { flex: 1; min-width: 0; }
+.pal-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pal-sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pal-empty { padding: 24px; text-align: center; color: var(--muted); font-size: 13px; }
+.palette-foot {
+  display: flex; gap: 16px; padding: 9px 16px; border-top: 1px solid var(--border);
+  font-size: 11.5px; color: var(--muted); background: var(--bg);
+}
+kbd {
+  font-family: inherit; font-size: 11px; background: var(--panel);
+  border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px;
+  padding: 1px 5px; margin: 0 1px; color: var(--ink-soft);
+}
+.shortcuts-box { padding: 22px 24px 24px; }
+.shortcuts-box h2 { font-family: var(--font-brand); font-size: 18px; margin-bottom: 14px; }
+.shortcuts-table { width: 100%; border-collapse: collapse; }
+.shortcuts-table td { padding: 7px 4px; font-size: 13.5px; border-bottom: 1px solid var(--border); }
+.shortcuts-table td:first-child { width: 42%; white-space: nowrap; }
+
+.inbox-filters { padding: 0 0 8px; flex-wrap: wrap; }
+/* Respuestas rápidas (dropdown de plantillas al escribir "/") */
+#quick-replies { max-height: 240px; }
+.qr-item { display: flex; flex-direction: column; gap: 1px; padding: 8px 11px; border-radius: 9px; cursor: pointer; }
+.qr-item.sel, .qr-item:hover { background: var(--accent-light); }
+.qr-name { font-size: 13px; font-weight: 700; }
+.qr-text { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

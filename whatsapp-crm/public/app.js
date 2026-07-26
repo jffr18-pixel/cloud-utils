@@ -130,8 +130,10 @@ const state = {
   caseFilter: '',
   segFilter: '',
   apptFilter: 'proximas',
+  inboxFilter: '',
   noteMode: false,
   lastMessageCount: 0,
+  convOrder: [],
 };
 
 function showView(name) {
@@ -316,12 +318,23 @@ function bindConvRows(container, jumpToInbox) {
   });
 }
 
+// Filtro de triaje de la bandeja de entrada.
+function filterConvs(convs) {
+  const f = state.inboxFilter;
+  if (f === 'unanswered') return convs.filter((c) => c.lastDirection === 'in');
+  if (f === 'pendiente') return convs.filter((c) => c.convStatus === 'pendiente');
+  if (f === 'resuelta') return convs.filter((c) => c.convStatus === 'resuelta');
+  return convs;
+}
+
 async function renderInbox() {
   if ($('#conv-search').value.trim()) return renderConvSearch();
   const [convs, templates] = await Promise.all([api('conversations'), api('templates')]);
   state.templates = templates;
-  $('#conv-list').innerHTML = convs.map(convRowHtml).join('')
-    || '<p class="hint">No hay conversaciones. Cuando un cliente te escriba (o uses «Simular entrada»), aparecerá aquí.</p>';
+  const list = filterConvs(convs);
+  state.convOrder = list.map((c) => c.clientId);
+  $('#conv-list').innerHTML = list.map(convRowHtml).join('')
+    || '<p class="hint">No hay conversaciones con este filtro.</p>';
   bindConvRows($('#conv-list'), false);
 
   const sel = $('#tpl-select');
@@ -422,7 +435,17 @@ $('#btn-note-mode').addEventListener('click', () => {
 });
 
 $('#btn-send').addEventListener('click', sendCurrentMessage);
+$('#chat-input').addEventListener('input', () => renderQuickReplies());
 $('#chat-input').addEventListener('keydown', (e) => {
+  const qr = $('#quick-replies');
+  // Si el desplegable de respuestas rápidas está abierto, navega con él.
+  if (qr && !qr.classList.contains('hidden')) {
+    const items = [...qr.querySelectorAll('.qr-item')];
+    if (e.key === 'ArrowDown') { e.preventDefault(); qrSel = Math.min(items.length - 1, qrSel + 1); renderQuickReplies(); return; }
+    if (e.key === 'ArrowUp') { e.preventDefault(); qrSel = Math.max(0, qrSel - 1); renderQuickReplies(); return; }
+    if (e.key === 'Enter') { e.preventDefault(); const sel = items[qrSel]; if (sel) pickQuickReply(sel.dataset.id); return; }
+    if (e.key === 'Escape') { qr.classList.add('hidden'); return; }
+  }
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     sendCurrentMessage();
@@ -433,6 +456,7 @@ async function sendCurrentMessage() {
   const text = $('#chat-input').value.trim();
   if (!text || !state.activeClientId) return;
   $('#chat-input').value = '';
+  $('#quick-replies').classList.add('hidden');
   try {
     await api('messages', {
       method: 'POST',
@@ -508,6 +532,7 @@ function closePanels(except) {
   if (except !== 'sticker') $('#sticker-panel').classList.add('hidden');
   const fp = $('#ficha-panel');
   if (fp && except !== 'ficha') fp.classList.add('hidden');
+  if (except !== 'qr') $('#quick-replies').classList.add('hidden');
 }
 $('#btn-emoji').addEventListener('click', (e) => {
   e.stopPropagation();
@@ -1832,9 +1857,10 @@ setInterval(async () => {
     await updateUnreadBadge();
     if (state.view === 'inbox') {
       if ($('#conv-search').value.trim()) return; // no pisar los resultados de búsqueda
-      const convs = await api('conversations');
+      const convs = filterConvs(await api('conversations'));
+      state.convOrder = convs.map((c) => c.clientId);
       $('#conv-list').innerHTML = convs.map(convRowHtml).join('')
-        || '<p class="hint">No hay conversaciones.</p>';
+        || '<p class="hint">No hay conversaciones con este filtro.</p>';
       bindConvRows($('#conv-list'), false);
       if (state.activeClientId) {
         const msgs = await api('messages?clientId=' + encodeURIComponent(state.activeClientId));
@@ -1845,5 +1871,215 @@ setInterval(async () => {
     }
   } catch { /* sin conexión momentánea: reintenta en el siguiente ciclo */ }
 }, 5000);
+
+// ---------------------------------------------------------------------------
+// Productividad: triaje de bandeja, respuestas rápidas «/», paleta y atajos
+// ---------------------------------------------------------------------------
+
+// --- Filtros de triaje de la bandeja ---
+document.querySelectorAll('#inbox-filters .chip').forEach((chip) => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('#inbox-filters .chip').forEach((c) => c.classList.remove('active'));
+    chip.classList.add('active');
+    state.inboxFilter = chip.dataset.inbox;
+    renderInbox();
+  });
+});
+
+// --- Respuestas rápidas: escribe «/» en el chat para elegir una plantilla ---
+const qrPanel = () => $('#quick-replies');
+let qrSel = 0;
+function qrMatches() {
+  const v = $('#chat-input').value;
+  const m = /^\/(\S*)$/.exec(v); // "/" seguido de texto sin espacios, al inicio
+  if (!m) return null;
+  const term = m[1].toLowerCase();
+  return (state.templates || []).filter((t) =>
+    !term || t.name.toLowerCase().includes(term) || t.text.toLowerCase().includes(term));
+}
+function renderQuickReplies() {
+  const list = qrMatches();
+  const panel = qrPanel();
+  if (!list || !list.length) { panel.classList.add('hidden'); return; }
+  qrSel = Math.min(qrSel, list.length - 1);
+  panel.innerHTML = list.map((t, i) => `
+    <div class="qr-item ${i === qrSel ? 'sel' : ''}" data-id="${esc(t.id)}">
+      <span class="qr-name">${esc(t.name)}</span>
+      <span class="qr-text">${esc(t.text)}</span>
+    </div>`).join('');
+  panel.classList.remove('hidden');
+  panel.querySelectorAll('.qr-item').forEach((el) => {
+    el.addEventListener('mousedown', (ev) => { ev.preventDefault(); pickQuickReply(el.dataset.id); });
+  });
+}
+async function pickQuickReply(id) {
+  const tpl = (state.templates || []).find((t) => t.id === id);
+  qrPanel().classList.add('hidden');
+  if (!tpl) return;
+  let text = tpl.text;
+  if (state.activeClientId) {
+    const client = state.clients.find((c) => c.id === state.activeClientId)
+      || await api('clients/' + state.activeClientId).catch(() => null);
+    if (client) text = text.replaceAll('{nombre}', (client.name || '').split(' ')[0]);
+  }
+  const input = $('#chat-input');
+  input.value = text;
+  input.focus();
+  input.setSelectionRange(text.length, text.length);
+}
+
+// --- Paleta de comandos / buscador global ---
+const NAV_LABELS = {
+  dashboard: 'Panel', inbox: 'WhatsApp', clients: 'Clientes', cases: 'Expedientes',
+  appointments: 'Citas', agenda: 'Agenda', templates: 'Plantillas', fichas: 'Fichas de trámite',
+  reports: 'Informes', reminders: 'Recordatorios', campaigns: 'Campañas', automations: 'Automatizaciones',
+};
+const PALETTE_ACTIONS = [
+  { title: '＋ Nuevo expediente', ico: '📁', run: () => { showView('cases'); setTimeout(() => $('#btn-new-case').click(), 60); } },
+  { title: '＋ Nueva cita', ico: '📅', run: () => { showView('appointments'); setTimeout(() => $('#btn-new-appt').click(), 60); } },
+  { title: '＋ Nuevo recordatorio', ico: '⏰', run: () => { showView('reminders'); setTimeout(() => $('#btn-new-reminder').click(), 60); } },
+  { title: '＋ Nueva ficha de trámite', ico: '📋', run: () => { showView('fichas'); setTimeout(() => $('#btn-new-ficha').click(), 60); } },
+  { title: '＋ Nuevo cliente', ico: '👤', run: () => { showView('clients'); setTimeout(() => $('#btn-new-client').click(), 60); } },
+  ...Object.entries(NAV_LABELS).map(([v, l]) => ({ title: 'Ir a: ' + l, ico: '➜', run: () => showView(v) })),
+];
+
+let palItems = [];
+let palSel = 0;
+let palTimer = null;
+
+function openPalette() {
+  $('#shortcuts').classList.add('hidden');
+  $('#palette').classList.remove('hidden');
+  const inp = $('#palette-input');
+  inp.value = '';
+  inp.focus();
+  paletteUpdate();
+}
+function closePalette() { $('#palette').classList.add('hidden'); }
+
+function setPalItems(items) {
+  palItems = items;
+  palSel = 0;
+  const groups = {};
+  for (const it of items) (groups[it.group] = groups[it.group] || []).push(it);
+  let html = '';
+  let idx = 0;
+  for (const [group, list] of Object.entries(groups)) {
+    html += `<div class="pal-group">${esc(group)}</div>`;
+    for (const it of list) {
+      html += `<div class="pal-item ${idx === palSel ? 'sel' : ''}" data-i="${idx}">
+        <span class="pal-ico">${it.ico || '•'}</span>
+        <div class="pal-main"><div class="pal-title">${esc(it.title)}</div>${it.sub ? `<div class="pal-sub">${esc(it.sub)}</div>` : ''}</div>
+      </div>`;
+      idx += 1;
+    }
+  }
+  const box = $('#palette-results');
+  box.innerHTML = html || '<div class="pal-empty">Sin resultados.</div>';
+  box.querySelectorAll('.pal-item').forEach((el) => {
+    el.addEventListener('mousedown', (ev) => { ev.preventDefault(); runPalItem(Number(el.dataset.i)); });
+  });
+}
+function paintPalSel() {
+  $('#palette-results').querySelectorAll('.pal-item').forEach((el) => {
+    el.classList.toggle('sel', Number(el.dataset.i) === palSel);
+  });
+  const sel = $('#palette-results').querySelector('.pal-item.sel');
+  if (sel) sel.scrollIntoView({ block: 'nearest' });
+}
+function runPalItem(i) {
+  const it = palItems[i];
+  if (!it) return;
+  closePalette();
+  it.run();
+}
+function paletteUpdate() {
+  const q = $('#palette-input').value.trim();
+  const ql = q.toLowerCase();
+  const actions = (q ? PALETTE_ACTIONS.filter((a) => a.title.toLowerCase().includes(ql)) : PALETTE_ACTIONS)
+    .map((a) => ({ group: 'Acciones', ico: a.ico, title: a.title, run: a.run }));
+  if (q.length < 2) { setPalItems(actions); return; }
+  clearTimeout(palTimer);
+  palTimer = setTimeout(async () => {
+    let r = { clients: [], cases: [], messages: [] };
+    try { r = await api('search?q=' + encodeURIComponent(q)); } catch { /* ignore */ }
+    const items = [];
+    for (const c of r.clients) {
+      items.push({ group: 'Clientes', ico: '👤', title: c.name, sub: '+' + c.phone,
+        run: () => { showView('inbox'); openConversation(c.id); } });
+    }
+    for (const c of r.cases) {
+      items.push({ group: 'Expedientes', ico: '📁', title: c.title, sub: c.clientName,
+        run: () => openCaseById(c.id) });
+    }
+    for (const m of r.messages) {
+      items.push({ group: 'Mensajes', ico: '💬', title: m.text || '(adjunto)', sub: m.clientName,
+        run: () => { showView('inbox'); openConversation(m.clientId); } });
+    }
+    setPalItems([...items, ...actions]);
+  }, 140);
+}
+// Abre el diálogo de edición de un expediente concreto desde la paleta.
+async function openCaseById(caseId) {
+  showView('cases');
+  const [cases, clients, fichas] = await Promise.all([api('cases'), api('clients'), api('fichas')]);
+  const item = cases.find((c) => c.id === caseId);
+  if (!item) return;
+  openDialog('Editar expediente', caseFields(item, clients, fichas), async (v) => {
+    await api('cases/' + item.id, { method: 'PUT', body: caseBody(v) });
+    await renderCases();
+  });
+}
+$('#palette-input').addEventListener('input', paletteUpdate);
+
+// --- Atajos de teclado globales ---
+function typingInField(el) {
+  return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
+}
+function currentConvIndex() {
+  return state.convOrder.indexOf(state.activeClientId);
+}
+function moveConversation(delta) {
+  if (state.view !== 'inbox' || !state.convOrder.length) return;
+  let i = currentConvIndex();
+  i = i < 0 ? 0 : Math.min(state.convOrder.length - 1, Math.max(0, i + delta));
+  openConversation(state.convOrder[i]);
+}
+
+document.addEventListener('keydown', (e) => {
+  // Ctrl/Cmd+K: paleta (funciona siempre).
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    $('#palette').classList.contains('hidden') ? openPalette() : closePalette();
+    return;
+  }
+  if (e.key === 'Escape') {
+    if (!$('#palette').classList.contains('hidden')) { closePalette(); return; }
+    if (!$('#shortcuts').classList.contains('hidden')) { $('#shortcuts').classList.add('hidden'); return; }
+    if (!qrPanel().classList.contains('hidden')) { qrPanel().classList.add('hidden'); return; }
+  }
+  // Navegación dentro de la paleta.
+  if (!$('#palette').classList.contains('hidden')) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); palSel = Math.min(palItems.length - 1, palSel + 1); paintPalSel(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); palSel = Math.max(0, palSel - 1); paintPalSel(); }
+    else if (e.key === 'Enter') { e.preventDefault(); runPalItem(palSel); }
+    return;
+  }
+  if (typingInField(document.activeElement)) return; // no molestar mientras se escribe
+  if (e.key === '/') { e.preventDefault(); openPalette(); }
+  else if (e.key === '?') { e.preventDefault(); $('#shortcuts').classList.toggle('hidden'); }
+  else if (e.key === 'j') { e.preventDefault(); moveConversation(1); }
+  else if (e.key === 'k') { e.preventDefault(); moveConversation(-1); }
+  else if (e.key === 'r' && state.activeClientId) { e.preventDefault(); $('#chat-input').focus(); }
+  else if (e.key === 'e' && state.activeClientId && state.view === 'inbox') {
+    e.preventDefault();
+    $('#conv-status').value = 'resuelta';
+    $('#conv-status').dispatchEvent(new Event('change'));
+    renderInbox();
+  }
+});
+// Cerrar la paleta/ayuda al hacer clic fuera del recuadro.
+$('#palette').addEventListener('mousedown', (e) => { if (e.target.id === 'palette') closePalette(); });
+$('#shortcuts').addEventListener('mousedown', (e) => { if (e.target.id === 'shortcuts') $('#shortcuts').classList.add('hidden'); });
 
 init();
