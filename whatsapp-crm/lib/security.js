@@ -78,6 +78,8 @@ const CSP = [
   "base-uri 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",
+  // Solo se permite embeber formularios de JotForm (pestaña «Formularios»).
+  'frame-src https://*.jotform.com https://*.jotform.eu https://*.jotformeu.com https://*.jotform.io',
 ].join('; ');
 
 function applySecurityHeaders(req, res) {

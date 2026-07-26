@@ -436,6 +436,20 @@ async function main() {
     const rem = await req('POST', '/api/reminders', { text: 'Llamar a María', dueDate: '2026-07-25', clientId });
     assert(rem.status === 201, 'crear recordatorio');
 
+    console.log('Formularios (JotForm)');
+    const formOk = await req('POST', '/api/forms', { name: 'Datos arraigo', url: 'https://www.jotform.com/tables/240000000000000' });
+    assert(formOk.status === 201 && formOk.data.id, 'añadir un formulario de JotForm');
+    const formEu = await req('POST', '/api/forms', { name: 'Renta', url: 'https://eu.jotform.com/240000000000001' });
+    assert(formEu.status === 201, 'acepta enlaces de JotForm (europeo)');
+    const formBad = await req('POST', '/api/forms', { name: 'Malo', url: 'https://evil.example.com/phish' });
+    assert(formBad.status === 400, 'rechaza URLs que no son de JotForm');
+    const formHttp = await req('POST', '/api/forms', { name: 'Sin https', url: 'http://www.jotform.com/x' });
+    assert(formHttp.status === 400, 'rechaza enlaces sin https');
+    const formsList = await req('GET', '/api/forms');
+    assert(formsList.data.length === 2, 'lista de formularios guardada');
+    const delForm = await req('DELETE', '/api/forms/' + formOk.data.id);
+    assert(delForm.status === 200 && (await req('GET', '/api/forms')).data.length === 1, 'quitar un formulario');
+
     console.log('Automatizaciones');
     const autoDefaults = await req('GET', '/api/automations');
     assert(autoDefaults.status === 200 && autoDefaults.data.afterHours.enabled === false,

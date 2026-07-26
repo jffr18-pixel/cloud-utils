@@ -132,6 +132,7 @@ const state = {
   apptFilter: 'proximas',
   inboxFilter: '',
   tagFilter: '',
+  activeFormId: null,
   noteMode: false,
   lastMessageCount: 0,
   convOrder: [],
@@ -161,6 +162,7 @@ async function refreshView() {
     if (state.view === 'agenda') await renderAgenda();
     if (state.view === 'templates') await renderTemplates();
     if (state.view === 'fichas') await renderFichas();
+    if (state.view === 'forms') await renderForms();
     if (state.view === 'reports') await renderReports();
     if (state.view === 'reminders') await renderReminders();
     if (state.view === 'campaigns') await renderCampaigns();
@@ -1436,6 +1438,81 @@ $('#btn-new-ficha').addEventListener('click', () => {
   openDialog('Nueva ficha de trámite', fichaFields(), async (v) => {
     await api('fichas', { method: 'POST', body: v });
     await renderFichas();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Formularios (JotForm embebidos)
+// ---------------------------------------------------------------------------
+
+async function renderForms() {
+  const forms = await api('forms');
+  const tabs = $('#forms-tabs');
+  const frame = $('#forms-frame');
+  if (!forms.length) {
+    tabs.innerHTML = '';
+    frame.innerHTML = `<div class="forms-empty">
+      <p>Aún no has añadido ningún formulario.</p>
+      <p class="hint">Pulsa «＋ Añadir formulario» y pega el enlace de tu formulario de JotForm o de su tabla de respuestas.</p>
+    </div>`;
+    return;
+  }
+  if (!state.activeFormId || !forms.some((f) => f.id === state.activeFormId)) {
+    state.activeFormId = forms[0].id;
+  }
+  tabs.innerHTML = forms.map((f) => `
+    <button class="form-tab ${f.id === state.activeFormId ? 'active' : ''}" data-id="${esc(f.id)}">
+      <span>${esc(f.name)}</span>
+      <span class="form-tab-actions">
+        <span class="form-edit" data-id="${esc(f.id)}" title="Editar">✎</span>
+        <span class="form-del" data-id="${esc(f.id)}" title="Quitar">✕</span>
+      </span>
+    </button>`).join('');
+  const active = forms.find((f) => f.id === state.activeFormId);
+  // Enlace de solo lectura embebido; sandbox permisivo para que JotForm funcione.
+  frame.innerHTML = `<iframe src="${esc(active.url)}" title="${esc(active.name)}"
+    sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+    referrerpolicy="no-referrer"></iframe>
+    <a class="btn small form-open" href="${esc(active.url)}" target="_blank" rel="noopener">Abrir en JotForm ↗</a>`;
+
+  tabs.querySelectorAll('.form-tab').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      if (e.target.closest('.form-del') || e.target.closest('.form-edit')) return;
+      state.activeFormId = btn.dataset.id;
+      renderForms();
+    });
+  });
+  tabs.querySelectorAll('.form-edit').forEach((el) => {
+    el.addEventListener('click', (e) => { e.stopPropagation(); editForm(forms.find((f) => f.id === el.dataset.id)); });
+  });
+  tabs.querySelectorAll('.form-del').forEach((el) => {
+    el.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm('¿Quitar este formulario del CRM? (no se borra de JotForm)')) return;
+      await api('forms/' + el.dataset.id, { method: 'DELETE' });
+      if (state.activeFormId === el.dataset.id) state.activeFormId = null;
+      await renderForms();
+    });
+  });
+}
+
+const formFields = (f = {}) => [
+  { name: 'name', label: 'Nombre (ej. «Datos para arraigo»)', value: f.name, required: true },
+  { name: 'url', label: 'Enlace de JotForm (del formulario o de su tabla de respuestas)', value: f.url, required: true },
+];
+
+function editForm(f) {
+  openDialog('Editar formulario', formFields(f), async (v) => {
+    await api('forms/' + f.id, { method: 'PUT', body: v });
+    await renderForms();
+  });
+}
+
+$('#btn-new-form').addEventListener('click', () => {
+  openDialog('Añadir formulario', formFields(), async (v) => {
+    const created = await api('forms', { method: 'POST', body: v });
+    state.activeFormId = created.id;
+    await renderForms();
   });
 });
 

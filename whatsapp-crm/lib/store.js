@@ -20,6 +20,7 @@ const EMPTY_DB = {
   campaigns: [],
   appointments: [],
   fichas: [],
+  forms: [], // formularios JotForm embebidos: [{ id, name, url }]
 };
 
 // db.settings es un objeto (configuración de automatizaciones, etc.).

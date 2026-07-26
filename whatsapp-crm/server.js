@@ -365,6 +365,17 @@ function isAuthenticated(req) {
   return true;
 }
 
+// Solo se admiten URLs https de JotForm para embeber (coherente con la CSP).
+function isJotformUrl(u) {
+  try {
+    const url = new URL(u);
+    return url.protocol === 'https:'
+      && /(^|\.)jotform\.(com|eu|io)$|(^|\.)jotformeu\.com$/.test(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 function safeEqual(a, b) {
   const ha = crypto.createHash('sha256').update(String(a)).digest();
   const hb = crypto.createHash('sha256').update(String(b)).digest();
@@ -1301,6 +1312,39 @@ async function handleApi(req, res, url) {
     }
     if (req.method === 'DELETE') {
       db.templates = db.templates.filter((x) => x.id !== id);
+      save();
+      return json(res, 200, { ok: true });
+    }
+  }
+
+  // --- Formularios JotForm embebidos ---------------------------------------
+  if (resource === 'forms') {
+    if (req.method === 'GET' && !id) return json(res, 200, db.forms);
+    if (req.method === 'POST' && !id) {
+      const b = await readBody(req);
+      const name = String(b.name || '').trim();
+      const formUrl = String(b.url || '').trim();
+      if (!name) return json(res, 400, { error: 'El nombre es obligatorio' });
+      if (!isJotformUrl(formUrl)) return json(res, 400, { error: 'La URL debe ser un enlace https de JotForm' });
+      const f = { id: newId('form'), name, url: formUrl };
+      db.forms.push(f);
+      save();
+      return json(res, 201, f);
+    }
+    const f = db.forms.find((x) => x.id === id);
+    if (!f) return json(res, 404, { error: 'Formulario no encontrado' });
+    if (req.method === 'PUT') {
+      const b = await readBody(req);
+      if (b.name !== undefined) f.name = String(b.name).trim();
+      if (b.url !== undefined) {
+        if (!isJotformUrl(String(b.url).trim())) return json(res, 400, { error: 'La URL debe ser un enlace https de JotForm' });
+        f.url = String(b.url).trim();
+      }
+      save();
+      return json(res, 200, f);
+    }
+    if (req.method === 'DELETE') {
+      db.forms = db.forms.filter((x) => x.id !== id);
       save();
       return json(res, 200, { ok: true });
     }
