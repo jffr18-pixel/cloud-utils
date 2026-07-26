@@ -1664,15 +1664,21 @@ function statusPageShell(title, bodyHtml) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>${escHtml(title)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
-  :root { --charcoal:#1d1a22; --cream:#f4f2ec; --lilac:#9c86c9; --lilac-dark:#5e35b1; --muted:#6f6a78; --ok:#1d7a34; --danger:#c0392b; }
+  :root { --charcoal:#1d1a22; --cream:#f4f2ec; --lilac:#9c86c9; --lilac-dark:#5e35b1; --muted:#6f6a78; --ok:#1d7a34; --danger:#c0392b; --font-brand:"Baloo 2",-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
   * { box-sizing: border-box; }
   body { margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; background:var(--cream); color:var(--charcoal); line-height:1.5; }
   .wrap { max-width:640px; margin:0 auto; padding:24px 18px 60px; }
-  header { text-align:center; padding:26px 0 18px; }
-  .brand { font-weight:800; font-size:22px; letter-spacing:.3px; color:var(--charcoal); }
-  .brand span { color:var(--lilac-dark); }
-  .sub { color:var(--muted); font-size:14px; margin-top:4px; }
+  header { text-align:center; padding:30px 0 18px; }
+  .logo { display:inline-flex; align-items:center; gap:13px; }
+  .logo-mark { width:52px; height:52px; flex:none; }
+  .logo-word { text-align:left; font-family:var(--font-brand); line-height:.92; }
+  .logo-word b { display:block; font-weight:800; font-size:27px; letter-spacing:.2px; color:var(--charcoal); }
+  .logo-word span { display:block; font-weight:600; font-size:16px; letter-spacing:5px; color:var(--lilac-dark); text-transform:uppercase; margin-top:1px; }
+  .sub { color:var(--muted); font-size:14px; margin-top:14px; }
   h1 { font-size:19px; margin:22px 0 4px; }
   .lead { color:var(--muted); font-size:14px; margin:0 0 18px; }
   .case { background:#fff; border:1px solid #e6e3db; border-radius:14px; padding:16px 16px 14px; margin-bottom:14px; box-shadow:0 1px 2px rgba(0,0,0,.03); }
@@ -1700,7 +1706,20 @@ function statusPageShell(title, bodyHtml) {
 </style>
 </head><body><div class="wrap">
 <header>
-  <div class="brand">Burocracia <span>Zero</span></div>
+  <div class="logo">
+    <svg class="logo-mark" viewBox="0 0 52 52" role="img" aria-label="Burocracia Zero">
+      <defs>
+        <linearGradient id="bz" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#9c86c9"/><stop offset="1" stop-color="#5e35b1"/>
+        </linearGradient>
+      </defs>
+      <rect x="1" y="1" width="50" height="50" rx="14" fill="url(#bz)"/>
+      <path d="M19 15h11l7 7v15a2 2 0 0 1-2 2H19a2 2 0 0 1-2-2V17a2 2 0 0 1 2-2Z" fill="#fff" opacity="0.96"/>
+      <path d="M30 15v7h7" fill="none" stroke="#efeaf8" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M21.5 30.5l2.4 2.4 4.6-4.9" fill="none" stroke="#5e35b1" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div class="logo-word"><b>Burocracia</b><span>Zero</span></div>
+  </div>
   <div class="sub">Seguimiento de tus trámites</div>
 </header>
 ${bodyHtml}
