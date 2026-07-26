@@ -743,6 +743,68 @@ async function main() {
     });
     assert(badTokUp.status === 404, 'no se puede subir con un token inválido');
 
+    console.log('Reserva de cita online');
+    await req('PUT', '/api/automations', { booking: { enabled: true, slotMinutes: 30, horizonDays: 7, maxPerDay: 12 } });
+    const bookHtml = await (await fetch(`${BASE}/reservar/${token}`)).text();
+    assert(/class="bk-slot"/.test(bookHtml), 'la página de reserva muestra huecos libres');
+    const slot = (bookHtml.match(/name="slot" value="([^"]+)"/) || [])[1];
+    assert(Boolean(slot), 'hay al menos un hueco reservable');
+    const apptsBefore = (await req('GET', '/api/appointments')).data.length;
+    const booked = await fetch(`${BASE}/reservar/${token}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'slot=' + encodeURIComponent(slot),
+    });
+    const bookedHtml = await booked.text();
+    assert(booked.status === 200 && bookedHtml.includes('¡Cita reservada!'), 'reservar un hueco muestra la confirmación');
+    const apptsAfter = (await req('GET', '/api/appointments')).data;
+    assert(apptsAfter.length === apptsBefore + 1, 'la reserva crea la cita');
+    const [slotDate, slotTime] = slot.split('T');
+    assert(apptsAfter.some((a) => a.date === slotDate && a.time === slotTime && a.status === 'activa'),
+      'la cita reservada queda registrada como activa');
+    const dbl = await (await fetch(`${BASE}/reservar/${token}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'slot=' + encodeURIComponent(slot),
+    })).text();
+    assert(/class="book-note"/.test(dbl) && !dbl.includes('¡Cita reservada!'),
+      'un hueco ya ocupado no se puede volver a reservar');
+    await req('PUT', '/api/automations', { booking: { enabled: false } });
+    const bookingOff = await fetch(`${BASE}/reservar/${token}`);
+    assert(bookingOff.status === 404, 'con la reserva desactivada el enlace no funciona');
+
+    console.log('Consentimiento RGPD');
+    const consentPage = await (await fetch(`${BASE}/estado/${token}`)).text();
+    assert(/class="consent"/.test(consentPage), 'la página muestra el formulario de consentimiento');
+    const consent = await fetch(`${BASE}/estado/${token}/consent`, {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: '', redirect: 'manual',
+    });
+    assert(consent.status === 303, 'aceptar el consentimiento redirige de vuelta a la página');
+    const consentedClient = (await req('GET', `/api/clients/${clientId}`)).data;
+    assert(consentedClient.consent && consentedClient.consent.acceptedAt, 'el consentimiento queda registrado con fecha');
+    const afterConsent = await (await fetch(`${BASE}/estado/${token}`)).text();
+    assert(/consent-done/.test(afterConsent) && !/class="consent"/.test(afterConsent),
+      'tras aceptar se muestra la confirmación, no el formulario');
+
+    console.log('Recordatorio de honorarios pendientes');
+    await req('POST', '/api/cases', { clientId, title: 'Cita previa extranjería', type: 'extranjeria', status: 'completado', fee: 50, paid: false });
+    await req('PUT', '/api/automations', { payments: { enabled: true, daysAfter: 0, onlyCompleted: true } });
+    const runPay = await req('POST', '/api/automations/run');
+    assert(runPay.data.executed.some((a) => a.type === 'payment_reminder'), 'recordatorio de honorarios ejecutado');
+    const payMsgs = (await req('GET', `/api/messages?clientId=${clientId}`)).data;
+    assert(payMsgs.some((m) => /50/.test(m.text) && /pendiente|pago/i.test(m.text)), 'el aviso incluye el importe pendiente');
+    const runPay2 = await req('POST', '/api/automations/run');
+    assert(!runPay2.data.executed.some((a) => a.type === 'payment_reminder'), 'el aviso de honorarios no se duplica');
+    await req('PUT', '/api/automations', { payments: { enabled: false } });
+
+    console.log('Transcripción de notas de voz');
+    const trCfg = await req('PUT', '/api/automations', { transcription: { enabled: true } });
+    assert(trCfg.data.transcription.enabled === true, 'la transcripción se puede activar');
+    const tr = require('./lib/transcribe');
+    assert(tr.isConfigured() === false, 'sin clave la transcripción está desconfigurada (no se envía audio)');
+    const mp = tr.buildMultipart({ model: 'whisper-1' }, { filename: 'a.ogg', mime: 'audio/ogg', buffer: Buffer.from('AUDIO') });
+    assert(mp.boundary && Buffer.isBuffer(mp.body) && mp.body.includes(Buffer.from('whisper-1')),
+      'el cuerpo multipart de transcripción se construye correctamente');
+    await req('PUT', '/api/automations', { transcription: { enabled: false } });
+
     console.log('Estadísticas');
     const stats = await req('GET', '/api/stats');
     assert(stats.data.messagesByDay.length === 14, 'serie de 14 días');

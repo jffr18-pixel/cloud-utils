@@ -354,6 +354,38 @@
         </div>
 
         <div class="auto-card">
+          <h3><label><input type="checkbox" id="auto-book-enabled"> 🗓️ Reserva de cita online</label></h3>
+          <p class="hint">El cliente reserva un hueco libre desde su enlace de seguimiento (botón «Reservar cita»). Los huecos salen de tu <b>horario de la gestoría</b> y se crea la cita sola (y en Outlook, si está activado).</p>
+          <label>Duración de cada hueco (min)</label>
+          <input type="number" id="auto-book-slot" min="10" max="240" style="max-width:120px">
+          <label style="margin-top:8px">Días hacia delante que se ofrecen</label>
+          <input type="number" id="auto-book-horizon" min="1" max="60" style="max-width:120px">
+          <label style="margin-top:8px">Máximo de citas por día</label>
+          <input type="number" id="auto-book-max" min="1" max="50" style="max-width:120px">
+        </div>
+
+        <div class="auto-card">
+          <h3><label><input type="checkbox" id="auto-pay-enabled"> 💶 Recordatorio de honorarios pendientes</label></h3>
+          <p class="hint">Avisa con tacto a quien tiene honorarios sin cobrar (usa el campo «cobrado/pendiente» del expediente). Variables: <code>{nombre}</code>, <code>{tramite}</code>, <code>{importe}</code>.</p>
+          <label>Avisar a los … días</label>
+          <input type="number" id="auto-pay-days" min="1" max="180" style="max-width:120px">
+          <label style="margin-top:6px"><input type="checkbox" id="auto-pay-completed"> Solo trámites completados</label>
+          <label style="margin-top:8px">Mensaje al cliente</label>
+          <textarea id="auto-pay-text" rows="3"></textarea>
+        </div>
+
+        <div class="auto-card">
+          <h3><label><input type="checkbox" id="auto-tr-enabled"> 🎤 Transcripción de notas de voz</label></h3>
+          <p class="hint">Convierte los audios entrantes en texto para leerlos y buscarlos. Requiere configurar <code>OPENAI_API_KEY</code> (o <code>TRANSCRIBE_URL</code>) en el servidor. ⚠️ Los audios pueden contener datos sensibles: actívalo solo si el proveedor cumple el RGPD.</p>
+        </div>
+
+        <div class="auto-card">
+          <h3>📝 Consentimiento del cliente (RGPD + autorización)</h3>
+          <p class="hint">Texto que el cliente acepta desde su página de seguimiento. Queda registrado con fecha y hora como prueba del consentimiento.</p>
+          <textarea id="auto-legal-text" rows="5"></textarea>
+        </div>
+
+        <div class="auto-card">
           <h3>☁️ Microsoft 365 <button class="btn small" id="btn-test-ms" style="float:right">Probar conexión</button></h3>
           <p class="hint" id="ms-status">…</p>
           <div class="auto-row"><label><input type="checkbox" id="auto-ms-cal"> Crear las citas también en el calendario de Outlook</label></div>

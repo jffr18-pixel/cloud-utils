@@ -374,8 +374,10 @@ async function openConversation(clientId) {
         mediaHtml += `<a class="btn small" href="${esc(m.sharepointUrl)}" target="_blank" title="Abrir en SharePoint">☁️ SharePoint</a> `;
       }
     }
+    const transcriptHtml = m.transcript
+      ? `<div class="msg-transcript">🎤 <span>${esc(m.transcript)}</span></div>` : '';
     return `
-    <div class="msg ${m.direction} ${m.status === 'error' ? 'error' : ''}">${mediaHtml}${esc(m.text)}
+    <div class="msg ${m.direction} ${m.status === 'error' ? 'error' : ''}">${mediaHtml}${esc(m.text)}${transcriptHtml}
       <span class="msg-meta">${m.auto ? '🤖 automático · ' : ''}${m.viaTemplate ? '📋 plantilla · ' : ''}${m.viaApp ? '📱 desde el móvil · ' : ''}${m.viaProvider ? '☁️ vía YCloud · ' : ''}${fmtTime(m.timestamp)} ${MSG_STATUS[m.status] || ''}${m.error ? ' · ' + esc(m.error) : ''}</span>
     </div>`;
   }).join('');
@@ -1586,6 +1588,19 @@ async function renderAutomations() {
   $('#auto-appt-confirm').value = s.appointments.confirmText;
   $('#auto-appt-remind').value = s.appointments.remindText;
 
+  $('#auto-book-enabled').checked = s.booking.enabled;
+  $('#auto-book-slot').value = s.booking.slotMinutes;
+  $('#auto-book-horizon').value = s.booking.horizonDays;
+  $('#auto-book-max').value = s.booking.maxPerDay;
+
+  $('#auto-pay-enabled').checked = s.payments.enabled;
+  $('#auto-pay-days').value = s.payments.daysAfter;
+  $('#auto-pay-completed').checked = s.payments.onlyCompleted;
+  $('#auto-pay-text').value = s.payments.text;
+
+  $('#auto-tr-enabled').checked = s.transcription.enabled;
+  $('#auto-legal-text').value = s.legal.text;
+
   $('#auto-ms-cal').checked = s.microsoft.calendar.enabled;
   $('#auto-ms-cal-user').value = s.microsoft.calendar.user;
   $('#auto-ms-sp').checked = s.microsoft.sharepoint.enabled;
@@ -1676,6 +1691,20 @@ $('#btn-auto-save').addEventListener('click', async () => {
           confirmText: $('#auto-appt-confirm').value,
           remindText: $('#auto-appt-remind').value,
         },
+        booking: {
+          enabled: $('#auto-book-enabled').checked,
+          slotMinutes: Number($('#auto-book-slot').value) || 30,
+          horizonDays: Number($('#auto-book-horizon').value) || 14,
+          maxPerDay: Number($('#auto-book-max').value) || 12,
+        },
+        payments: {
+          enabled: $('#auto-pay-enabled').checked,
+          daysAfter: Number($('#auto-pay-days').value) || 7,
+          onlyCompleted: $('#auto-pay-completed').checked,
+          text: $('#auto-pay-text').value,
+        },
+        transcription: { enabled: $('#auto-tr-enabled').checked },
+        legal: { text: $('#auto-legal-text').value },
         microsoft: {
           calendar: {
             enabled: $('#auto-ms-cal').checked,

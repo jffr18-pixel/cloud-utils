@@ -127,6 +127,34 @@ const DEFAULTS = {
     confirmText: 'Hola {nombre}, te confirmamos tu cita en Burocracia Zero el {fecha} a las {hora}. Motivo: {motivo}. Si no puedes venir, avísanos por aquí. ¡Gracias!',
     remindText: 'Hola {nombre}, te recordamos tu cita de mañana ({fecha}) a las {hora} en Burocracia Zero. ¡Te esperamos!',
   },
+  // Reserva de cita online: el cliente elige un hueco libre desde su enlace.
+  // Los huecos se calculan sobre businessHours (días y horario).
+  booking: {
+    enabled: false,
+    slotMinutes: 30,       // duración de cada hueco
+    horizonDays: 14,       // cuántos días hacia delante se ofrecen
+    maxPerDay: 12,         // tope de citas por día
+    reason: 'Consulta',    // motivo por defecto de la cita reservada
+  },
+  // Recordatorio de honorarios pendientes de cobro.
+  payments: {
+    enabled: false,
+    daysAfter: 7,          // días desde que se completa el trámite
+    onlyCompleted: true,   // solo trámites completados
+    text: 'Hola {nombre} 👋 Te recordamos que queda pendiente el pago de {importe} € por «{tramite}». Si ya lo has abonado, ignora este mensaje. ¡Gracias! — Burocracia Zero',
+  },
+  // Transcripción de notas de voz entrantes (requiere OPENAI_API_KEY, o un
+  // endpoint compatible en TRANSCRIBE_URL). Datos sensibles: actívalo solo si
+  // el proveedor cumple el RGPD.
+  transcription: {
+    enabled: false,
+  },
+  // Textos legales para el consentimiento del cliente (RGPD + autorización de
+  // representación). Se muestran en su página de seguimiento para que los acepte.
+  legal: {
+    version: 1,
+    text: 'Autorizo a Burocracia Zero (José) a tratar mis datos personales con la única finalidad de gestionar mis trámites, conforme al RGPD (UE) 2016/679 y a la LOPDGDD 3/2018, y le autorizo a representarme ante los organismos públicos que correspondan para dichos trámites. Mis datos se conservarán mientras dure la relación y las obligaciones legales aplicables. Puedo ejercer mis derechos de acceso, rectificación, supresión, oposición y portabilidad escribiendo por este mismo canal.',
+  },
   // Integración con Microsoft 365 (las credenciales van por variables de
   // entorno MS_TENANT_ID / MS_CLIENT_ID / MS_CLIENT_SECRET; aquí solo se
   // configura qué sincronizar y dónde).
@@ -431,6 +459,28 @@ async function runScheduled(db, send, now = new Date()) {
       }
       item.expiryNotifiedAt = now.getTime();
       actions.push({ type: 'renewal_notice', caseId: item.id });
+    }
+  }
+
+  // Recordatorio de honorarios pendientes de cobro.
+  if (s.payments.enabled) {
+    const daysAfter = Number.isFinite(Number(s.payments.daysAfter)) ? Number(s.payments.daysAfter) : 7;
+    const waitMs = daysAfter * 24 * 3600 * 1000;
+    for (const item of db.cases) {
+      const fee = Number(item.fee) || 0;
+      if (fee <= 0 || item.paid || item.feeReminderAt) continue;
+      if (s.payments.onlyCompleted && item.status !== 'completado') continue;
+      const since = item.updatedAt || item.createdAt || 0;
+      if (now.getTime() - since < waitMs) continue;
+      const client = db.clients.find((c) => c.id === item.clientId);
+      if (!client) continue;
+      await send(client, fillTemplate(s.payments.text, {
+        nombre: firstName(client),
+        tramite: item.title,
+        importe: fee.toLocaleString('es-ES'),
+      }));
+      item.feeReminderAt = now.getTime();
+      actions.push({ type: 'payment_reminder', caseId: item.id });
     }
   }
 

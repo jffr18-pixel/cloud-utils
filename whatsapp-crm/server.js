@@ -13,6 +13,7 @@ const auto = require('./lib/automations');
 const backup = require('./lib/backup');
 const msgraph = require('./lib/msgraph');
 const security = require('./lib/security');
+const transcribe = require('./lib/transcribe');
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -602,6 +603,23 @@ function autoSender(db) {
   return (client, text, opts = {}) => sendMessageToClient(db, client, text, { ...opts, auto: true });
 }
 
+// Descarga el audio de una nota de voz y lo transcribe en segundo plano;
+// al terminar guarda la transcripción en el mensaje (para verla en el chat).
+async function transcribeInbound(msgId, media) {
+  try {
+    const resp = await wa.fetchInboundMedia(media);
+    if (!resp || !resp.ok) return;
+    const buf = Buffer.from(await resp.arrayBuffer());
+    const text = await transcribe.run(buf, media.filename || 'audio.ogg', media.mime || 'audio/ogg');
+    if (!text) return;
+    const db = load();
+    const m = db.messages.find((x) => x.id === msgId);
+    if (m) { m.transcript = text; save(); }
+  } catch (err) {
+    console.error('No se pudo transcribir la nota de voz:', err.message);
+  }
+}
+
 async function handleWebhookPayload(db, body) {
   const { incoming, echoes, statuses } = wa.parseWebhook(body);
   const freshIncoming = [];
@@ -610,7 +628,7 @@ async function handleWebhookPayload(db, body) {
     const phone = normalizePhone(inMsg.from);
     const client = ensureClientForPhone(db, phone, inMsg.name);
     if (!inMsg.historic) freshIncoming.push({ client, text: inMsg.text });
-    db.messages.push({
+    const msg = {
       id: newId('msg'),
       clientId: client.id,
       direction: 'in',
@@ -622,7 +640,13 @@ async function handleWebhookPayload(db, body) {
       ycloudId: inMsg.ycloudId || null,
       // El historial importado (Coexistence) no debe contar como "sin leer".
       read: Boolean(inMsg.historic),
-    });
+    };
+    db.messages.push(msg);
+    // Transcripción de notas de voz (en segundo plano, si está activada).
+    if (!inMsg.historic && msg.media && msg.media.kind === 'audio'
+        && transcribe.isConfigured() && auto.getSettings(db).transcription.enabled) {
+      transcribeInbound(msg.id, msg.media);
+    }
   }
   // Coexistence: mensajes que la gestoría envió desde la app del móvil.
   // Se registran como salientes para que la conversación se vea completa.
@@ -1818,13 +1842,13 @@ function fmtDateLoc(iso, lang = 'es') {
   return d.toLocaleDateString(DATE_LOCALE[lang] || 'es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
 }
 
-function langSwitcher(lang, token) {
-  const base = token ? `/estado/${token}` : '';
+function langSwitcher(lang, token, prefix = '/estado/') {
+  const base = token ? `${prefix}${token}` : '';
   return `<nav class="langs" aria-label="Idioma">${STATUS_PAGE_LANGS.map((l) =>
     `<a class="${l === lang ? 'on' : ''}" href="${base}?lang=${l}" hreflang="${l}">${escHtml(LANG_NAME[l])}</a>`).join('')}</nav>`;
 }
 
-function statusPageShell(title, bodyHtml, lang = 'es', token = '') {
+function statusPageShell(title, bodyHtml, lang = 'es', token = '', prefix = '/estado/') {
   const t = I18N[lang] || I18N.es;
   return `<!doctype html>
 <html lang="${lang}" dir="${t.dir}"><head>
@@ -1881,6 +1905,20 @@ function statusPageShell(title, bodyHtml, lang = 'es', token = '') {
   .up-btn.busy { opacity:.6; pointer-events:none; }
   .up-hint { font-size:11px; color:var(--muted); font-weight:400; }
   .empty { background:#fff; border:1px solid #e6e3db; border-radius:14px; padding:26px; text-align:center; color:var(--muted); }
+  .book-cta { display:inline-flex; align-items:center; gap:7px; margin:0 0 16px; padding:11px 18px; border-radius:12px; background:var(--charcoal); color:#fff; text-decoration:none; font-weight:700; font-size:14px; }
+  .book-note { background:#fdf2e3; color:#a8690a; border-radius:10px; padding:10px 12px; font-size:13px; margin-bottom:14px; font-weight:600; }
+  .book { display:flex; flex-direction:column; gap:14px; }
+  .bk-day { background:#fff; border:1px solid #e7e5ea; border-radius:14px; padding:14px 16px; }
+  .bk-date { font-weight:700; font-size:15px; margin-bottom:10px; }
+  .bk-slots { display:flex; flex-wrap:wrap; gap:8px; }
+  .bk-slot { font-family:inherit; font-size:14px; font-weight:700; color:var(--lilac-dark); background:#f2edf8; border:1px solid #e3d9f0; border-radius:10px; padding:8px 14px; cursor:pointer; }
+  .bk-slot:hover { background:var(--lilac); color:#fff; border-color:var(--lilac); }
+  .ok-card { background:#fff; border:1px solid #e7e5ea; border-radius:16px; padding:34px 26px; text-align:center; }
+  .ok-check { width:56px; height:56px; margin:0 auto 12px; border-radius:50%; background:#e4f5e8; color:var(--ok); font-size:30px; font-weight:800; display:flex; align-items:center; justify-content:center; }
+  .consent { background:#fff; border:1px solid #e7e5ea; border-radius:14px; padding:16px; margin-top:18px; }
+  .consent-title { font-weight:700; font-size:15px; margin-bottom:8px; }
+  .consent-text { font-size:12.5px; color:var(--muted); line-height:1.6; margin:0 0 14px; }
+  .consent-done { text-align:center; color:var(--ok); font-size:12.5px; font-weight:600; margin-top:18px; }
   footer { text-align:center; color:var(--muted); font-size:12.5px; margin-top:26px; }
   .bar { height:6px; background:#f2edf8; border-radius:99px; overflow:hidden; margin-top:10px; }
   .bar > i { display:block; height:100%; background:var(--lilac); }
@@ -1890,7 +1928,7 @@ function statusPageShell(title, bodyHtml, lang = 'es', token = '') {
 <header>
   <div class="logo-word" role="img" aria-label="Burocracia Zero"><b>Burocracia</b><span>Zero</span></div>
   <div class="sub">${escHtml(t.tagline)}</div>
-  ${langSwitcher(lang, token)}
+  ${langSwitcher(lang, token, prefix)}
 </header>
 ${bodyHtml}
 <footer>${escHtml(t.footer)}</footer>
@@ -1959,7 +1997,21 @@ function renderStatusPage(db, client, lang = 'es') {
   const first = escHtml((client.name || '').split(' ')[0] || client.name);
   const greeting = `<h1>${t.greet.replace('{name}', first)}</h1>
     <p class="lead">${escHtml(t.lead)}</p>`;
-  return statusPageShell(`Burocracia Zero · ${client.name}`, greeting + body, lang, client.statusToken || '');
+  const s = auto.getSettings(db);
+  const p = pT(lang);
+  // Botón de reserva de cita (si está activada).
+  const bookCta = s.booking.enabled
+    ? `<a class="book-cta" href="/reservar/${escHtml(client.statusToken)}?lang=${lang}">${escHtml(p.bookCta)}</a>` : '';
+  // Consentimiento RGPD: tarjeta para aceptar, o nota si ya está aceptado.
+  const accepted = client.consent && client.consent.version >= s.legal.version;
+  const consent = accepted
+    ? `<div class="consent-done">${p.consentDone.replace('{date}', escHtml(fmtDateLoc(new Date(client.consent.acceptedAt).toISOString().slice(0, 10), lang)))}</div>`
+    : `<form class="consent" method="post" action="/estado/${escHtml(client.statusToken)}/consent?lang=${lang}">
+        <div class="consent-title">${escHtml(p.consentTitle)}</div>
+        <p class="consent-text">${escHtml(s.legal.text)}</p>
+        <button class="up-btn" type="submit">${escHtml(p.consentAccept)}</button>
+      </form>`;
+  return statusPageShell(`Burocracia Zero · ${client.name}`, greeting + bookCta + body + consent, lang, client.statusToken || '');
 }
 
 // Recibe un documento subido por el cliente desde el portal: lo guarda, lo
@@ -1997,6 +2049,107 @@ function handlePortalUpload(res, db, client, b) {
   save();
   const done = chk.filter((x) => x.done).length;
   return json(res, 200, { ok: true, done, total: chk.length });
+}
+
+// ---------------------------------------------------------------------------
+// Reserva de cita online + consentimiento RGPD (páginas públicas del cliente)
+// ---------------------------------------------------------------------------
+
+// Traducciones específicas de reserva y consentimiento.
+const PAGE_I18N = {
+  es: { bookCta: '📅 Reservar cita', bookTitle: 'Reserva tu cita, {name}', bookLead: 'Elige el día y la hora que mejor te venga.', bookNone: 'Ahora mismo no hay huecos libres. Escríbenos por WhatsApp y te buscamos hueco.', bookOkTitle: '¡Cita reservada!', bookOkBody: 'Te esperamos el {date} a las {time}. Te hemos enviado la confirmación por WhatsApp.', bookBack: 'Ver mis trámites', bookTaken: 'Ese hueco acaba de ocuparse. Elige otro, por favor.', consentTitle: 'Protección de datos y autorización', consentAccept: 'He leído y acepto', consentDone: '✓ Consentimiento aceptado el {date}' },
+  en: { bookCta: '📅 Book an appointment', bookTitle: 'Book your appointment, {name}', bookLead: 'Pick the day and time that suits you best.', bookNone: 'There are no free slots right now. Message us on WhatsApp and we will find one.', bookOkTitle: 'Appointment booked!', bookOkBody: 'We will see you on {date} at {time}. We have sent you the confirmation on WhatsApp.', bookBack: 'See my cases', bookTaken: 'That slot was just taken. Please pick another one.', consentTitle: 'Data protection and authorisation', consentAccept: 'I have read and accept', consentDone: '✓ Consent accepted on {date}' },
+  fr: { bookCta: '📅 Prendre rendez-vous', bookTitle: 'Réservez votre rendez-vous, {name}', bookLead: 'Choisissez le jour et l’heure qui vous conviennent.', bookNone: 'Aucun créneau libre pour le moment. Écrivez-nous sur WhatsApp et nous en trouverons un.', bookOkTitle: 'Rendez-vous réservé !', bookOkBody: 'Nous vous attendons le {date} à {time}. Nous vous avons envoyé la confirmation sur WhatsApp.', bookBack: 'Voir mes démarches', bookTaken: 'Ce créneau vient d’être pris. Merci d’en choisir un autre.', consentTitle: 'Protection des données et autorisation', consentAccept: 'J’ai lu et j’accepte', consentDone: '✓ Consentement accepté le {date}' },
+  ar: { bookCta: '📅 احجز موعداً', bookTitle: 'احجز موعدك يا {name}', bookLead: 'اختر اليوم والوقت المناسب لك.', bookNone: 'لا توجد مواعيد متاحة حالياً. راسلنا على واتساب وسنجد لك موعداً.', bookOkTitle: 'تم حجز الموعد!', bookOkBody: 'ننتظرك يوم {date} الساعة {time}. أرسلنا لك التأكيد على واتساب.', bookBack: 'عرض معاملاتي', bookTaken: 'لقد حُجز هذا الموعد للتو. من فضلك اختر موعداً آخر.', consentTitle: 'حماية البيانات والتفويض', consentAccept: 'قرأت وأوافق', consentDone: '✓ تمت الموافقة بتاريخ {date}' },
+  ro: { bookCta: '📅 Programează o întâlnire', bookTitle: 'Rezervă-ți programarea, {name}', bookLead: 'Alege ziua și ora care ți se potrivesc.', bookNone: 'Momentan nu există intervale libere. Scrie-ne pe WhatsApp și găsim unul.', bookOkTitle: 'Programare rezervată!', bookOkBody: 'Te așteptăm pe {date} la ora {time}. Ți-am trimis confirmarea pe WhatsApp.', bookBack: 'Vezi dosarele mele', bookTaken: 'Acel interval tocmai a fost ocupat. Te rugăm alege altul.', consentTitle: 'Protecția datelor și autorizare', consentAccept: 'Am citit și accept', consentDone: '✓ Consimțământ acceptat la {date}' },
+};
+function pT(lang) { return PAGE_I18N[lang] || PAGE_I18N.es; }
+
+const pad2 = (n) => String(n).padStart(2, '0');
+const isoDay = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const toMin = (hhmm) => { const [h, m] = String(hhmm).split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+function fmtDayLoc(iso, lang = 'es') {
+  const d = new Date(iso + 'T12:00');
+  if (isNaN(d)) return iso;
+  const s = d.toLocaleDateString(DATE_LOCALE[lang] || 'es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// Huecos libres para reservar, según businessHours + citas ya ocupadas.
+function availableSlots(db, s, now = new Date()) {
+  const bh = s.businessHours || { days: [1, 2, 3, 4, 5], open: '09:00', close: '18:00' };
+  const bk = s.booking || {};
+  const slotMin = Math.max(10, Number(bk.slotMinutes) || 30);
+  const horizon = Math.max(1, Number(bk.horizonDays) || 14);
+  const maxPerDay = Math.max(1, Number(bk.maxPerDay) || 12);
+  const openM = toMin(bh.open); const closeM = toMin(bh.close);
+  const taken = {}; const countByDay = {};
+  for (const a of db.appointments) {
+    if (a.status === 'cancelada') continue;
+    (taken[a.date] = taken[a.date] || new Set()).add(a.time);
+    countByDay[a.date] = (countByDay[a.date] || 0) + 1;
+  }
+  const days = [];
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const today = isoDay(now);
+  for (let i = 0; i < horizon; i += 1) {
+    const d = new Date(now); d.setDate(d.getDate() + i);
+    if (!bh.days.includes(d.getDay())) continue;
+    const date = isoDay(d);
+    let dayCount = countByDay[date] || 0;
+    if (dayCount >= maxPerDay) continue;
+    const slots = [];
+    for (let m = openM; m + slotMin <= closeM && dayCount < maxPerDay; m += slotMin) {
+      const time = `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
+      if (taken[date] && taken[date].has(time)) continue;
+      if (date === today && m <= nowMin + 30) continue; // 30 min de margen
+      slots.push(time);
+      dayCount += 1;
+    }
+    if (slots.length) days.push({ date, slots });
+  }
+  return days;
+}
+
+// Crea una cita (reutilizada por la API y por la reserva online).
+async function createAppointment(db, client, { date, time, reason }) {
+  const appt = {
+    id: newId('cit'), clientId: client.id, date, time,
+    reason: String(reason || '').trim(), notes: '', status: 'activa',
+    confirmationSentAt: null, remindedAt: null, createdAt: Date.now(),
+  };
+  db.appointments.push(appt);
+  save();
+  await auto.onAppointmentCreated(db, appt, client, autoSender(db));
+  const msCal = auto.getSettings(db).microsoft.calendar;
+  if (msgraph.isConfigured() && msCal.enabled && msCal.user) {
+    try { appt.msEventId = await msgraph.createCalendarEvent(msCal.user, appt, client); }
+    catch (err) { console.error('No se pudo crear el evento en Outlook:', err.message); }
+  }
+  save();
+  return appt;
+}
+
+function renderBookingPage(db, client, lang, s, note) {
+  const p = pT(lang);
+  const days = availableSlots(db, auto.getSettings(db));
+  const first = escHtml((client.name || '').split(' ')[0] || client.name);
+  const head = `<h1>${p.bookTitle.replace('{name}', first)}</h1><p class="lead">${escHtml(p.bookLead)}</p>`
+    + (note ? `<div class="book-note">${escHtml(note)}</div>` : '');
+  const body = days.length ? `<form method="post" class="book">${days.map((d) => `
+      <div class="bk-day"><div class="bk-date">${escHtml(fmtDayLoc(d.date, lang))}</div>
+      <div class="bk-slots">${d.slots.map((tm) => `<button class="bk-slot" type="submit" name="slot" value="${d.date}T${tm}">${tm}</button>`).join('')}</div></div>`).join('')}</form>`
+    : `<div class="empty">${escHtml(p.bookNone)}</div>`;
+  return statusPageShell(`Burocracia Zero · ${client.name}`, head + body, lang, client.statusToken || '', '/reservar/');
+}
+
+function renderBookingConfirmed(client, lang, date, time) {
+  const p = pT(lang);
+  const body = `<div class="ok-card"><div class="ok-check">✓</div>
+    <h1>${escHtml(p.bookOkTitle)}</h1>
+    <p class="lead">${p.bookOkBody.replace('{date}', escHtml(fmtDateLoc(date, lang))).replace('{time}', escHtml(time))}</p>
+    <a class="up-btn" href="/estado/${escHtml(client.statusToken)}?lang=${lang}">${escHtml(p.bookBack)}</a></div>`;
+  return statusPageShell(`Burocracia Zero · ${client.name}`, body, lang, client.statusToken || '', '/reservar/');
 }
 
 // ---------------------------------------------------------------------------
@@ -2068,6 +2221,18 @@ const server = http.createServer(async (req, res) => {
       }
 
       const lang = pickLang(url, req);
+
+      // Consentimiento RGPD + autorización (formulario de la página de estado).
+      if (req.method === 'POST' && rest.endsWith('/consent')) {
+        if (!client) return json(res, 404, { error: 'Enlace no válido' });
+        const legal = auto.getSettings(db).legal;
+        client.consent = { acceptedAt: Date.now(), version: legal.version, ip: ipOf(req) };
+        save();
+        security.audit('consentimiento_aceptado', { clientId: client.id });
+        res.writeHead(303, { Location: `/estado/${client.statusToken}?lang=${lang}` });
+        return res.end();
+      }
+
       if (!client) {
         res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(statusPageShell((I18N[lang] || I18N.es).notFoundTitle,
@@ -2075,6 +2240,39 @@ const server = http.createServer(async (req, res) => {
       }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       return res.end(renderStatusPage(db, client, lang));
+    }
+
+    // Reserva de cita online (enlace privado por cliente).
+    if (url.pathname.startsWith('/reservar/')) {
+      if (!security.rateLimit(`reservar:${ipOf(req)}`, Number(process.env.RATE_LIMIT_API || 600))) {
+        res.writeHead(429, { 'Content-Type': 'text/plain; charset=utf-8' });
+        return res.end('Demasiadas peticiones');
+      }
+      const token = url.pathname.slice('/reservar/'.length).split('/')[0];
+      const db = load();
+      const lang = pickLang(url, req);
+      const client = token && token.length >= 16 ? db.clients.find((c) => c.statusToken === token) : null;
+      const s = auto.getSettings(db);
+      if (!client || !s.booking.enabled) {
+        res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+        return res.end(statusPageShell((I18N[lang] || I18N.es).notFoundTitle,
+          `<div class="empty">${escHtml((I18N[lang] || I18N.es).notFound)}</div>`, lang, ''));
+      }
+      if (req.method === 'POST') {
+        const raw = await readRawBody(req, 100_000);
+        const slot = new URLSearchParams(raw).get('slot') || '';
+        const [date, time] = slot.split('T');
+        const free = availableSlots(db, s).some((d) => d.date === date && d.slots.includes(time));
+        if (!date || !time || !free) {
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          return res.end(renderBookingPage(db, client, lang, s, pT(lang).bookTaken));
+        }
+        await createAppointment(db, client, { date, time, reason: s.booking.reason });
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        return res.end(renderBookingConfirmed(client, lang, date, time));
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(renderBookingPage(db, client, lang, s));
     }
 
     // Ficheros estáticos de la interfaz.
