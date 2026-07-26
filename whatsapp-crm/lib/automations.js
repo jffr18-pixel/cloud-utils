@@ -110,6 +110,17 @@ const DEFAULTS = {
     enabled: false,
     text: '⏰ Recordatorio de tu gestoría: {texto}',
   },
+  // Avisos de caducidad y renovación: para expedientes con fecha de caducidad
+  // (TIE, NIE, permisos, ITV, certificado digital…). Cuando faltan «daysBefore»
+  // días se crea un recordatorio interno, opcionalmente se avisa al cliente y
+  // se genera el expediente de renovación.
+  renewals: {
+    enabled: false,
+    daysBefore: 30,
+    notifyClient: false,
+    clientText: 'Hola {nombre} 👋 Te recordamos que tu trámite «{tramite}» caduca el {fecha}. Si quieres, nos encargamos de la renovación. Escríbenos y lo preparamos. — Burocracia Zero',
+    autoCreateCase: true,
+  },
   // Citas: confirmación al reservar y recordatorio el día anterior.
   appointments: {
     enabled: false,
@@ -366,6 +377,60 @@ async function runScheduled(db, send, now = new Date()) {
       await send(client, fillTemplate(s.appointments.remindText, appointmentVars(client, appt)));
       appt.remindedAt = now.getTime();
       actions.push({ type: 'appointment_reminder', appointmentId: appt.id });
+    }
+  }
+
+  // Avisos de caducidad / renovación.
+  if (s.renewals.enabled) {
+    const { newId } = require('./store');
+    const daysBefore = Number.isFinite(Number(s.renewals.daysBefore)) ? Number(s.renewals.daysBefore) : 30;
+    const horizon = now.getTime() + daysBefore * 24 * 3600 * 1000;
+    for (const item of db.cases) {
+      if (!item.expiryDate || item.expiryNotifiedAt) continue;
+      const expiryMs = new Date(item.expiryDate + 'T00:00').getTime();
+      if (Number.isNaN(expiryMs) || expiryMs > horizon) continue;
+      const client = db.clients.find((c) => c.id === item.clientId);
+      // Recordatorio interno para la gestoría (siempre).
+      db.reminders.push({
+        id: newId('rem'),
+        text: `Renovar «${item.title}» — caduca el ${prettyDate(item.expiryDate)}`,
+        dueDate: item.expiryDate,
+        clientId: item.clientId || null,
+        done: false,
+        sendToClient: false,
+        createdAt: now.getTime(),
+      });
+      // Aviso al cliente (opcional).
+      if (s.renewals.notifyClient && client) {
+        await send(client, fillTemplate(s.renewals.clientText, {
+          nombre: firstName(client),
+          tramite: item.title,
+          fecha: prettyDate(item.expiryDate),
+        }));
+      }
+      // Expediente de renovación (opcional, una sola vez).
+      if (s.renewals.autoCreateCase && !item.renewalCaseId) {
+        const renewal = {
+          id: newId('exp'),
+          clientId: item.clientId,
+          title: `Renovación: ${item.title}`,
+          type: item.type,
+          status: 'pendiente',
+          dueDate: item.expiryDate,
+          expiryDate: null,
+          docs: item.docs || '',
+          fee: 0,
+          paid: false,
+          checklist: [],
+          notes: `Generado automáticamente por caducidad del expediente «${item.title}».`,
+          createdAt: now.getTime(),
+          updatedAt: now.getTime(),
+        };
+        db.cases.push(renewal);
+        item.renewalCaseId = renewal.id;
+      }
+      item.expiryNotifiedAt = now.getTime();
+      actions.push({ type: 'renewal_notice', caseId: item.id });
     }
   }
 

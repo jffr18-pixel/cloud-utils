@@ -334,6 +334,17 @@
         </div>
 
         <div class="auto-card">
+          <h3><label><input type="checkbox" id="auto-ren-enabled"> 🔄 Avisos de caducidad y renovación</label></h3>
+          <p class="hint">Para expedientes con <b>fecha de caducidad</b> (TIE, NIE, permisos, ITV, certificado digital…). Cuando falten los días indicados, se crea un recordatorio interno y —según marques— se avisa al cliente y se genera el expediente de renovación. Variables: <code>{nombre}</code>, <code>{tramite}</code>, <code>{fecha}</code>.</p>
+          <label>Avisar con esta antelación (días)</label>
+          <input type="number" id="auto-ren-days" min="1" max="365" style="max-width:120px">
+          <label style="margin-top:10px"><input type="checkbox" id="auto-ren-autocase"> Crear automáticamente el expediente de renovación</label>
+          <label style="margin-top:6px"><input type="checkbox" id="auto-ren-notify"> Avisar también al cliente por WhatsApp</label>
+          <label style="margin-top:8px">Mensaje al cliente</label>
+          <textarea id="auto-ren-text" rows="3"></textarea>
+        </div>
+
+        <div class="auto-card">
           <h3><label><input type="checkbox" id="auto-appt-enabled"> 📅 Confirmación y recordatorio de citas</label></h3>
           <p class="hint">Al dar una cita se envía la confirmación al momento, y el recordatorio el día anterior (dentro del horario). Variables: <code>{nombre}</code>, <code>{fecha}</code>, <code>{hora}</code>, <code>{motivo}</code>.</p>
           <label>Mensaje de confirmación</label>

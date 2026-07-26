@@ -754,12 +754,20 @@ async function handleApi(req, res, url) {
     const endOfToday = new Date();
     endOfToday.setHours(23, 59, 59, 999);
     const openCases = db.cases.filter((c) => c.status !== 'completado');
+    // Expedientes que caducan en los próximos 45 días (avisos de renovación).
+    const soon = now + 45 * 24 * 3600 * 1000;
+    const expiringSoon = db.cases.filter((c) => {
+      if (!c.expiryDate) return false;
+      const t = new Date(c.expiryDate + 'T00:00').getTime();
+      return !Number.isNaN(t) && t <= soon;
+    }).length;
     return json(res, 200, {
       totalClients: db.clients.length,
       unreadMessages: db.messages.filter((m) => m.direction === 'in' && !m.read).length,
       openCases: openCases.length,
       casesAwaitingDocs: openCases.filter((c) => c.status === 'esperando_documentacion').length,
       overdueCases: openCases.filter((c) => c.dueDate && new Date(c.dueDate).getTime() < now).length,
+      expiringSoon,
       remindersToday: db.reminders.filter((r) => !r.done && r.dueDate
         && new Date(r.dueDate).getTime() <= endOfToday.getTime()).length,
       recentConversations: conversationSummaries(db).slice(0, 5),
@@ -1074,6 +1082,9 @@ async function handleApi(req, res, url) {
         type: b.type || 'otro', // fiscal | laboral | contabilidad | extranjeria | vehiculos | otro
         status: b.status || 'pendiente', // pendiente | en_curso | esperando_documentacion | completado
         dueDate: b.dueDate || null,
+        // Fecha de caducidad del documento resultante (TIE, NIE, ITV…): dispara
+        // el aviso de renovación antes de que venza.
+        expiryDate: b.expiryDate || null,
         docs: b.docs || '', // documentación necesaria (para la automatización)
         fee: Number(b.fee) || 0, // honorario del trámite (€)
         paid: Boolean(b.paid), // cobrado o pendiente
@@ -1099,8 +1110,14 @@ async function handleApi(req, res, url) {
     if (req.method === 'PUT') {
       const b = await readBody(req);
       const oldStatus = item.status;
-      for (const key of ['title', 'type', 'status', 'dueDate', 'docs', 'notes']) {
+      const oldExpiry = item.expiryDate || null;
+      for (const key of ['title', 'type', 'status', 'dueDate', 'expiryDate', 'docs', 'notes']) {
         if (b[key] !== undefined) item[key] = b[key];
+      }
+      // Si se cambia la fecha de caducidad, se rearma el aviso de renovación.
+      if (b.expiryDate !== undefined && b.expiryDate !== oldExpiry) {
+        item.expiryNotifiedAt = null;
+        item.renewalCaseId = null;
       }
       if (b.fee !== undefined) item.fee = Number(b.fee) || 0;
       if (b.paid !== undefined) item.paid = Boolean(b.paid);
@@ -1633,33 +1650,108 @@ async function handleApi(req, res, url) {
 // Página pública «Estado del trámite» (solo lectura, sin datos internos)
 // ---------------------------------------------------------------------------
 
-const PUBLIC_STATUS_LABEL = {
-  pendiente: 'Pendiente de iniciar',
-  en_curso: 'En curso',
-  esperando_documentacion: 'Esperando documentación',
-  completado: 'Completado',
+// Traducciones de la página del cliente. Pensada para la clientela de
+// extranjería: español, árabe, francés, inglés y rumano.
+const STATUS_PAGE_LANGS = ['es', 'ar', 'fr', 'en', 'ro'];
+const LANG_NAME = { es: 'Español', ar: 'العربية', fr: 'Français', en: 'English', ro: 'Română' };
+const I18N = {
+  es: {
+    dir: 'ltr', tagline: 'Seguimiento de tus trámites',
+    greet: 'Hola, {name} 👋', lead: 'Aquí puedes ver el estado de tus trámites en tiempo real.',
+    due: 'Fecha límite', overdue: 'pendiente', docs: 'Documentación',
+    upload: 'Subir', uploading: 'Subiendo…', uploadHint: 'Foto o PDF', uploadErr: 'No se pudo subir el archivo. Inténtalo de nuevo.',
+    footer: 'Esta página es privada y solo para ti. Para cualquier duda, escríbenos por WhatsApp.',
+    empty: 'Todavía no hay trámites registrados a tu nombre.',
+    notFoundTitle: 'Enlace no válido',
+    notFound: 'Este enlace no es válido o ha caducado. Contáctanos por WhatsApp para obtener uno nuevo.',
+    status: { pendiente: 'Pendiente de iniciar', en_curso: 'En curso', esperando_documentacion: 'Esperando documentación', completado: 'Completado' },
+    area: { extranjeria: 'Extranjería', vehiculos: 'Tráfico / Vehículos', fiscal: 'Fiscal / Impuestos', laboral: 'Laboral / Nóminas', contabilidad: 'Contabilidad', pensiones: 'Pensiones / Prestaciones', social: 'Servicios sociales', otro: 'Otros trámites' },
+  },
+  en: {
+    dir: 'ltr', tagline: 'Track your paperwork',
+    greet: 'Hi, {name} 👋', lead: 'Here you can follow the status of your cases in real time.',
+    due: 'Deadline', overdue: 'pending', docs: 'Documents',
+    upload: 'Upload', uploading: 'Uploading…', uploadHint: 'Photo or PDF', uploadErr: 'The file could not be uploaded. Please try again.',
+    footer: 'This page is private and just for you. For any questions, message us on WhatsApp.',
+    empty: 'There are no cases registered under your name yet.',
+    notFoundTitle: 'Invalid link',
+    notFound: 'This link is not valid or has expired. Contact us on WhatsApp to get a new one.',
+    status: { pendiente: 'Not started', en_curso: 'In progress', esperando_documentacion: 'Awaiting documents', completado: 'Completed' },
+    area: { extranjeria: 'Immigration', vehiculos: 'Traffic / Vehicles', fiscal: 'Tax', laboral: 'Employment / Payroll', contabilidad: 'Accounting', pensiones: 'Pensions / Benefits', social: 'Social services', otro: 'Other' },
+  },
+  fr: {
+    dir: 'ltr', tagline: 'Suivi de vos démarches',
+    greet: 'Bonjour, {name} 👋', lead: 'Ici, vous pouvez suivre l’état de vos démarches en temps réel.',
+    due: 'Date limite', overdue: 'en attente', docs: 'Documents',
+    upload: 'Envoyer', uploading: 'Envoi…', uploadHint: 'Photo ou PDF', uploadErr: 'Le fichier n’a pas pu être envoyé. Réessayez.',
+    footer: 'Cette page est privée et réservée à vous. Pour toute question, écrivez-nous sur WhatsApp.',
+    empty: 'Aucune démarche enregistrée à votre nom pour le moment.',
+    notFoundTitle: 'Lien non valide',
+    notFound: 'Ce lien n’est pas valide ou a expiré. Contactez-nous sur WhatsApp pour en obtenir un nouveau.',
+    status: { pendiente: 'À commencer', en_curso: 'En cours', esperando_documentacion: 'En attente de documents', completado: 'Terminé' },
+    area: { extranjeria: 'Étrangers / Immigration', vehiculos: 'Trafic / Véhicules', fiscal: 'Fiscalité', laboral: 'Emploi / Paie', contabilidad: 'Comptabilité', pensiones: 'Retraites / Prestations', social: 'Services sociaux', otro: 'Autres démarches' },
+  },
+  ar: {
+    dir: 'rtl', tagline: 'متابعة معاملاتك',
+    greet: 'مرحباً {name} 👋', lead: 'هنا يمكنك متابعة حالة معاملاتك في الوقت الفعلي.',
+    due: 'آخر موعد', overdue: 'قيد الانتظار', docs: 'المستندات',
+    upload: 'إرسال', uploading: 'جارٍ الإرسال…', uploadHint: 'صورة أو PDF', uploadErr: 'تعذّر رفع الملف. حاول مرة أخرى.',
+    footer: 'هذه الصفحة خاصة بك وحدك. لأي استفسار، راسلنا على واتساب.',
+    empty: 'لا توجد معاملات مسجلة باسمك حتى الآن.',
+    notFoundTitle: 'رابط غير صالح',
+    notFound: 'هذا الرابط غير صالح أو منتهي الصلاحية. تواصل معنا على واتساب للحصول على رابط جديد.',
+    status: { pendiente: 'لم يبدأ', en_curso: 'قيد التنفيذ', esperando_documentacion: 'بانتظار المستندات', completado: 'مكتمل' },
+    area: { extranjeria: 'الهجرة والأجانب', vehiculos: 'المرور / المركبات', fiscal: 'الضرائب', laboral: 'العمل / الرواتب', contabilidad: 'المحاسبة', pensiones: 'المعاشات / الإعانات', social: 'الخدمات الاجتماعية', otro: 'معاملات أخرى' },
+  },
+  ro: {
+    dir: 'ltr', tagline: 'Urmărește-ți dosarele',
+    greet: 'Bună, {name} 👋', lead: 'Aici poți urmări starea dosarelor tale în timp real.',
+    due: 'Termen limită', overdue: 'în așteptare', docs: 'Documente',
+    upload: 'Încarcă', uploading: 'Se încarcă…', uploadHint: 'Foto sau PDF', uploadErr: 'Fișierul nu a putut fi încărcat. Încearcă din nou.',
+    footer: 'Această pagină este privată și doar pentru tine. Pentru orice întrebare, scrie-ne pe WhatsApp.',
+    empty: 'Momentan nu există dosare înregistrate pe numele tău.',
+    notFoundTitle: 'Link invalid',
+    notFound: 'Acest link nu este valid sau a expirat. Contactează-ne pe WhatsApp pentru unul nou.',
+    status: { pendiente: 'De început', en_curso: 'În curs', esperando_documentacion: 'În așteptarea documentelor', completado: 'Finalizat' },
+    area: { extranjeria: 'Imigrație / Străini', vehiculos: 'Trafic / Vehicule', fiscal: 'Fiscalitate', laboral: 'Muncă / Salarizare', contabilidad: 'Contabilitate', pensiones: 'Pensii / Prestații', social: 'Servicii sociale', otro: 'Alte demersuri' },
+  },
 };
-const PUBLIC_TYPE_LABEL = {
-  extranjeria: 'Extranjería', vehiculos: 'Tráfico / Vehículos', fiscal: 'Fiscal / Impuestos',
-  laboral: 'Laboral / Nóminas', contabilidad: 'Contabilidad', pensiones: 'Pensiones / Prestaciones',
-  social: 'Servicios sociales', otro: 'Otros trámites',
-};
+
+// Idioma elegido: ?lang=xx válido, si no la cabecera Accept-Language, si no español.
+function pickLang(url, req) {
+  const q = (url.searchParams.get('lang') || '').toLowerCase();
+  if (STATUS_PAGE_LANGS.includes(q)) return q;
+  const header = String(req.headers['accept-language'] || '').toLowerCase();
+  for (const part of header.split(',')) {
+    const code = part.trim().split(';')[0].split('-')[0];
+    if (STATUS_PAGE_LANGS.includes(code)) return code;
+  }
+  return 'es';
+}
 
 function escHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-function fmtDateEs(iso) {
+const DATE_LOCALE = { es: 'es-ES', ar: 'ar', fr: 'fr-FR', en: 'en-GB', ro: 'ro-RO' };
+function fmtDateLoc(iso, lang = 'es') {
   if (!iso) return '—';
   const d = new Date(iso);
   if (isNaN(d)) return '—';
-  return d.toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
+  return d.toLocaleDateString(DATE_LOCALE[lang] || 'es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
 }
 
-function statusPageShell(title, bodyHtml) {
+function langSwitcher(lang, token) {
+  const base = token ? `/estado/${token}` : '';
+  return `<nav class="langs" aria-label="Idioma">${STATUS_PAGE_LANGS.map((l) =>
+    `<a class="${l === lang ? 'on' : ''}" href="${base}?lang=${l}" hreflang="${l}">${escHtml(LANG_NAME[l])}</a>`).join('')}</nav>`;
+}
+
+function statusPageShell(title, bodyHtml, lang = 'es', token = '') {
+  const t = I18N[lang] || I18N.es;
   return `<!doctype html>
-<html lang="es"><head>
+<html lang="${lang}" dir="${t.dir}"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
@@ -1672,13 +1764,17 @@ function statusPageShell(title, bodyHtml) {
   * { box-sizing: border-box; }
   body { margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; background:var(--cream); color:var(--charcoal); line-height:1.5; }
   .wrap { max-width:640px; margin:0 auto; padding:24px 18px 60px; }
-  header { text-align:center; padding:30px 0 18px; }
+  header { text-align:center; padding:22px 0 18px; }
   .logo { display:inline-flex; align-items:center; gap:13px; }
   .logo-mark { width:52px; height:52px; flex:none; }
-  .logo-word { text-align:left; font-family:var(--font-brand); line-height:.92; }
+  .logo-word { text-align:start; font-family:var(--font-brand); line-height:.92; }
   .logo-word b { display:block; font-weight:800; font-size:27px; letter-spacing:.2px; color:var(--charcoal); }
   .logo-word span { display:block; font-weight:600; font-size:16px; letter-spacing:5px; color:var(--lilac-dark); text-transform:uppercase; margin-top:1px; }
+  html[dir="rtl"] .logo-word span { letter-spacing:1px; }
   .sub { color:var(--muted); font-size:14px; margin-top:14px; }
+  .langs { display:flex; flex-wrap:wrap; justify-content:center; gap:6px; margin-top:16px; }
+  .langs a { font-size:12.5px; font-weight:600; color:var(--muted); text-decoration:none; padding:4px 11px; border-radius:999px; border:1px solid #e0dcd2; background:#fff; }
+  .langs a.on { background:var(--lilac-dark); color:#fff; border-color:var(--lilac-dark); }
   h1 { font-size:19px; margin:22px 0 4px; }
   .lead { color:var(--muted); font-size:14px; margin:0 0 18px; }
   .case { background:#fff; border:1px solid #e6e3db; border-radius:14px; padding:16px 16px 14px; margin-bottom:14px; box-shadow:0 1px 2px rgba(0,0,0,.03); }
@@ -1700,16 +1796,23 @@ function statusPageShell(title, bodyHtml) {
   .chk { margin-top:12px; border-top:1px dashed #e6e3db; padding-top:10px; }
   .chk-h { font-size:12.5px; color:var(--muted); font-weight:600; margin-bottom:6px; }
   .chk ul { list-style:none; margin:0; padding:0; }
-  .chk li { font-size:14px; padding:3px 0; display:flex; gap:9px; align-items:center; }
+  .chk li { font-size:14px; padding:4px 0; display:flex; gap:9px; align-items:center; }
   .chk li.done { color:var(--muted); }
   .chk li .ic { width:18px; height:18px; color:var(--lilac); }
   .chk li.done .ic { color:var(--ok); }
+  .chk li .item { flex:1; }
+  .up-btn { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:700; color:#fff; background:var(--lilac-dark); border:0; border-radius:8px; padding:5px 12px; cursor:pointer; white-space:nowrap; }
+  .up-btn:hover { background:#4d2b93; }
+  .up-btn input { display:none; }
+  .up-btn.busy { opacity:.6; pointer-events:none; }
+  .up-hint { font-size:11px; color:var(--muted); font-weight:400; }
   .empty { background:#fff; border:1px solid #e6e3db; border-radius:14px; padding:26px; text-align:center; color:var(--muted); }
   footer { text-align:center; color:var(--muted); font-size:12.5px; margin-top:26px; }
   .bar { height:6px; background:#efeaf8; border-radius:99px; overflow:hidden; margin-top:10px; }
   .bar > i { display:block; height:100%; background:var(--lilac); }
 </style>
-</head><body><div class="wrap">
+</head><body>
+<div class="wrap" data-token="${escHtml(token)}" data-uploading="${escHtml(t.uploading)}" data-uploaderr="${escHtml(t.uploadErr)}">
 <header>
   <div class="logo">
     <svg class="logo-mark" viewBox="0 0 52 52" role="img" aria-label="Burocracia Zero">
@@ -1725,11 +1828,14 @@ function statusPageShell(title, bodyHtml) {
     </svg>
     <div class="logo-word"><b>Burocracia</b><span>Zero</span></div>
   </div>
-  <div class="sub">Seguimiento de tus trámites</div>
+  <div class="sub">${escHtml(t.tagline)}</div>
+  ${langSwitcher(lang, token)}
 </header>
 ${bodyHtml}
-<footer>Esta página es privada y solo para ti. Para cualquier duda, escríbenos por WhatsApp.</footer>
-</div></body></html>`;
+<footer>${escHtml(t.footer)}</footer>
+</div>
+<script src="/portal.js"></script>
+</body></html>`;
 }
 
 // Iconos de línea a medida (mismo estilo que el resto del CRM), coloreados
@@ -1754,7 +1860,8 @@ function areaIconSvg(type) {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${AREA_ICON_PATH[type] || AREA_ICON_PATH.otro}</svg>`;
 }
 
-function renderStatusPage(db, client) {
+function renderStatusPage(db, client, lang = 'es') {
+  const t = I18N[lang] || I18N.es;
   const cases = db.cases
     .filter((c) => c.clientId === client.id)
     .sort((a, b) => (a.status === 'completado' ? 1 : 0) - (b.status === 'completado' ? 1 : 0)
@@ -1765,11 +1872,12 @@ function renderStatusPage(db, client) {
     const chk = Array.isArray(c.checklist) ? c.checklist : [];
     const done = chk.filter((x) => x.done).length;
     const pct = chk.length ? Math.round(done / chk.length * 100) : 0;
+    // Ítems pendientes: botón para que el cliente suba el documento desde aquí.
     const chkHtml = chk.length ? `
       <div class="chk">
-        <div class="chk-h">Documentación (${done}/${chk.length})</div>
+        <div class="chk-h">${escHtml(t.docs)} (${done}/${chk.length})</div>
         <div class="bar"><i style="width:${pct}%"></i></div>
-        <ul>${chk.map((x) => `<li class="${x.done ? 'done' : ''}">${x.done ? SVG_ICON.check : SVG_ICON.dot} ${escHtml(x.item)}</li>`).join('')}</ul>
+        <ul>${chk.map((x, i) => `<li class="${x.done ? 'done' : ''}">${x.done ? SVG_ICON.check : SVG_ICON.dot}<span class="item">${escHtml(x.item)}</span>${x.done ? '' : `<label class="up-btn">${escHtml(t.upload)}<input type="file" accept="image/*,application/pdf" data-case="${escHtml(c.id)}" data-item="${i}"></label>`}</li>`).join('')}</ul>
       </div>` : '';
     return `
     <div class="case">
@@ -1778,18 +1886,56 @@ function renderStatusPage(db, client) {
           <span class="case-ico">${areaIconSvg(c.type)}</span>
           <div>
             <div class="case-title">${escHtml(c.title)}</div>
-            <div class="area">${escHtml(PUBLIC_TYPE_LABEL[c.type] || c.type)}</div>
+            <div class="area">${escHtml(t.area[c.type] || c.type)}</div>
           </div>
         </div>
-        <span class="st ${escHtml(c.status)}">${escHtml(PUBLIC_STATUS_LABEL[c.status] || c.status)}</span>
+        <span class="st ${escHtml(c.status)}">${escHtml(t.status[c.status] || c.status)}</span>
       </div>
-      ${c.dueDate ? `<div class="due ${overdue ? 'over' : ''}">${SVG_ICON.cal} Fecha límite: ${fmtDateEs(c.dueDate)}${overdue ? ' · pendiente' : ''}</div>` : ''}
+      ${c.dueDate ? `<div class="due ${overdue ? 'over' : ''}">${SVG_ICON.cal} ${escHtml(t.due)}: ${fmtDateLoc(c.dueDate, lang)}${overdue ? ` · ${escHtml(t.overdue)}` : ''}</div>` : ''}
       ${chkHtml}
     </div>`;
-  }).join('') : '<div class="empty">Todavía no hay trámites registrados a tu nombre.</div>';
-  const greeting = `<h1>Hola, ${escHtml((client.name || '').split(' ')[0] || client.name)} 👋</h1>
-    <p class="lead">Aquí puedes ver el estado de tus trámites en tiempo real.</p>`;
-  return statusPageShell(`Estado de tus trámites · ${client.name}`, greeting + body);
+  }).join('') : `<div class="empty">${escHtml(t.empty)}</div>`;
+  const first = escHtml((client.name || '').split(' ')[0] || client.name);
+  const greeting = `<h1>${t.greet.replace('{name}', first)}</h1>
+    <p class="lead">${escHtml(t.lead)}</p>`;
+  return statusPageShell(`Burocracia Zero · ${client.name}`, greeting + body, lang, client.statusToken || '');
+}
+
+// Recibe un documento subido por el cliente desde el portal: lo guarda, lo
+// registra como mensaje entrante (para que la gestoría lo vea en el chat) y
+// marca el ítem del checklist como recibido.
+const PORTAL_ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/gif', 'application/pdf'];
+function handlePortalUpload(res, db, client, b) {
+  const kase = db.cases.find((c) => c.id === b.caseId && c.clientId === client.id);
+  if (!kase) return json(res, 404, { error: 'Expediente no encontrado' });
+  const mime = String(b.mime || '').toLowerCase();
+  if (!PORTAL_ALLOWED_MIME.includes(mime)) return json(res, 415, { error: 'Formato no permitido (usa foto o PDF)' });
+  const data = Buffer.from(String(b.dataBase64 || ''), 'base64');
+  if (!data.length) return json(res, 400, { error: 'Archivo vacío' });
+  if (data.length > 12_000_000) return json(res, 413, { error: 'El archivo supera los 12 MB' });
+  const ext = mime === 'application/pdf' ? 'pdf' : (mime.split('/')[1] || 'bin');
+  const safe = path.basename(String(b.filename || `documento.${ext}`)).replace(/[^\w.\-]+/g, '_').slice(0, 80) || `documento.${ext}`;
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  const localName = `${newId('up')}_${safe}`;
+  fs.writeFileSync(path.join(UPLOADS_DIR, localName), data);
+  const chk = Array.isArray(kase.checklist) ? kase.checklist : [];
+  const idx = Number.isInteger(b.itemIndex) ? b.itemIndex : -1;
+  const itemName = (chk[idx] && chk[idx].item) || 'documento';
+  db.messages.push({
+    id: newId('msg'),
+    clientId: client.id,
+    direction: 'in',
+    text: `📎 ${itemName} — subido por el cliente desde el portal de seguimiento`,
+    media: { kind: mime === 'application/pdf' ? 'document' : 'image', mime, filename: safe, caption: itemName, localPath: localName },
+    timestamp: Date.now(),
+    status: 'received',
+    read: false,
+    viaPortal: true,
+  });
+  if (chk[idx]) { chk[idx].done = true; kase.updatedAt = Date.now(); }
+  save();
+  const done = chk.filter((x) => x.done).length;
+  return json(res, 200, { ok: true, done, total: chk.length });
 }
 
 // ---------------------------------------------------------------------------
@@ -1846,16 +1992,28 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(429, { 'Content-Type': 'text/plain; charset=utf-8' });
         return res.end('Demasiadas peticiones');
       }
-      const token = url.pathname.slice('/estado/'.length).split('/')[0];
+      const rest = url.pathname.slice('/estado/'.length);
+      const token = rest.split('/')[0];
       const db = load();
       const client = token && token.length >= 16 ? db.clients.find((c) => c.statusToken === token) : null;
+
+      // Subida de un documento desde el portal del cliente.
+      if (req.method === 'POST' && rest.endsWith('/upload')) {
+        if (!client) return json(res, 404, { error: 'Enlace no válido' });
+        const raw = await readRawBody(req, 15_000_000);
+        let b = {};
+        try { b = raw ? JSON.parse(raw) : {}; } catch { return json(res, 400, { error: 'JSON inválido' }); }
+        return handlePortalUpload(res, db, client, b);
+      }
+
+      const lang = pickLang(url, req);
       if (!client) {
         res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
-        return res.end(statusPageShell('Enlace no válido',
-          '<div class="empty">Este enlace no es válido o ha caducado. Contáctanos por WhatsApp para obtener uno nuevo.</div>'));
+        return res.end(statusPageShell((I18N[lang] || I18N.es).notFoundTitle,
+          `<div class="empty">${escHtml((I18N[lang] || I18N.es).notFound)}</div>`, lang, ''));
       }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end(renderStatusPage(db, client));
+      return res.end(renderStatusPage(db, client, lang));
     }
 
     // Ficheros estáticos de la interfaz.

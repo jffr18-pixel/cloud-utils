@@ -468,6 +468,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .chk-badge.ok { background: #e4f5e8; color: var(--ok); }
 .fee-badge.due { background: #fdf2e3; color: #a8690a; }
 .fee-badge.paid { background: #e4f5e8; color: var(--ok); }
+.exp-badge { display: inline-block; border-radius: 6px; padding: 1px 7px; font-weight: 600; font-size: 11.5px; white-space: nowrap; background: #f0eef7; color: #6f6a78; }
+.exp-badge.soon { background: #fdf2e3; color: #a8690a; }
+.exp-badge.exp { background: #fdecea; color: var(--danger); }
 .card.ok .num { color: var(--ok); }
 
 /* Checklist de documentación (campo del diálogo de expediente) */

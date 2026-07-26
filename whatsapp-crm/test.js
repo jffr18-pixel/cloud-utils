@@ -521,6 +521,22 @@ async function main() {
     assert(dash.data.totalClients === 6, 'panel: 6 clientes');
     assert(dash.data.openCases === 0, 'panel: sin expedientes abiertos (el de prueba quedó completado)');
 
+    console.log('Avisos de caducidad y renovación');
+    await req('PUT', '/api/automations', {
+      renewals: { enabled: true, daysBefore: 30, autoCreateCase: true, notifyClient: false },
+    });
+    await req('POST', '/api/cases', { clientId, title: 'TIE por arraigo', type: 'extranjeria', expiryDate: today });
+    const runRen = await req('POST', '/api/automations/run');
+    assert(runRen.data.executed.some((a) => a.type === 'renewal_notice'), 'aviso de caducidad ejecutado');
+    const casesRen = (await req('GET', '/api/cases')).data;
+    assert(casesRen.some((c) => c.title === 'Renovación: TIE por arraigo'), 'se crea el expediente de renovación');
+    const remsRen = (await req('GET', '/api/reminders')).data;
+    assert(remsRen.some((r) => /Renovar «TIE por arraigo»/.test(r.text)), 'se crea el recordatorio interno de renovación');
+    const runRen2 = await req('POST', '/api/automations/run');
+    assert(!runRen2.data.executed.some((a) => a.type === 'renewal_notice'), 'el aviso de caducidad no se duplica');
+    const dashRen = await req('GET', '/api/dashboard');
+    assert(dashRen.data.expiringSoon >= 1, 'el panel cuenta los expedientes que caducan pronto');
+
     console.log('Adjuntos (modo demo)');
     const fileMsg = await req('POST', '/api/messages', {
       clientId,
@@ -644,6 +660,38 @@ async function main() {
       'la página pública no filtra honorarios ni datos internos');
     const badPage = await fetch(`${BASE}/estado/token-inexistente-1234567890`);
     assert(badPage.status === 404, 'token inválido → 404 en la página de estado');
+
+    // Multi-idioma: por parámetro, por RTL y por cabecera Accept-Language.
+    const pageEn = await (await fetch(`${BASE}/estado/${token}?lang=en`)).text();
+    assert(/lang="en"/.test(pageEn) && pageEn.includes('Deadline'), 'la página se traduce al inglés (?lang=en)');
+    const pageAr = await (await fetch(`${BASE}/estado/${token}?lang=ar`)).text();
+    assert(/dir="rtl"/.test(pageAr), 'el árabe se sirve en RTL');
+    const pageFr = await (await fetch(`${BASE}/estado/${token}`, { headers: { 'Accept-Language': 'fr-FR,fr;q=0.9' } })).text();
+    assert(pageFr.includes('Date limite'), 'detecta el idioma por la cabecera Accept-Language');
+
+    console.log('Portal de documentos del cliente');
+    const upCase = await req('POST', '/api/cases', {
+      clientId, title: 'Reagrupación familiar', type: 'extranjeria',
+      checklist: [{ item: 'Certificado de matrimonio', done: false }],
+    });
+    const okUp = await req('POST', `/estado/${token}/upload`, {
+      caseId: upCase.data.id, itemIndex: 0, filename: 'acta.pdf', mime: 'application/pdf',
+      dataBase64: Buffer.from('DEMO-DOC').toString('base64'),
+    });
+    assert(okUp.status === 200 && okUp.data.done === 1, 'el cliente sube un documento y avanza el checklist');
+    const upAfter = (await req('GET', '/api/cases')).data.find((c) => c.id === upCase.data.id);
+    assert(upAfter.checklist[0].done === true, 'el ítem del checklist queda como recibido');
+    const portalMsgs = (await req('GET', `/api/messages?clientId=${clientId}`)).data;
+    assert(portalMsgs.some((m) => m.viaPortal && m.direction === 'in'), 'la subida entra como mensaje en el chat');
+    const badMime = await req('POST', `/estado/${token}/upload`, {
+      caseId: upCase.data.id, itemIndex: 0, filename: 'x.svg', mime: 'image/svg+xml',
+      dataBase64: Buffer.from('<svg/>').toString('base64'),
+    });
+    assert(badMime.status === 415, 'rechaza formatos no permitidos (SVG)');
+    const badTokUp = await req('POST', '/estado/token-falso-1234567890/upload', {
+      caseId: upCase.data.id, itemIndex: 0, filename: 'a.pdf', mime: 'application/pdf', dataBase64: 'AA==',
+    });
+    assert(badTokUp.status === 404, 'no se puede subir con un token inválido');
 
     console.log('Estadísticas');
     const stats = await req('GET', '/api/stats');

@@ -194,6 +194,7 @@ async function renderDashboard() {
     <div class="card"><div class="num">${d.openCases}</div><div class="lbl">Expedientes abiertos</div></div>
     <div class="card ${d.casesAwaitingDocs ? 'warn' : ''}"><div class="num">${d.casesAwaitingDocs}</div><div class="lbl">Esperando documentación</div></div>
     <div class="card ${d.overdueCases ? 'alert' : ''}"><div class="num">${d.overdueCases}</div><div class="lbl">Expedientes vencidos</div></div>
+    <div class="card ${d.expiringSoon ? 'warn' : ''}"><div class="num">${d.expiringSoon || 0}</div><div class="lbl">Caducan pronto (renovación)</div></div>
     <div class="card ${d.remindersToday ? 'warn' : ''}"><div class="num">${d.remindersToday}</div><div class="lbl">Recordatorios para hoy</div></div>
     <div class="card"><div class="num">${stats.messagesThisWeek}</div><div class="lbl">Mensajes esta semana</div></div>
     <div class="card"><div class="num">${respLbl}</div><div class="lbl">Tiempo medio de respuesta (30 d)</div></div>`;
@@ -870,6 +871,7 @@ function caseFields(item = {}, clients = [], fichas = []) {
       options: Object.entries(STATUS_LABEL),
     },
     { name: 'dueDate', label: 'Fecha límite', type: 'date', value: item.dueDate },
+    { name: 'expiryDate', label: 'Fecha de caducidad (TIE, NIE, ITV… avisa antes de vencer)', type: 'date', value: item.expiryDate },
     { name: 'fee', label: 'Honorario (€)', type: 'number', value: item.fee || '' },
     {
       name: 'paid', label: 'Cobrado', type: 'select', value: item.paid ? 'si' : 'no',
@@ -963,11 +965,18 @@ async function renderCases() {
     const fee = Number(c.fee) || 0;
     const feeBadge = fee
       ? `<span class="fee-badge ${c.paid ? 'paid' : 'due'}" title="${c.paid ? 'Cobrado' : 'Pendiente de cobro'}">${fee.toLocaleString('es-ES')} € ${c.paid ? '✓' : '•'}</span>` : '';
+    let expBadge = '';
+    if (c.expiryDate) {
+      const days = Math.ceil((new Date(c.expiryDate + 'T00:00') - new Date()) / 86400000);
+      const cls = days < 0 ? 'exp' : days <= 45 ? 'soon' : '';
+      const txt = days < 0 ? 'caducado' : days <= 45 ? `caduca en ${days} d` : `cad. ${fmtDate(c.expiryDate)}`;
+      expBadge = `<span class="exp-badge ${cls}" title="Fecha de caducidad: ${fmtDate(c.expiryDate)}">🔄 ${txt}</span>`;
+    }
     return `
     <div class="row case-row" data-id="${esc(c.id)}">
       <div class="grow">
         <div class="title">${esc(c.title)}</div>
-        <div class="sub">${esc(nameOf(c.clientId))} · <span class="area-badge">${esc(TYPE_LABEL[c.type] || c.type)}</span> ${chkBadge} ${feeBadge}</div>
+        <div class="sub">${esc(nameOf(c.clientId))} · <span class="area-badge">${esc(TYPE_LABEL[c.type] || c.type)}</span> ${chkBadge} ${feeBadge} ${expBadge}</div>
       </div>
       <div class="meta">
         <span class="status ${esc(c.status)}">${esc(STATUS_LABEL[c.status] || c.status)}</span>
@@ -1154,6 +1163,10 @@ async function renderAgenda() {
   for (const c of cases) {
     if (c.dueDate && c.status !== 'completado') {
       events.push({ date: c.dueDate, kind: 'case', icon: '📁', label: 'Expediente',
+        title: c.title, who: nameOf(c.clientId), view: 'cases' });
+    }
+    if (c.expiryDate) {
+      events.push({ date: c.expiryDate, kind: 'expiry', icon: '🔄', label: 'Caducidad / renovación',
         title: c.title, who: nameOf(c.clientId), view: 'cases' });
     }
   }
@@ -1559,6 +1572,12 @@ async function renderAutomations() {
   $('#auto-rem-enabled').checked = s.clientReminders.enabled;
   $('#auto-rem-text').value = s.clientReminders.text;
 
+  $('#auto-ren-enabled').checked = s.renewals.enabled;
+  $('#auto-ren-days').value = s.renewals.daysBefore;
+  $('#auto-ren-notify').checked = s.renewals.notifyClient;
+  $('#auto-ren-text').value = s.renewals.clientText;
+  $('#auto-ren-autocase').checked = s.renewals.autoCreateCase;
+
   $('#auto-tpl-enabled').checked = s.template24h.enabled;
   $('#auto-tpl-name').value = s.template24h.name;
   $('#auto-tpl-lang').value = s.template24h.lang;
@@ -1640,6 +1659,13 @@ $('#btn-auto-save').addEventListener('click', async () => {
           followUpText: $('#auto-docs-followup').value,
         },
         clientReminders: { enabled: $('#auto-rem-enabled').checked, text: $('#auto-rem-text').value },
+        renewals: {
+          enabled: $('#auto-ren-enabled').checked,
+          daysBefore: Number($('#auto-ren-days').value) || 30,
+          notifyClient: $('#auto-ren-notify').checked,
+          clientText: $('#auto-ren-text').value,
+          autoCreateCase: $('#auto-ren-autocase').checked,
+        },
         template24h: {
           enabled: $('#auto-tpl-enabled').checked,
           name: $('#auto-tpl-name').value.trim(),
