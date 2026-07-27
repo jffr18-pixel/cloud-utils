@@ -138,6 +138,7 @@ const state = {
   activeClient: null,
   tasks: [],
   taskAssignee: '',
+  knowledge: [],
   caseFilter: '',
   segFilter: '',
   apptFilter: 'proximas',
@@ -174,6 +175,7 @@ async function refreshView() {
     if (state.view === 'agenda') await renderAgenda();
     if (state.view === 'templates') await renderTemplates();
     if (state.view === 'fichas') await renderFichas();
+    if (state.view === 'knowledge') await renderKnowledge();
     if (state.view === 'forms') await renderForms();
     if (state.view === 'reports') await renderReports();
     if (state.view === 'reminders') await renderReminders();
@@ -846,6 +848,8 @@ function closePanels(except) {
   const fp = $('#ficha-panel');
   if (fp && except !== 'ficha') fp.classList.add('hidden');
   if (except !== 'qr') $('#quick-replies').classList.add('hidden');
+  const kb = $('#kb-panel');
+  if (kb && except !== 'kb') kb.classList.add('hidden');
 }
 
 // Vista previa de PDF dentro del CRM (sin descargar).
@@ -1817,6 +1821,153 @@ $('#btn-new-ficha').addEventListener('click', () => {
     await api('fichas', { method: 'POST', body: v });
     await renderFichas();
   });
+});
+
+// ---------------------------------------------------------------------------
+// Base de conocimiento: tarifas, tasas y documentos por trámite
+// ---------------------------------------------------------------------------
+
+// Búsqueda tolerante a acentos y mayúsculas.
+function fold(s) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+function kbMatch(item, q) {
+  if (!q) return true;
+  const hay = fold(`${item.title} ${item.keywords} ${TYPE_LABEL[item.area] || item.area} ${item.fee} ${item.docs}`);
+  return fold(q).split(/\s+/).every((w) => hay.includes(w));
+}
+
+function kbFields(item = {}) {
+  return [
+    { name: 'title', label: 'Trámite', value: item.title, required: true },
+    {
+      name: 'area', label: 'Área', type: 'select', value: item.area || 'extranjeria',
+      options: Object.entries(TYPE_LABEL),
+    },
+    { name: 'fee', label: 'Honorarios de gestión (ej. «300 €», «desde 150 €»)', value: item.fee || '' },
+    { name: 'tax', label: 'Tasas oficiales orientativas', type: 'textarea', value: item.tax || '' },
+    { name: 'docs', label: 'Documentos necesarios (una línea por documento)', type: 'textarea', value: item.docs || '' },
+    { name: 'keywords', label: 'Palabras clave para el buscador (sinónimos)', value: item.keywords || '' },
+    { name: 'notes', label: 'Nota interna / aclaración', type: 'textarea', value: item.notes || '' },
+  ];
+}
+
+async function renderKnowledge() {
+  const items = await api('knowledge');
+  state.knowledge = items;
+  const q = ($('#kb-search').value || '').trim();
+  const filtered = items.filter((k) => kbMatch(k, q));
+  const byArea = {};
+  for (const k of filtered) (byArea[k.area] = byArea[k.area] || []).push(k);
+  const order = Object.keys(TYPE_LABEL).filter((a) => byArea[a]);
+  $('#kb-list').innerHTML = order.map((area) => `
+    <div class="case-block">
+      <div class="block-head"><span class="block-title">${esc(TYPE_LABEL[area] || area)}</span><span class="block-count">${byArea[area].length}</span></div>
+      <div class="list">${byArea[area].map(kbCardHtml).join('')}</div>
+    </div>`).join('')
+    || (q ? '<p class="hint">Ningún trámite coincide con la búsqueda.</p>'
+          : '<p class="hint">No hay trámites todavía. Crea el primero con «＋ Nuevo trámite».</p>');
+
+  $('#kb-list').querySelectorAll('.kb-row').forEach((row) => {
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('.kb-del')) return;
+      const k = items.find((x) => x.id === row.dataset.id);
+      openDialog('Editar trámite', kbFields(k), async (v) => {
+        await api('knowledge/' + k.id, { method: 'PUT', body: v });
+        await renderKnowledge();
+      });
+    });
+  });
+  $('#kb-list').querySelectorAll('.kb-del').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('¿Eliminar este trámite de la base de conocimiento?')) return;
+      await api('knowledge/' + btn.dataset.id, { method: 'DELETE' });
+      await renderKnowledge();
+    });
+  });
+}
+
+function kbCardHtml(k) {
+  const docsN = (k.docs || '').split('\n').filter((l) => l.trim()).length;
+  return `<div class="row kb-row" data-id="${esc(k.id)}">
+    <div class="grow">
+      <div class="title">${esc(k.title)}</div>
+      <div class="sub">
+        ${k.fee ? `<span class="fee-badge paid">💶 ${esc(k.fee)}</span>` : ''}
+        ${k.tax ? '<span class="tax-badge due">🏛️ tasas</span>' : ''}
+        ${docsN ? `<span class="chk-badge">📄 ${docsN} doc.</span>` : ''}
+      </div>
+    </div>
+    <button class="btn small danger kb-del" data-id="${esc(k.id)}">Eliminar</button>
+  </div>`;
+}
+
+$('#kb-search').addEventListener('input', () => { if (state.view === 'knowledge') renderKnowledge(); });
+$('#btn-new-kb').addEventListener('click', () => {
+  openDialog('Nuevo trámite', kbFields(), async (v) => {
+    await api('knowledge', { method: 'POST', body: v });
+    await renderKnowledge();
+  });
+});
+
+// Construye el texto listo para enviar al cliente a partir de un trámite.
+function buildKbInsert(k, firstName) {
+  const hi = firstName ? `Hola ${firstName} 👋 ` : '';
+  const lines = [`${hi}Para «${k.title}»:`, ''];
+  if (k.fee) lines.push(`💶 Honorarios de gestión: ${k.fee}`);
+  if (k.tax) lines.push(`🏛️ Tasas oficiales (orientativas): ${k.tax}`);
+  if (k.docs && k.docs.trim()) {
+    lines.push('', '📄 Documentación necesaria:', k.docs.trim());
+  }
+  lines.push('', 'A los honorarios se añaden las tasas oficiales. José te confirma el total según tu caso. 📲');
+  return lines.join('\n');
+}
+
+// Panel de búsqueda de trámites en el chat (botón 📖) → inserta la respuesta.
+let kbLoaded = false;
+async function ensureKbLoaded() {
+  if (kbLoaded) return;
+  state.knowledge = await api('knowledge');
+  kbLoaded = true;
+}
+function renderKbPanel(q) {
+  const panel = $('#kb-panel');
+  const items = (state.knowledge || []).filter((k) => kbMatch(k, q)).slice(0, 8);
+  panel.innerHTML = `
+    <input type="text" class="kb-panel-search" placeholder="🔎 Buscar trámite…" value="${esc(q)}">
+    <div class="kb-panel-list">${items.map((k) => `
+      <button type="button" class="kb-pick" data-id="${esc(k.id)}">
+        <span class="kb-pick-title">${esc(k.title)}</span>
+        <span class="kb-pick-meta">${esc(TYPE_LABEL[k.area] || k.area)}${k.fee ? ' · ' + esc(k.fee) : ''}</span>
+      </button>`).join('') || '<p class="hint" style="margin:8px">Sin resultados.</p>'}</div>`;
+  const search = panel.querySelector('.kb-panel-search');
+  search.addEventListener('input', () => renderKbPanel(search.value));
+  // Mantiene el foco en el buscador tras redibujar.
+  search.focus();
+  search.setSelectionRange(search.value.length, search.value.length);
+  panel.querySelectorAll('.kb-pick').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const k = (state.knowledge || []).find((x) => x.id === btn.dataset.id);
+      if (!k) return;
+      let first = '';
+      if (state.activeClient) first = (state.activeClient.name || '').split(' ')[0];
+      const input = $('#chat-input');
+      const text = buildKbInsert(k, first);
+      input.value = input.value.trim() ? input.value.trim() + '\n\n' + text : text;
+      panel.classList.add('hidden');
+      input.focus();
+    });
+  });
+}
+$('#btn-kb').addEventListener('click', async (e) => {
+  e.stopPropagation();
+  const panel = $('#kb-panel');
+  const willOpen = panel.classList.contains('hidden');
+  closePanels('kb');
+  if (!willOpen) { panel.classList.add('hidden'); return; }
+  await ensureKbLoaded();
+  panel.classList.remove('hidden');
+  renderKbPanel('');
 });
 
 // ---------------------------------------------------------------------------

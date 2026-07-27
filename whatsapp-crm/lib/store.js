@@ -24,6 +24,7 @@ const EMPTY_DB = {
   scheduledMessages: [], // mensajes programados: [{ id, clientId, text, sendAt, status }]
   tasks: [], // tareas del equipo: [{ id, title, assignee, status, dueDate, clientId }]
   signatures: [], // solicitudes de firma: [{ id, clientId, caseId, title, status, token }]
+  knowledge: [], // base de conocimiento: [{ id, title, area, keywords, fee, tax, docs, notes }]
 };
 
 // db.settings es un objeto (configuración de automatizaciones, etc.).

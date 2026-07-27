@@ -72,6 +72,11 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   expediente puede llevar la tasa oficial (modelo 790, tasa 052…), su importe y
   si está abonada o pendiente, con distintivo propio separado del cobro de la
   gestoría.
+- **📖 Base de conocimiento de trámites**: catálogo de honorarios, tasas
+  orientativas y documentos por trámite (extranjería, tráfico…). Desde el chat,
+  el botón 📖 busca un trámite (tolerante a acentos) e inserta la respuesta
+  lista para enviar, con el nombre del cliente ya puesto. Editable en la pestaña
+  «Tarifas y trámites»; viene sembrada con los precios de la gestoría.
 - **📊 Panel con gráficas**: mensajes por día (recibidos/enviados),
   expedientes por estado, mensajes de la semana y tiempo medio de primera
   respuesta de los últimos 30 días.

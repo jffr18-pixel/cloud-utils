@@ -549,6 +549,28 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .task-move { font-weight: 700; }
 .task-edit { margin-left: auto; }
 @media (max-width: 900px) { .tasks-board { grid-template-columns: 1fr; } }
+
+/* Base de conocimiento (tarifas y trámites) */
+.kb-search {
+  width: 100%; font-family: inherit; font-size: 14px; padding: 11px 14px;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: #fbfaf7; margin-bottom: 14px;
+}
+#kb-panel {
+  width: 340px; max-width: 82vw; max-height: 380px; overflow: hidden;
+  display: flex; flex-direction: column; padding: 8px;
+}
+.kb-panel-search {
+  font-family: inherit; font-size: 13.5px; padding: 9px 11px; border: 1px solid var(--border);
+  border-radius: 9px; margin-bottom: 6px; background: #fbfaf7;
+}
+.kb-panel-list { overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+.kb-pick {
+  text-align: left; border: 1px solid transparent; background: none; border-radius: 8px;
+  padding: 8px 10px; cursor: pointer; display: flex; flex-direction: column; gap: 2px;
+}
+.kb-pick:hover { border-color: var(--accent); background: var(--accent-light); }
+.kb-pick-title { font-weight: 600; font-size: 13.5px; }
+.kb-pick-meta { font-size: 11.5px; color: var(--muted); }
 .exp-badge { display: inline-block; border-radius: 6px; padding: 1px 7px; font-weight: 600; font-size: 11.5px; white-space: nowrap; background: var(--accent-light); color: var(--muted); }
 .exp-badge.soon { background: #fdf2e3; color: #a8690a; }
 .exp-badge.exp { background: #fdecea; color: var(--danger); }

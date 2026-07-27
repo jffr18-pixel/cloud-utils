@@ -272,6 +272,100 @@ function ensureDefaultFichas(db) {
   if (changed) save();
 }
 
+// ---------------------------------------------------------------------------
+// Base de conocimiento de trámites (tarifas, tasas y documentos).
+// Referencia interna de consulta rápida: se busca un trámite y se inserta la
+// respuesta (honorarios + tasas orientativas + documentos) en el chat.
+// Los importes de honorarios provienen del flujo de bienvenida de la gestoría;
+// las tasas oficiales son orientativas y José las confirma según cada caso.
+// ---------------------------------------------------------------------------
+const KNOWLEDGE_PACK = {
+  'tarifas-v1': [
+    {
+      title: 'Arraigo social', area: 'extranjeria', keywords: 'arraigo residencia extranjeria papeles ex10',
+      fee: '300 €', tax: 'Tasa 790 cód. 052 (residencia temporal) + Tasa 790 cód. 012 al expedir la TIE. Orientativas; se confirman según el caso.',
+      docs: '• Pasaporte completo en vigor\n• Empadronamiento histórico (2 años en España)\n• Antecedentes penales del país de origen (apostillados y traducidos)\n• Antecedentes penales en España\n• Medios económicos (contrato/nóminas o medios propios)\n• Informe de integración social o vínculos familiares',
+      notes: 'A los honorarios se añaden las tasas oficiales. Confirmamos tu caso según la Instrucción SEM 1/2025.',
+    },
+    {
+      title: 'Arraigo familiar', area: 'extranjeria', keywords: 'arraigo familiar hijo espanol progenitor',
+      fee: '300 €', tax: 'Tasa 790 cód. 012 al expedir la TIE (orientativa).',
+      docs: '• Pasaporte completo en vigor\n• Partida de nacimiento / libro de familia\n• DNI del familiar español o documentación del menor\n• Empadronamiento\n• Antecedentes penales (según el caso)',
+      notes: 'Para progenitores de menor español o familiares de ciudadano español.',
+    },
+    {
+      title: 'Nacionalidad española', area: 'extranjeria', keywords: 'nacionalidad ccse dele juramento espanol',
+      fee: '400 €', tax: 'Tasa 790 cód. 026: 104,05 € (orientativa). Exámenes CCSE y DELE aparte (Instituto Cervantes).',
+      docs: '• Certificado de nacimiento del país de origen (apostillado y traducido)\n• Certificado de antecedentes penales del país de origen\n• Pasaporte y tarjeta de residencia en vigor\n• Empadronamiento\n• Diplomas CCSE y DELE A2 (salvo exenciones)\n• Certificado de antecedentes penales en España',
+      notes: 'Por residencia (10, 5, 2 años o 1 año según el caso). Confirmamos el plazo que te aplica.',
+    },
+    {
+      title: 'Reagrupación familiar', area: 'extranjeria', keywords: 'reagrupacion familia conyuge hijos',
+      fee: '375 €', tax: 'Tasa 790 cód. 052 + tasa de visado (en el consulado). Orientativas.',
+      docs: '• Pasaporte del reagrupante y de los reagrupados\n• Tarjeta de residencia del reagrupante\n• Libro de familia / certificados de matrimonio y nacimiento (apostillados y traducidos)\n• Contrato de trabajo y nóminas (medios económicos)\n• Informe de vivienda adecuada\n• Seguro médico',
+      notes: 'Se tramita en dos fases: autorización en España y visado en el consulado.',
+    },
+    {
+      title: 'Residencia de larga duración', area: 'extranjeria', keywords: 'larga duracion permanente 5 anos renovacion residencia',
+      fee: '350 €', tax: 'Tasa 790 cód. 052 + Tasa 790 cód. 012 (TIE). Orientativas.',
+      docs: '• Pasaporte en vigor\n• Tarjeta de residencia actual\n• Empadronamiento\n• Acreditación de 5 años de residencia legal y continuada',
+      notes: 'Para quien lleva 5 años de residencia legal continuada en España.',
+    },
+    {
+      title: 'Paso de razones humanitarias a residencia y trabajo', area: 'extranjeria', keywords: 'humanitarias modificacion residencia trabajo',
+      fee: '350 €', tax: 'Tasa 790 cód. 052 + Tasa 790 cód. 012 (TIE). Orientativas.',
+      docs: '• Pasaporte en vigor\n• Tarjeta de residencia por razones humanitarias\n• Contrato de trabajo o acreditación de medios\n• Empadronamiento\n• Antecedentes penales en España',
+      notes: 'Modificación de la situación de residencia. Confirmamos requisitos según tu tarjeta actual.',
+    },
+    {
+      title: 'Transferencia (cambio de titular)', area: 'vehiculos', keywords: 'transferencia coche vehiculo cambio titular compraventa itp',
+      fee: '70 €', tax: 'Tasa DGT 55,70 € (orientativa) + ITP según tu comunidad autónoma (lo calculamos sin compromiso).',
+      docs: '• DNI/NIE del comprador y del vendedor\n• Permiso de circulación\n• Ficha técnica (ITV en vigor)\n• Contrato de compraventa firmado\n• Último IVTM (impuesto de circulación) pagado',
+      notes: 'El vehículo debe estar libre de cargas y al día de multas e impuestos.',
+    },
+    {
+      title: 'Matriculación / importación', area: 'vehiculos', keywords: 'matriculacion importacion matricular vehiculo extranjero',
+      fee: 'desde 150 €', tax: 'Tasa DGT + Impuesto de Matriculación + IVTM municipal (según el vehículo). Orientativas.',
+      docs: '• DNI/NIE o CIF del titular\n• Ficha técnica con ITV pasada\n• Factura de compra o documentación de importación\n• Justificante de impuestos (matriculación e IVTM)',
+      notes: 'Confirmamos las tasas e impuestos según el vehículo y su procedencia.',
+    },
+    {
+      title: 'Canje de permiso de conducir extranjero', area: 'vehiculos', keywords: 'canje carnet conducir extranjero permiso',
+      fee: '150 € (todo incluido)', tax: 'Incluida en el precio (todo incluido).',
+      docs: '• Permiso de conducir extranjero original en vigor\n• DNI/NIE y tarjeta de residencia\n• Empadronamiento\n• Informe de aptitud psicofísica (centro de reconocimiento)\n• Una foto reciente',
+      notes: 'Solo para países con acuerdo de canje: comprobamos si el tuyo tiene convenio.',
+    },
+    {
+      title: 'Baja de vehículo', area: 'vehiculos', keywords: 'baja vehiculo desguace coche',
+      fee: '40 €', tax: 'Sin tasa DGT en la baja definitiva por desguace (CAT).',
+      docs: '• DNI/NIE del titular\n• Permiso de circulación\n• Ficha técnica (ITV)\n• Certificado de destrucción del CAT (si va a desguace)',
+      notes: 'La baja definitiva implica que el vehículo ya no puede circular ni venderse.',
+    },
+    {
+      title: 'Multas y recursos', area: 'vehiculos', keywords: 'multa recurso sancion alegaciones trafico dgt',
+      fee: '55 €', tax: 'Sin tasa (alegaciones/recurso).',
+      docs: '• Copia de la notificación de la multa\n• DNI/NIE del titular o conductor\n• Datos del vehículo y de los hechos',
+      notes: 'Estudiamos si la sanción es recurrible antes de presentar alegaciones o recurso.',
+    },
+  ],
+};
+
+// Siembra la base de conocimiento (una sola vez por pack).
+function ensureDefaultKnowledge(db) {
+  if (!db.settings) db.settings = {};
+  if (!Array.isArray(db.settings.knowledgePacks)) db.settings.knowledgePacks = [];
+  let changed = false;
+  for (const [packId, items] of Object.entries(KNOWLEDGE_PACK)) {
+    if (db.settings.knowledgePacks.includes(packId)) continue;
+    for (const k of items) {
+      db.knowledge.push({ id: newId('kb'), keywords: '', tax: '', notes: '', ...k, updatedAt: Date.now(), createdAt: Date.now() });
+    }
+    db.settings.knowledgePacks.push(packId);
+    changed = true;
+  }
+  if (changed) save();
+}
+
 // Catálogo de stickers de Burocracia Zero (se lee del manifiesto generado).
 function loadStickers() {
   try {
@@ -1591,6 +1685,52 @@ async function handleApi(req, res, url) {
     }
     if (req.method === 'DELETE' && sig) {
       sig.status = 'anulado';
+      save();
+      return json(res, 200, { ok: true });
+    }
+  }
+
+  // --- Base de conocimiento de trámites (tarifas + tasas + documentos) -----
+  if (resource === 'knowledge') {
+    if (req.method === 'GET') {
+      const list = db.knowledge.slice().sort((a, b) =>
+        String(a.area).localeCompare(String(b.area)) || String(a.title).localeCompare(String(b.title)));
+      return json(res, 200, list);
+    }
+    if (req.method === 'POST' && !id) {
+      const b = await readBody(req);
+      const title = String(b.title || '').trim();
+      if (!title) return json(res, 400, { error: 'El título es obligatorio' });
+      const item = {
+        id: newId('kb'),
+        title,
+        area: b.area || 'otro',
+        keywords: String(b.keywords || '').trim(),
+        fee: String(b.fee || '').trim(),
+        tax: String(b.tax || '').trim(),
+        docs: String(b.docs || ''),
+        notes: String(b.notes || ''),
+        updatedAt: Date.now(),
+        createdAt: Date.now(),
+      };
+      db.knowledge.push(item);
+      save();
+      return json(res, 201, item);
+    }
+    const item = db.knowledge.find((k) => k.id === id);
+    if (id && !item) return json(res, 404, { error: 'Trámite no encontrado' });
+    if (req.method === 'PUT' && item) {
+      const b = await readBody(req);
+      for (const key of ['title', 'area', 'keywords', 'fee', 'tax', 'docs', 'notes']) {
+        if (b[key] !== undefined) item[key] = key === 'title' ? String(b[key]).trim() : String(b[key]);
+      }
+      if (!item.title) return json(res, 400, { error: 'El título es obligatorio' });
+      item.updatedAt = Date.now();
+      save();
+      return json(res, 200, item);
+    }
+    if (req.method === 'DELETE' && item) {
+      db.knowledge = db.knowledge.filter((k) => k.id !== id);
       save();
       return json(res, 200, { ok: true });
     }
@@ -2971,6 +3111,7 @@ setInterval(() => {
 }, 60 * 1000);
 
 ensureDefaultFichas(load());
+ensureDefaultKnowledge(load());
 
 server.listen(PORT, () => {
   const mode = wa.isConfigured()

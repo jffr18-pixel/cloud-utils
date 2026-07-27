@@ -534,6 +534,23 @@ async function main() {
     const signAgain = await (await fetch(BASE + '/firmar/' + signToken)).text();
     assert(/Documento firmado/.test(signAgain), 'el enlace ya firmado muestra la confirmación');
 
+    console.log('Base de conocimiento (tarifas y trámites)');
+    const kbSeed = await req('GET', '/api/knowledge');
+    assert(kbSeed.data.length > 0 && kbSeed.data.some((k) => /Nacionalidad/i.test(k.title)),
+      'la base de conocimiento se siembra con trámites por defecto');
+    assert(kbSeed.data.some((k) => k.fee && k.docs), 'los trámites llevan honorarios y documentos');
+    const kbBad = await req('POST', '/api/knowledge', { title: '   ' });
+    assert(kbBad.status === 400, 'trámite sin título rechazado');
+    const kbNew = await req('POST', '/api/knowledge', {
+      title: 'Prueba tasa', area: 'fiscal', fee: '99 €', tax: 'Tasa X', docs: '• Uno\n• Dos', keywords: 'prueba test',
+    });
+    assert(kbNew.status === 201 && kbNew.data.fee === '99 €', 'crear un trámite en la base de conocimiento');
+    const kbUpd = await req('PUT', '/api/knowledge/' + kbNew.data.id, { fee: '120 €' });
+    assert(kbUpd.data.fee === '120 €' && kbUpd.data.title === 'Prueba tasa', 'editar un trámite');
+    const kbDel = await req('DELETE', '/api/knowledge/' + kbNew.data.id);
+    assert(kbDel.status === 200, 'eliminar un trámite');
+    assert(!(await req('GET', '/api/knowledge')).data.some((k) => k.id === kbNew.data.id), 'el trámite ya no está');
+
     console.log('Plantillas y recordatorios');
     const tpl = await req('POST', '/api/templates', { name: 'Saludo', text: 'Hola {nombre}' });
     assert(tpl.status === 201, 'crear plantilla');

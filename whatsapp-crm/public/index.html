@@ -33,6 +33,7 @@
       <symbol id="ico-today" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12h2.5M19 12h2.5M5 5l1.8 1.8M17.2 17.2 19 19M19 5l-1.8 1.8M6.8 17.2 5 19"/></symbol>
       <symbol id="ico-forms" viewBox="0 0 24 24"><rect x="4.5" y="3.5" width="15" height="17" rx="2"/><path d="M8 8h5M8 12h8M8 16h8"/><path d="M15.5 7.5l1.2 1.2 2.3-2.4" stroke-width="1.7"/></symbol>
       <symbol id="ico-tasks" viewBox="0 0 24 24"><rect x="4" y="4" width="4.5" height="16" rx="1"/><rect x="9.75" y="4" width="4.5" height="16" rx="1"/><rect x="15.5" y="4" width="4.5" height="16" rx="1"/></symbol>
+      <symbol id="ico-kb" viewBox="0 0 24 24"><path d="M4 6.5A2 2 0 0 1 6 4.5h5v15H6a2 2 0 0 0-2 2z"/><path d="M20 6.5a2 2 0 0 0-2-2h-5v15h5a2 2 0 0 1 2 2z"/></symbol>
       <symbol id="ico-campaigns" viewBox="0 0 24 24"><path d="M4 10v4a1.5 1.5 0 0 0 1.5 1.5H8l7 4.5V4L8 8.5H5.5A1.5 1.5 0 0 0 4 10Z"/><path d="M18 8.5a5 5 0 0 1 0 7"/></symbol>
       <symbol id="ico-automations" viewBox="0 0 24 24"><path d="M13 2.5 4.5 13.5H11l-1 8L19.5 10H13Z"/></symbol>
       <symbol id="ico-logout" viewBox="0 0 24 24"><path d="M14 4.5H6A1.5 1.5 0 0 0 4.5 6v12A1.5 1.5 0 0 0 6 19.5h8"/><path d="M17 8.5 20.5 12 17 15.5M20 12H10"/></symbol>
@@ -60,6 +61,7 @@
       <button class="nav-btn" data-view="agenda"><svg class="nav-ico"><use href="#ico-agenda"/></svg> <span class="nav-label">Agenda</span> <span class="badge hidden" id="nav-agenda"></span></button>
       <button class="nav-btn" data-view="templates"><svg class="nav-ico"><use href="#ico-templates"/></svg> <span class="nav-label">Plantillas</span></button>
       <button class="nav-btn" data-view="fichas"><svg class="nav-ico"><use href="#ico-fichas"/></svg> <span class="nav-label">Fichas de trámite</span></button>
+      <button class="nav-btn" data-view="knowledge"><svg class="nav-ico"><use href="#ico-kb"/></svg> <span class="nav-label">Tarifas y trámites</span></button>
       <button class="nav-btn" data-view="forms"><svg class="nav-ico"><use href="#ico-forms"/></svg> <span class="nav-label">Formularios</span></button>
       <button class="nav-btn" data-view="reports"><svg class="nav-ico"><use href="#ico-reports"/></svg> <span class="nav-label">Informes</span></button>
       <button class="nav-btn" data-view="reminders"><svg class="nav-ico"><use href="#ico-reminders"/></svg> <span class="nav-label">Recordatorios</span></button>
@@ -170,6 +172,8 @@
                 <button class="btn btn-icon" id="btn-note-mode" title="Nota interna: se guarda en el chat pero NO se envía al cliente"><svg class="ui-ico"><use href="#ico-note"/></svg></button>
                 <button class="btn btn-icon" id="btn-schedule" title="Programar el mensaje para más tarde">🕒</button>
                 <button class="btn btn-icon" id="btn-sign" title="Pedir firma de un documento (autorización / RGPD)">✍️</button>
+                <button class="btn btn-icon" id="btn-kb" title="Buscar un trámite e insertar precio y documentos">📖</button>
+                <div id="kb-panel" class="pop-panel hidden"></div>
                 <input type="file" id="file-input" class="hidden">
                 <textarea id="chat-input" rows="2" placeholder="Escribe un mensaje…"></textarea>
                 <button class="btn primary" id="btn-send">Enviar</button>
@@ -281,6 +285,17 @@
         </div>
         <p class="hint">Crea una ficha por trámite con la documentación necesaria. Desde el chat podrás enviarla al cliente con un clic (botón 📋). Variables: <code>{nombre}</code> y <code>{tramite}</code>.</p>
         <div id="ficha-list"></div>
+      </section>
+
+      <!-- Tarifas y trámites (base de conocimiento) -->
+      <section id="view-knowledge" class="view hidden">
+        <div class="panel-head">
+          <h1>Tarifas y trámites</h1>
+          <button class="btn primary" id="btn-new-kb">＋ Nuevo trámite</button>
+        </div>
+        <p class="hint">Consulta rápida de honorarios, tasas orientativas y documentos por trámite. Desde el chat, el botón 📖 busca un trámite e inserta la respuesta lista para enviar.</p>
+        <input type="search" id="kb-search" class="kb-search" placeholder="🔎 Buscar trámite (arraigo, nacionalidad, transferencia…)">
+        <div id="kb-list"></div>
       </section>
 
       <!-- Formularios (JotForm embebidos) -->
