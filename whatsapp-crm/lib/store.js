@@ -21,6 +21,7 @@ const EMPTY_DB = {
   appointments: [],
   fichas: [],
   forms: [], // formularios JotForm embebidos: [{ id, name, url }]
+  scheduledMessages: [], // mensajes programados: [{ id, clientId, text, sendAt, status }]
 };
 
 // db.settings es un objeto (configuración de automatizaciones, etc.).

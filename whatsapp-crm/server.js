@@ -638,6 +638,7 @@ async function sendMessageToClient(db, client, text, opts = {}) {
     waMessageId: sendResult.id,
     auto: Boolean(opts.auto), // enviado por una automatización
     viaTemplate, // enviado como plantilla aprobada (ventana de 24 h cerrada)
+    viaScheduled: Boolean(opts.scheduled), // enviado desde un mensaje programado
     read: true,
   };
   db.messages.push(msg);
@@ -648,6 +649,28 @@ async function sendMessageToClient(db, client, text, opts = {}) {
 // Envío usado por las automatizaciones (marca el mensaje como automático).
 function autoSender(db) {
   return (client, text, opts = {}) => sendMessageToClient(db, client, text, { ...opts, auto: true });
+}
+
+// Envía los mensajes programados cuya hora ya ha llegado. A diferencia de las
+// automatizaciones, se envían a cualquier hora (la gestoría eligió el momento).
+async function dispatchScheduledMessages(db, now = Date.now()) {
+  const due = db.scheduledMessages.filter((s) => s.status === 'pendiente' && s.sendAt <= now);
+  let changed = false;
+  for (const sched of due) {
+    const client = db.clients.find((c) => c.id === sched.clientId);
+    if (!client) { sched.status = 'error'; sched.error = 'Cliente no encontrado'; changed = true; continue; }
+    try {
+      const msg = await sendMessageToClient(db, client, sched.text, { scheduled: true });
+      sched.status = 'enviado';
+      sched.sentAt = Date.now();
+      sched.messageId = msg.id;
+    } catch (err) {
+      sched.status = 'error';
+      sched.error = err.message;
+    }
+    changed = true;
+  }
+  return changed;
 }
 
 // Descarga el audio de una nota de voz y lo transcribe en segundo plano;
@@ -1035,6 +1058,7 @@ async function handleApi(req, res, url) {
       }
       if (b.assignedTo !== undefined) client.assignedTo = b.assignedTo || null;
       if (b.pinned !== undefined) client.pinned = Boolean(b.pinned);
+      if (b.pinnedNote !== undefined) client.pinnedNote = String(b.pinnedNote).slice(0, 500);
       save();
       return json(res, 200, client);
     }
@@ -1044,6 +1068,7 @@ async function handleApi(req, res, url) {
       db.cases = db.cases.filter((c) => c.clientId !== id);
       db.reminders = db.reminders.filter((r) => r.clientId !== id);
       db.appointments = db.appointments.filter((a) => a.clientId !== id);
+      db.scheduledMessages = db.scheduledMessages.filter((s) => s.clientId !== id);
       save();
       return json(res, 200, { ok: true });
     }
@@ -1244,6 +1269,47 @@ async function handleApi(req, res, url) {
       if (!b.text || !String(b.text).trim()) return json(res, 400, { error: 'El mensaje está vacío' });
       const msg = await sendMessageToClient(db, client, String(b.text).trim());
       return json(res, 201, msg);
+    }
+  }
+
+  // --- Mensajes programados -----------------------------------------------
+  if (resource === 'scheduled-messages') {
+    if (req.method === 'GET') {
+      const clientId = url.searchParams.get('clientId');
+      let list = db.scheduledMessages;
+      if (clientId) list = list.filter((s) => s.clientId === clientId);
+      list = list.slice().sort((a, b) => a.sendAt - b.sendAt);
+      return json(res, 200, list);
+    }
+    if (req.method === 'POST') {
+      const b = await readBody(req);
+      const client = db.clients.find((c) => c.id === b.clientId);
+      if (!client) return json(res, 404, { error: 'Cliente no encontrado' });
+      const text = String(b.text || '').trim();
+      if (!text) return json(res, 400, { error: 'El mensaje está vacío' });
+      const sendAt = Number(b.sendAt);
+      if (!Number.isFinite(sendAt) || sendAt <= Date.now()) {
+        return json(res, 400, { error: 'La fecha de envío debe ser futura' });
+      }
+      const sched = {
+        id: newId('sch'),
+        clientId: client.id,
+        text,
+        sendAt,
+        status: 'pendiente', // pendiente | enviado | error
+        createdAt: Date.now(),
+        createdBy: sessionUser(req) || 'equipo',
+      };
+      db.scheduledMessages.push(sched);
+      save();
+      return json(res, 201, sched);
+    }
+    if (req.method === 'DELETE' && id) {
+      const before = db.scheduledMessages.length;
+      db.scheduledMessages = db.scheduledMessages.filter((s) => s.id !== id);
+      if (db.scheduledMessages.length === before) return json(res, 404, { error: 'No encontrado' });
+      save();
+      return json(res, 200, { ok: true });
     }
   }
 
@@ -2481,6 +2547,14 @@ setInterval(() => {
     console.error('Error al crear la copia de seguridad:', err.message);
   }
 }, 5 * 60 * 1000);
+
+// Mensajes programados: se revisa cada minuto para enviarlos a la hora elegida.
+setInterval(() => {
+  const db = load();
+  dispatchScheduledMessages(db)
+    .then((changed) => { if (changed) save(); })
+    .catch((err) => console.error('Error al enviar mensajes programados:', err.message));
+}, 60 * 1000);
 
 ensureDefaultFichas(load());
 

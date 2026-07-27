@@ -46,6 +46,19 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   Resuelta y asignarse a una persona del equipo; se ve en la bandeja.
 - **🗒️ Notas internas**: botón 🗒️ en el chat para guardar notas que el
   cliente nunca recibe (aparecen en amarillo, con autor).
+- **📌 Nota fija del cliente**: una nota siempre visible en la cabecera del
+  chat (idioma que habla, preferencias, aviso importante…). Se edita con un
+  clic y no se envía nunca al cliente.
+- **🟢 Aviso de la ventana de 24 h**: la cabecera del chat indica si la
+  ventana de servicio de WhatsApp está abierta (y cuánto queda) o cerrada
+  (solo se puede escribir con plantillas aprobadas).
+- **🕒 Mensajes programados**: escribe un mensaje y prográmalo para una fecha
+  y hora concretas (botón 🕒 del chat); se envía solo a la hora elegida y los
+  pendientes se ven bajo la conversación, con opción de cancelarlos.
+- **🎧 Notas de voz en el chat**: los audios recibidos se reproducen en línea
+  con un reproductor dentro de la propia conversación.
+- **⚡ Envío instantáneo**: al pulsar Enter el mensaje aparece al momento en la
+  conversación (envío optimista), sin esperar a recargar toda la charla.
 - **📊 Panel con gráficas**: mensajes por día (recibidos/enviados),
   expedientes por estado, mensajes de la semana y tiempo medio de primera
   respuesta de los últimos 30 días.

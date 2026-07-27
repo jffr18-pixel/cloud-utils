@@ -134,7 +134,12 @@
                   <button class="btn small" id="btn-open-client">Ver ficha</button>
                 </div>
               </div>
+              <div class="chat-subhead">
+                <span id="chat-window" class="chat-window" title="Ventana de servicio de WhatsApp (24 h desde el último mensaje del cliente)"></span>
+                <button id="chat-note" class="chat-note" title="Nota fija del cliente (clic para editar)"></button>
+              </div>
               <div class="chat-messages" id="chat-messages"></div>
+              <div id="chat-scheduled" class="chat-scheduled hidden"></div>
               <div class="chat-compose">
                 <div id="quick-replies" class="pop-panel hidden"></div>
                 <div id="emoji-panel" class="pop-panel hidden"></div>
@@ -148,6 +153,7 @@
                 <button class="btn btn-icon" id="btn-sticker" title="Stickers de la gestoría"><svg class="ui-ico"><use href="#ico-sticker"/></svg></button>
                 <button class="btn btn-icon" id="btn-attach" title="Adjuntar documento o imagen"><svg class="ui-ico"><use href="#ico-attach"/></svg></button>
                 <button class="btn btn-icon" id="btn-note-mode" title="Nota interna: se guarda en el chat pero NO se envía al cliente"><svg class="ui-ico"><use href="#ico-note"/></svg></button>
+                <button class="btn btn-icon" id="btn-schedule" title="Programar el mensaje para más tarde">🕒</button>
                 <input type="file" id="file-input" class="hidden">
                 <textarea id="chat-input" rows="2" placeholder="Escribe un mensaje…"></textarea>
                 <button class="btn primary" id="btn-send">Enviar</button>

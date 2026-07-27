@@ -298,6 +298,29 @@ async function main() {
     const markRead = await req('POST', '/api/messages/read', { clientId: pedro.clientId });
     assert(markRead.data.marked === 1, 'marcar conversación como leída');
 
+    console.log('Nota fija del cliente');
+    const withNote = await req('PUT', '/api/clients/' + clientId, { pinnedNote: 'Habla poco español, llamar por las tardes' });
+    assert(withNote.data.pinnedNote === 'Habla poco español, llamar por las tardes', 'se guarda la nota fija');
+    const noteLong = await req('PUT', '/api/clients/' + clientId, { pinnedNote: 'x'.repeat(600) });
+    assert(noteLong.data.pinnedNote.length === 500, 'la nota fija se limita a 500 caracteres');
+    await req('PUT', '/api/clients/' + clientId, { pinnedNote: '' }); // limpieza
+
+    console.log('Mensajes programados');
+    const schBad = await req('POST', '/api/scheduled-messages', { clientId, text: 'tarde', sendAt: Date.now() - 1000 });
+    assert(schBad.status === 400, 'fecha pasada rechazada');
+    const schEmpty = await req('POST', '/api/scheduled-messages', { clientId, text: '  ', sendAt: Date.now() + 3600_000 });
+    assert(schEmpty.status === 400, 'mensaje programado vacío rechazado');
+    const schNoClient = await req('POST', '/api/scheduled-messages', { clientId: 'no-existe', text: 'hola', sendAt: Date.now() + 3600_000 });
+    assert(schNoClient.status === 404, 'cliente inexistente → 404');
+    const sch = await req('POST', '/api/scheduled-messages', { clientId, text: 'Recordatorio de cita', sendAt: Date.now() + 3600_000 });
+    assert(sch.status === 201 && sch.data.status === 'pendiente', 'mensaje programado creado');
+    const schList = await req('GET', '/api/scheduled-messages?clientId=' + clientId);
+    assert(schList.data.some((s) => s.id === sch.data.id), 'aparece en la lista de programados del cliente');
+    const schDel = await req('DELETE', '/api/scheduled-messages/' + sch.data.id);
+    assert(schDel.status === 200, 'cancelar mensaje programado');
+    const schList2 = await req('GET', '/api/scheduled-messages?clientId=' + clientId);
+    assert(!schList2.data.some((s) => s.id === sch.data.id), 'ya no aparece tras cancelar');
+
     console.log('Webhook');
     const verifyOk = await fetch(BASE + '/webhook?hub.mode=subscribe&hub.verify_token=gestoria-crm&hub.challenge=reto123');
     assert(await verifyOk.text() === 'reto123', 'verificación del webhook devuelve el challenge');

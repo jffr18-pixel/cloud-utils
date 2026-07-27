@@ -37,6 +37,13 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+function fmtDateTime(ts) {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleString('es-ES', {
+    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+  });
+}
+
 const STATUS_LABEL = {
   pendiente: 'Pendiente',
   en_curso: 'En curso',
@@ -61,6 +68,7 @@ const SEGMENTS = [
 ];
 const SEGMENT_LABEL = Object.fromEntries(SEGMENTS.map((s) => [s.key, s.label]));
 const MSG_STATUS = {
+  sending: '⏳ enviando…',
   demo: '⏳ demo (no enviado)',
   sent: '✓ enviado',
   delivered: '✓✓ entregado',
@@ -127,6 +135,7 @@ const state = {
   templates: [],
   users: [],
   activeClientId: null,
+  activeClient: null,
   caseFilter: '',
   segFilter: '',
   apptFilter: 'proximas',
@@ -448,67 +457,55 @@ async function renderInbox() {
   if (state.activeClientId) await openConversation(state.activeClientId);
 }
 
-async function openConversation(clientId) {
-  state.activeClientId = clientId;
-  // En móvil, el chat ocupa la pantalla y la lista se oculta.
-  if (window.innerWidth <= 760) document.querySelector('.inbox').classList.add('mobile-chat');
-  const [client, msgs] = await Promise.all([
-    api('clients/' + clientId),
-    api('messages?clientId=' + encodeURIComponent(clientId)),
-  ]);
-  $('#chat-empty').classList.add('hidden');
-  $('#chat').classList.remove('hidden');
-  $('#chat-name').textContent = client.name;
-  $('#chat-phone').textContent = '+' + client.phone;
-  $('#conv-status').value = client.convStatus || 'abierta';
-  $('#conv-assign').innerHTML = '<option value="">Sin asignar</option>'
-    + state.users.map((u) => `<option value="${esc(u)}" ${client.assignedTo === u ? 'selected' : ''}>${esc(u)}</option>`).join('');
-  $('#btn-pin').classList.toggle('active', Boolean(client.pinned));
-  $('#btn-pin').title = client.pinned ? 'Desfijar conversación' : 'Fijar conversación arriba';
-  state.lastMessageCount = msgs.length;
-
-  $('#chat-messages').innerHTML = msgs.map((m) => {
-    if (m.direction === 'note') {
-      return `<div class="msg note">🗒️ ${esc(m.text)}
-        <span class="msg-meta">${esc(m.author || 'equipo')} · ${fmtTime(m.timestamp)} · solo interno</span></div>`;
-    }
-    // Sticker del catálogo: se muestra desde su fichero estático, sin burbuja.
-    if (m.media && m.media.kind === 'sticker' && m.media.stickerUrl) {
-      return `<div class="msg ${m.direction} sticker">
-        <img src="${esc(m.media.stickerUrl)}" alt="sticker">
-        <span class="msg-meta">${m.auto ? '🤖 · ' : ''}${fmtTime(m.timestamp)} ${MSG_STATUS[m.status] || ''}</span>
-      </div>`;
-    }
-    let mediaHtml = '';
-    if (m.media) {
-      const src = `/api/media/${encodeURIComponent(m.id)}`;
-      const isPdf = (m.media.mime || '') === 'application/pdf'
-        || /\.pdf$/i.test(m.media.filename || '');
-      if (m.media.kind === 'image' || m.media.kind === 'sticker') {
-        mediaHtml = `<a href="${src}" target="_blank"><img class="msg-media" src="${src}" alt="imagen" loading="lazy"></a>`;
-      } else if (isPdf) {
-        // PDF: botón para previsualizarlo dentro del CRM, sin descargar.
-        mediaHtml = `<button class="msg-file pdf-view" data-src="${src}" data-name="${esc(m.media.filename || 'documento.pdf')}">📄 ${esc(m.media.filename || 'Documento PDF')} <span class="pdf-eye">👁 Ver</span></button>`;
-      } else {
-        const icon = m.media.kind === 'video' ? '🎬' : m.media.kind === 'audio' ? '🎧' : '📄';
-        mediaHtml = `<a class="msg-file" href="${src}" target="_blank" download="${esc(m.media.filename || 'adjunto')}">${icon} ${esc(m.media.filename || 'Adjunto')}</a>`;
-      }
-      mediaHtml += `<button class="btn small msg-link-case" data-msg-id="${esc(m.id)}" title="Guardar en un expediente">${m.caseId ? '📁 en expediente' : '📁 asignar a expediente'}</button> `;
-      if (m.sharepointUrl) {
-        mediaHtml += `<a class="btn small" href="${esc(m.sharepointUrl)}" target="_blank" title="Abrir en SharePoint">☁️ SharePoint</a> `;
-      }
-    }
-    const transcriptHtml = m.transcript
-      ? `<div class="msg-transcript">🎤 <span>${esc(m.transcript)}</span></div>` : '';
-    return `
-    <div class="msg ${m.direction} ${m.status === 'error' ? 'error' : ''}">${mediaHtml}${esc(m.text)}${transcriptHtml}
-      <span class="msg-meta">${m.auto ? '🤖 automático · ' : ''}${m.viaTemplate ? '📋 plantilla · ' : ''}${m.viaApp ? '📱 desde el móvil · ' : ''}${m.viaProvider ? '☁️ vía YCloud · ' : ''}${fmtTime(m.timestamp)} ${MSG_STATUS[m.status] || ''}${m.error ? ' · ' + esc(m.error) : ''}</span>
+// Construye el HTML de una sola burbuja de mensaje. Se usa tanto en el
+// pintado completo de la conversación como en el envío optimista (aparece al
+// instante al pulsar Enter, antes de que el servidor confirme).
+function messageHtml(m) {
+  if (m.direction === 'note') {
+    return `<div class="msg note" data-mid="${esc(m.id)}">🗒️ ${esc(m.text)}
+      <span class="msg-meta">${esc(m.author || 'equipo')} · ${fmtTime(m.timestamp)} · solo interno</span></div>`;
+  }
+  // Sticker del catálogo: se muestra desde su fichero estático, sin burbuja.
+  if (m.media && m.media.kind === 'sticker' && m.media.stickerUrl) {
+    return `<div class="msg ${m.direction} sticker" data-mid="${esc(m.id)}">
+      <img src="${esc(m.media.stickerUrl)}" alt="sticker">
+      <span class="msg-meta">${m.auto ? '🤖 · ' : ''}${fmtTime(m.timestamp)} ${MSG_STATUS[m.status] || ''}</span>
     </div>`;
-  }).join('');
-  const box = $('#chat-messages');
-  box.scrollTop = box.scrollHeight;
+  }
+  let mediaHtml = '';
+  if (m.media) {
+    const src = `/api/media/${encodeURIComponent(m.id)}`;
+    const isPdf = (m.media.mime || '') === 'application/pdf'
+      || /\.pdf$/i.test(m.media.filename || '');
+    if (m.media.kind === 'image' || m.media.kind === 'sticker') {
+      mediaHtml = `<a href="${src}" target="_blank"><img class="msg-media" src="${src}" alt="imagen" loading="lazy"></a>`;
+    } else if (isPdf) {
+      // PDF: botón para previsualizarlo dentro del CRM, sin descargar.
+      mediaHtml = `<button class="msg-file pdf-view" data-src="${src}" data-name="${esc(m.media.filename || 'documento.pdf')}">📄 ${esc(m.media.filename || 'Documento PDF')} <span class="pdf-eye">👁 Ver</span></button>`;
+    } else if (m.media.kind === 'audio') {
+      // Nota de voz: reproductor en línea dentro del chat.
+      mediaHtml = `<audio class="msg-audio" controls preload="none" src="${src}"></audio>`;
+    } else {
+      const icon = m.media.kind === 'video' ? '🎬' : '📄';
+      mediaHtml = `<a class="msg-file" href="${src}" target="_blank" download="${esc(m.media.filename || 'adjunto')}">${icon} ${esc(m.media.filename || 'Adjunto')}</a>`;
+    }
+    mediaHtml += `<button class="btn small msg-link-case" data-msg-id="${esc(m.id)}" title="Guardar en un expediente">${m.caseId ? '📁 en expediente' : '📁 asignar a expediente'}</button> `;
+    if (m.sharepointUrl) {
+      mediaHtml += `<a class="btn small" href="${esc(m.sharepointUrl)}" target="_blank" title="Abrir en SharePoint">☁️ SharePoint</a> `;
+    }
+  }
+  const transcriptHtml = m.transcript
+    ? `<div class="msg-transcript">🎤 <span>${esc(m.transcript)}</span></div>` : '';
+  return `
+  <div class="msg ${m.direction} ${m.status === 'error' ? 'error' : ''}" data-mid="${esc(m.id)}">${mediaHtml}${esc(m.text)}${transcriptHtml}
+    <span class="msg-meta">${m.auto ? '🤖 automático · ' : ''}${m.viaScheduled ? '🕒 programado · ' : ''}${m.viaTemplate ? '📋 plantilla · ' : ''}${m.viaApp ? '📱 desde el móvil · ' : ''}${m.viaProvider ? '☁️ vía YCloud · ' : ''}${fmtTime(m.timestamp)} ${MSG_STATUS[m.status] || ''}${m.error ? ' · ' + esc(m.error) : ''}</span>
+  </div>`;
+}
 
-  box.querySelectorAll('.msg-link-case').forEach((btn) => {
+// Enlaza los botones de acción (asignar a expediente, ver PDF) dentro de un
+// contenedor concreto: toda la conversación o una sola burbuja recién añadida.
+function bindMsgButtons(scope, clientId) {
+  scope.querySelectorAll('.msg-link-case').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const cases = await api('cases?clientId=' + encodeURIComponent(clientId));
       if (!cases.length) return alert('Este cliente no tiene expedientes. Crea uno primero.');
@@ -521,10 +518,65 @@ async function openConversation(clientId) {
       });
     });
   });
-  box.querySelectorAll('.pdf-view').forEach((btn) => {
+  scope.querySelectorAll('.pdf-view').forEach((btn) => {
     btn.addEventListener('click', () => openPdfPreview(btn.dataset.src, btn.dataset.name));
   });
+}
 
+// Actualiza la cabecera con la ventana de servicio de 24 h y la nota fija.
+function renderChatHeader(client, msgs) {
+  const lastIn = msgs
+    .filter((m) => m.direction === 'in')
+    .reduce((max, m) => Math.max(max, m.timestamp), 0);
+  const win = $('#chat-window');
+  if (!lastIn) {
+    win.className = 'chat-window closed';
+    win.textContent = '🔒 Ventana de 24 h cerrada · solo plantillas';
+  } else {
+    const leftMs = 24 * 3600 * 1000 - (Date.now() - lastIn);
+    if (leftMs > 0) {
+      const h = Math.floor(leftMs / 3600000);
+      const min = Math.floor((leftMs % 3600000) / 60000);
+      win.className = 'chat-window open';
+      win.textContent = `🟢 Ventana de 24 h abierta · quedan ${h > 0 ? h + ' h ' : ''}${min} min`;
+    } else {
+      win.className = 'chat-window closed';
+      win.textContent = '🔒 Ventana de 24 h cerrada · solo plantillas';
+    }
+  }
+  const note = $('#chat-note');
+  const txt = (client.pinnedNote || '').trim();
+  note.classList.toggle('empty', !txt);
+  note.textContent = txt ? '📌 ' + txt : '📌 Añadir nota fija…';
+}
+
+async function openConversation(clientId) {
+  state.activeClientId = clientId;
+  // En móvil, el chat ocupa la pantalla y la lista se oculta.
+  if (window.innerWidth <= 760) document.querySelector('.inbox').classList.add('mobile-chat');
+  const [client, msgs] = await Promise.all([
+    api('clients/' + clientId),
+    api('messages?clientId=' + encodeURIComponent(clientId)),
+  ]);
+  state.activeClient = client;
+  $('#chat-empty').classList.add('hidden');
+  $('#chat').classList.remove('hidden');
+  $('#chat-name').textContent = client.name;
+  $('#chat-phone').textContent = '+' + client.phone;
+  $('#conv-status').value = client.convStatus || 'abierta';
+  $('#conv-assign').innerHTML = '<option value="">Sin asignar</option>'
+    + state.users.map((u) => `<option value="${esc(u)}" ${client.assignedTo === u ? 'selected' : ''}>${esc(u)}</option>`).join('');
+  $('#btn-pin').classList.toggle('active', Boolean(client.pinned));
+  $('#btn-pin').title = client.pinned ? 'Desfijar conversación' : 'Fijar conversación arriba';
+  renderChatHeader(client, msgs);
+  state.lastMessageCount = msgs.length;
+
+  const box = $('#chat-messages');
+  box.innerHTML = msgs.map(messageHtml).join('');
+  box.scrollTop = box.scrollHeight;
+  bindMsgButtons(box, clientId);
+
+  await renderScheduled();
   await api('messages/read', { method: 'POST', body: { clientId } });
   await updateUnreadBadge();
 }
@@ -566,20 +618,52 @@ $('#chat-input').addEventListener('keydown', (e) => {
   }
 });
 
+let tempMsgSeq = 0;
 async function sendCurrentMessage() {
   const text = $('#chat-input').value.trim();
   if (!text || !state.activeClientId) return;
+  const clientId = state.activeClientId;
+  const isNote = state.noteMode;
+  // Envío optimista: la burbuja aparece al instante y se libera el cuadro de
+  // texto, sin esperar a que el servidor responda ni repintar toda la charla.
   $('#chat-input').value = '';
   $('#quick-replies').classList.add('hidden');
+  const box = $('#chat-messages');
+  const tempId = 'tmp-' + (++tempMsgSeq);
+  const temp = {
+    id: tempId,
+    clientId,
+    direction: isNote ? 'note' : 'out',
+    text,
+    author: 'equipo',
+    timestamp: Date.now(),
+    status: isNote ? 'note' : 'sending',
+    read: true,
+  };
+  box.insertAdjacentHTML('beforeend', messageHtml(temp));
+  box.scrollTop = box.scrollHeight;
+  const tempNode = box.querySelector(`[data-mid="${tempId}"]`);
   try {
-    await api('messages', {
+    const saved = await api('messages', {
       method: 'POST',
-      body: { clientId: state.activeClientId, text, note: state.noteMode },
+      body: { clientId, text, note: isNote },
     });
+    // Se sustituye la burbuja temporal por la definitiva del servidor.
+    if (tempNode && state.activeClientId === clientId) {
+      tempNode.outerHTML = messageHtml(saved);
+      const real = box.querySelector(`[data-mid="${(window.CSS && CSS.escape) ? CSS.escape(saved.id) : saved.id}"]`);
+      if (real) bindMsgButtons(real, clientId);
+      state.lastMessageCount += 1;
+    } else if (state.activeClientId === clientId) {
+      await openConversation(clientId);
+    }
   } catch (err) {
+    if (tempNode) tempNode.remove();
+    if (state.activeClientId === clientId && !$('#chat-input').value.trim()) {
+      $('#chat-input').value = text; // se recupera el texto para reintentar
+    }
     alert(err.message);
   }
-  await openConversation(state.activeClientId);
 }
 
 $('#tpl-select').addEventListener('change', async () => {
@@ -614,6 +698,72 @@ $('#btn-pin').addEventListener('click', async () => {
 $('#btn-back-conv').addEventListener('click', () => {
   document.querySelector('.inbox').classList.remove('mobile-chat');
 });
+
+// Nota fija del cliente: se muestra en la cabecera del chat y se edita al pulsar.
+$('#chat-note').addEventListener('click', () => {
+  if (!state.activeClientId) return;
+  const current = (state.activeClient && state.activeClient.pinnedNote) || '';
+  openDialog('Nota fija del cliente', [{
+    name: 'pinnedNote', label: 'Nota (visible siempre en la cabecera del chat)',
+    type: 'textarea', value: current,
+    placeholder: 'Ej.: Habla poco español, prefiere que le llamen. NIE en trámite.',
+  }], async (v) => {
+    const note = (v.pinnedNote || '').trim();
+    const updated = await api('clients/' + state.activeClientId, { method: 'PUT', body: { pinnedNote: note } });
+    if (state.activeClient) state.activeClient.pinnedNote = updated.pinnedNote || '';
+    const el = $('#chat-note');
+    el.classList.toggle('empty', !note);
+    el.textContent = note ? '📌 ' + note : '📌 Añadir nota fija…';
+  });
+});
+
+// Programar un mensaje para enviarlo más tarde.
+$('#btn-schedule').addEventListener('click', () => {
+  if (!state.activeClientId) return;
+  const text = $('#chat-input').value.trim();
+  const pad = (n) => String(n).padStart(2, '0');
+  const d = new Date(Date.now() + 60 * 60 * 1000); // por defecto: dentro de 1 h
+  const defaultLocal = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  openDialog('Programar mensaje', [
+    { name: 'text', label: 'Mensaje', type: 'textarea', value: text, placeholder: 'Escribe el mensaje que se enviará…' },
+    { name: 'sendAt', label: 'Fecha y hora de envío', type: 'datetime-local', value: defaultLocal },
+  ], async (v) => {
+    const body = (v.text || '').trim();
+    if (!body) return alert('El mensaje está vacío.');
+    if (!v.sendAt) return alert('Indica cuándo enviarlo.');
+    const sendAt = new Date(v.sendAt).getTime();
+    if (!Number.isFinite(sendAt) || sendAt <= Date.now()) return alert('La fecha debe ser futura.');
+    await api('scheduled-messages', { method: 'POST', body: { clientId: state.activeClientId, text: body, sendAt } });
+    $('#chat-input').value = '';
+    await renderScheduled();
+    alert('Mensaje programado ✅');
+  });
+});
+
+// Lista de mensajes programados pendientes del cliente activo (bajo la charla).
+async function renderScheduled() {
+  const wrap = $('#chat-scheduled');
+  if (!wrap || !state.activeClientId) return;
+  let list = [];
+  try {
+    list = await api('scheduled-messages?clientId=' + encodeURIComponent(state.activeClientId));
+  } catch { return; }
+  const pending = list.filter((s) => s.status === 'pendiente');
+  if (!pending.length) { wrap.classList.add('hidden'); wrap.innerHTML = ''; return; }
+  wrap.classList.remove('hidden');
+  wrap.innerHTML = '<div class="sched-title">🕒 Programados</div>' + pending.map((s) => `
+    <div class="sched-item">
+      <span class="sched-when">${fmtDateTime(s.sendAt)}</span>
+      <span class="sched-text">${esc(s.text)}</span>
+      <button class="btn small sched-cancel" data-id="${esc(s.id)}" title="Cancelar">✕</button>
+    </div>`).join('');
+  wrap.querySelectorAll('.sched-cancel').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      await api('scheduled-messages/' + btn.dataset.id, { method: 'DELETE' });
+      await renderScheduled();
+    });
+  });
+}
 
 // --- Selector de emojis ---
 const EMOJIS = {
