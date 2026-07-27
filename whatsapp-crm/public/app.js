@@ -177,6 +177,7 @@ async function refreshView() {
     if (state.view === 'fichas') await renderFichas();
     if (state.view === 'knowledge') await renderKnowledge();
     if (state.view === 'forms') await renderForms();
+    if (state.view === 'receivables') await renderReceivables();
     if (state.view === 'reports') await renderReports();
     if (state.view === 'reminders') await renderReminders();
     if (state.view === 'campaigns') await renderCampaigns();
@@ -204,6 +205,7 @@ async function updateUnreadBadge() {
     if (urgent) { tb.textContent = urgent; tb.classList.remove('hidden'); } else tb.classList.add('hidden');
   } catch { /* ignore */ }
   await updateTaskBadge();
+  await updateCobrosBadge();
 }
 
 // ---------------------------------------------------------------------------
@@ -1628,6 +1630,13 @@ function reportQuery() {
 }
 
 // Barras horizontales sencillas (etiqueta · barra · valor).
+// «2026-07» → «jul 2026» para el eje del gráfico de ingresos por mes.
+function monthLabel(m) {
+  const [y, mo] = String(m).split('-');
+  const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  return `${meses[Number(mo) - 1] || mo} ${y}`;
+}
+
 function barList(entries, labelMap, fmt) {
   const max = Math.max(1, ...entries.map(([, v]) => v));
   return entries.map(([k, v]) => `
@@ -1663,6 +1672,21 @@ async function renderReports() {
     .sort((a, b) => b[1] - a[1]);
   $('#rep-chart-income').innerHTML = barList(incEntries, TYPE_LABEL, eur);
 
+  // Tasas oficiales gestionadas (separadas de los honorarios).
+  $('#rep-tax-cards').innerHTML = `
+    <div class="card"><div class="num">${eur(r.taxFacturado)}</div><div class="lbl">Tasas gestionadas</div></div>
+    <div class="card ${r.taxCobrado ? 'ok' : ''}"><div class="num">${eur(r.taxCobrado)}</div><div class="lbl">Tasas abonadas</div></div>
+    <div class="card ${r.taxPendiente ? 'warn' : ''}"><div class="num">${eur(r.taxPendiente)}</div><div class="lbl">Tasas pendientes</div></div>`;
+
+  // Ingresos cobrados por mes (últimos meses del periodo).
+  const monthEntries = Object.entries(r.incomeByMonth || {})
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-12)
+    .map(([m, v]) => [monthLabel(m), v.cobrado]);
+  $('#rep-chart-month').innerHTML = monthEntries.some(([, v]) => v > 0)
+    ? barList(monthEntries, null, eur)
+    : '<p class="hint">Todavía no hay cobros registrados en este periodo.</p>';
+
   $('#rep-table').innerHTML = r.byTitle.length ? `
     <table class="rep-table">
       <thead><tr><th>Área</th><th>Trámite</th><th class="num">Total</th><th class="num">Completados</th></tr></thead>
@@ -1671,6 +1695,67 @@ async function renderReports() {
         <td class="num">${t.count}</td><td class="num">${t.completados}</td></tr>`).join('')}</tbody>
     </table>` : '<p class="hint">No hay expedientes en este periodo.</p>';
 }
+
+// ---------------------------------------------------------------------------
+// Por cobrar: honorarios y tasas pendientes por cliente
+// ---------------------------------------------------------------------------
+
+async function renderReceivables() {
+  const r = await api('receivables');
+  const eur = (n) => (Number(n) || 0).toLocaleString('es-ES') + ' €';
+  $('#cobros-cards').innerHTML = `
+    <div class="card ${r.total ? 'warn' : ''}"><div class="num">${eur(r.total)}</div><div class="lbl">Total por cobrar</div></div>
+    <div class="card"><div class="num">${eur(r.totalHonorarios)}</div><div class="lbl">Honorarios pendientes</div></div>
+    <div class="card"><div class="num">${eur(r.totalTasas)}</div><div class="lbl">Tasas pendientes</div></div>
+    <div class="card"><div class="num">${r.clients.length}</div><div class="lbl">Clientes con saldo</div></div>`;
+
+  $('#cobros-list').innerHTML = r.clients.length ? r.clients.map((e) => {
+    const items = e.items.map((it) => {
+      const parts = [];
+      if (it.fee) parts.push(`honorarios ${eur(it.fee)}`);
+      if (it.tax) parts.push(`tasa ${eur(it.tax)}${it.taxModel ? ' · ' + esc(it.taxModel) : ''}`);
+      return `<li>${esc(it.title)} — ${parts.join(' + ')}</li>`;
+    }).join('');
+    const ageCls = e.days >= 30 ? 'over' : '';
+    return `<div class="cobro-row" data-id="${esc(e.clientId)}">
+      <div class="cobro-main">
+        <div class="cobro-top">
+          <span class="cobro-name">${esc(e.name)}</span>
+          <span class="cobro-total">${eur(e.total)}</span>
+        </div>
+        <ul class="cobro-items">${items}</ul>
+        <div class="cobro-age ${ageCls}">⏳ pendiente desde hace ${e.days} día${e.days === 1 ? '' : 's'}</div>
+      </div>
+      <button class="btn small cobro-remind" data-id="${esc(e.clientId)}" title="Enviar recordatorio de pago por WhatsApp">💬 Reclamar</button>
+    </div>`;
+  }).join('') : '<div class="today-clear">✨ No hay nada pendiente de cobro. ¡Todo al día!</div>';
+
+  $('#cobros-list').querySelectorAll('.cobro-remind').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const e = r.clients.find((x) => x.clientId === btn.dataset.id);
+      if (!confirm(`¿Enviar a ${e.name} un recordatorio de ${eur(e.total)} pendientes por WhatsApp?`)) return;
+      btn.disabled = true; btn.textContent = '⏳…';
+      try {
+        await api('receivables/remind', { method: 'POST', body: { clientId: btn.dataset.id } });
+        alert('Recordatorio enviado ✅');
+      } catch (err) {
+        alert(err.message);
+      }
+      await renderReceivables();
+    });
+  });
+}
+
+// Insignia de la barra: importe total por cobrar (nº de clientes con saldo).
+async function updateCobrosBadge() {
+  try {
+    const r = await api('receivables');
+    const b = $('#nav-cobros');
+    if (r.clients.length) { b.textContent = r.clients.length; b.classList.remove('hidden'); } else b.classList.add('hidden');
+  } catch { /* sin conexión */ }
+}
+
+$('#btn-cobros-refresh').addEventListener('click', renderReceivables);
 
 // ---------------------------------------------------------------------------
 // Agenda de vencimientos (expedientes + citas + recordatorios)
@@ -2351,6 +2436,8 @@ async function renderAutomations() {
   $('#auto-ms-sp').checked = s.microsoft.sharepoint.enabled;
   $('#auto-ms-sp-site').value = s.microsoft.sharepoint.sitePath;
   $('#auto-ms-sp-folder').value = s.microsoft.sharepoint.folderTemplate;
+  $('#auto-ms-backup').checked = (s.microsoft.backup || {}).enabled || false;
+  $('#auto-ms-backup-folder').value = (s.microsoft.backup || {}).folderPath || 'Copias de seguridad CRM';
   api('test-microsoft').then((r) => {
     $('#ms-status').textContent = r.configured
       ? 'Credenciales de Microsoft configuradas en el servidor.'
@@ -2460,6 +2547,10 @@ $('#btn-auto-save').addEventListener('click', async () => {
             enabled: $('#auto-ms-sp').checked,
             sitePath: $('#auto-ms-sp-site').value.trim(),
             folderTemplate: $('#auto-ms-sp-folder').value.trim(),
+          },
+          backup: {
+            enabled: $('#auto-ms-backup').checked,
+            folderPath: $('#auto-ms-backup-folder').value.trim() || 'Copias de seguridad CRM',
           },
         },
       },

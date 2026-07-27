@@ -34,6 +34,7 @@
       <symbol id="ico-forms" viewBox="0 0 24 24"><rect x="4.5" y="3.5" width="15" height="17" rx="2"/><path d="M8 8h5M8 12h8M8 16h8"/><path d="M15.5 7.5l1.2 1.2 2.3-2.4" stroke-width="1.7"/></symbol>
       <symbol id="ico-tasks" viewBox="0 0 24 24"><rect x="4" y="4" width="4.5" height="16" rx="1"/><rect x="9.75" y="4" width="4.5" height="16" rx="1"/><rect x="15.5" y="4" width="4.5" height="16" rx="1"/></symbol>
       <symbol id="ico-kb" viewBox="0 0 24 24"><path d="M4 6.5A2 2 0 0 1 6 4.5h5v15H6a2 2 0 0 0-2 2z"/><path d="M20 6.5a2 2 0 0 0-2-2h-5v15h5a2 2 0 0 1 2 2z"/></symbol>
+      <symbol id="ico-cobros" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M14.5 9.2a3 3 0 0 0-4.6.6c-1 1.6-.6 3.7 1 4.6a3 3 0 0 0 3.6-.4M8.8 11h4M8.5 13h4"/></symbol>
       <symbol id="ico-campaigns" viewBox="0 0 24 24"><path d="M4 10v4a1.5 1.5 0 0 0 1.5 1.5H8l7 4.5V4L8 8.5H5.5A1.5 1.5 0 0 0 4 10Z"/><path d="M18 8.5a5 5 0 0 1 0 7"/></symbol>
       <symbol id="ico-automations" viewBox="0 0 24 24"><path d="M13 2.5 4.5 13.5H11l-1 8L19.5 10H13Z"/></symbol>
       <symbol id="ico-logout" viewBox="0 0 24 24"><path d="M14 4.5H6A1.5 1.5 0 0 0 4.5 6v12A1.5 1.5 0 0 0 6 19.5h8"/><path d="M17 8.5 20.5 12 17 15.5M20 12H10"/></symbol>
@@ -63,6 +64,7 @@
       <button class="nav-btn" data-view="fichas"><svg class="nav-ico"><use href="#ico-fichas"/></svg> <span class="nav-label">Fichas de trámite</span></button>
       <button class="nav-btn" data-view="knowledge"><svg class="nav-ico"><use href="#ico-kb"/></svg> <span class="nav-label">Tarifas y trámites</span></button>
       <button class="nav-btn" data-view="forms"><svg class="nav-ico"><use href="#ico-forms"/></svg> <span class="nav-label">Formularios</span></button>
+      <button class="nav-btn" data-view="receivables"><svg class="nav-ico"><use href="#ico-cobros"/></svg> <span class="nav-label">Por cobrar</span> <span class="badge hidden" id="nav-cobros"></span></button>
       <button class="nav-btn" data-view="reports"><svg class="nav-ico"><use href="#ico-reports"/></svg> <span class="nav-label">Informes</span></button>
       <button class="nav-btn" data-view="reminders"><svg class="nav-ico"><use href="#ico-reminders"/></svg> <span class="nav-label">Recordatorios</span></button>
       <button class="nav-btn" data-view="campaigns"><svg class="nav-ico"><use href="#ico-campaigns"/></svg> <span class="nav-label">Campañas</span></button>
@@ -233,6 +235,17 @@
         <div id="template-list" class="list"></div>
       </section>
 
+      <!-- Por cobrar -->
+      <section id="view-receivables" class="view hidden">
+        <div class="panel-head">
+          <h1>Por cobrar</h1>
+          <button class="btn small" id="btn-cobros-refresh">↻ Actualizar</button>
+        </div>
+        <p class="hint">Honorarios y tasas oficiales pendientes de cobro, por cliente. Reclama por WhatsApp con un clic. Los importes se marcan como cobrados desde cada expediente.</p>
+        <div class="cards" id="cobros-cards"></div>
+        <div id="cobros-list"></div>
+      </section>
+
       <!-- Informes -->
       <section id="view-reports" class="view hidden">
         <div class="panel-head">
@@ -247,9 +260,15 @@
           <button class="btn small" data-range="todo">Todo</button>
         </div>
         <div class="cards" id="rep-cards"></div>
-        <h2>Ingresos</h2>
+        <h2>Ingresos (honorarios de la gestoría)</h2>
         <div class="cards" id="rep-income-cards"></div>
+        <h2>Tasas oficiales gestionadas</h2>
+        <div class="cards" id="rep-tax-cards"></div>
         <div class="charts-row">
+          <div class="chart-card chart-wide">
+            <h3>Ingresos por mes (cobrado)</h3>
+            <div id="rep-chart-month"></div>
+          </div>
           <div class="chart-card">
             <h3>Trámites por área</h3>
             <div id="rep-chart-area"></div>
@@ -480,11 +499,13 @@
           </div>
           <label>Carpeta del cliente (<code>{aa}</code> año en 2 cifras, <code>{aaaa}</code> año, <code>{cliente}</code> nombre en mayúsculas)</label>
           <div class="auto-row"><input type="text" id="auto-ms-sp-folder" style="width:100%"></div>
+          <div class="auto-row" style="margin-top:8px"><label><input type="checkbox" id="auto-ms-backup"> Subir la copia de seguridad diaria a la nube de Microsoft</label></div>
+          <div class="auto-row"><label>Carpeta de copias <input type="text" id="auto-ms-backup-folder" style="width:250px" placeholder="Copias de seguridad CRM"></label></div>
         </div>
 
         <div class="auto-card">
           <h3>💾 Copias de seguridad</h3>
-          <p class="hint">Cada día se guarda automáticamente una copia de todos los datos (clientes, chats, expedientes, citas…) y se conservan las últimas 14. Los archivos adjuntos están en la carpeta <code>data/uploads</code>.</p>
+          <p class="hint">Cada día se guarda automáticamente una copia de todos los datos (clientes, chats, expedientes, citas…) y se conservan las últimas 14. Los archivos adjuntos están en la carpeta <code>data/uploads</code>. Si activas la subida a la nube (arriba), la copia también se guarda en SharePoint.</p>
           <button class="btn small" id="btn-backup-now">＋ Crear copia ahora</button>
           <div id="backup-list" class="list" style="margin-top:10px"></div>
         </div>

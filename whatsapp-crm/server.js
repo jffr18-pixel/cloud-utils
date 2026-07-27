@@ -867,6 +867,23 @@ async function finalizeSignature(db, sig, client, name, signatureDataUrl, req) {
   return sig;
 }
 
+// Sube una copia de seguridad a SharePoint (además de la copia local), si está
+// activado en Automatizaciones y Microsoft 365 está configurado.
+async function uploadBackupToCloud(db, backupName) {
+  const ms = auto.getSettings(db).microsoft;
+  if (!ms.backup || !ms.backup.enabled || !msgraph.isConfigured()) return null;
+  const full = path.join(backup.BACKUPS_DIR, backupName);
+  if (!fs.existsSync(full)) return null;
+  const data = fs.readFileSync(full);
+  return msgraph.uploadToSharePoint({
+    hostname: ms.sharepoint.hostname,
+    sitePath: ms.sharepoint.sitePath,
+    folderPath: ms.backup.folderPath || 'Copias de seguridad CRM',
+    filename: backupName,
+    data,
+  });
+}
+
 // Vista de una solicitud de firma para la interfaz (sin el token secreto).
 function publicSignature(sig) {
   return {
@@ -2094,8 +2111,11 @@ async function handleApi(req, res, url) {
     const bySegment = {};
     const byMonth = {};
     const incomeByArea = {}; // { area: { facturado, cobrado } }
+    const incomeByMonth = {}; // { 'YYYY-MM': { facturado, cobrado } }
     let facturado = 0;
     let cobrado = 0;
+    let taxFacturado = 0; // tasas oficiales gestionadas
+    let taxCobrado = 0; // tasas oficiales ya abonadas
     for (const c of cases) {
       byArea[c.type] = (byArea[c.type] || 0) + 1;
       byStatus[c.status] = (byStatus[c.status] || 0) + 1;
@@ -2109,6 +2129,12 @@ async function handleApi(req, res, url) {
       incomeByArea[c.type] = incomeByArea[c.type] || { facturado: 0, cobrado: 0 };
       incomeByArea[c.type].facturado += fee;
       if (c.paid) incomeByArea[c.type].cobrado += fee;
+      incomeByMonth[m] = incomeByMonth[m] || { facturado: 0, cobrado: 0 };
+      incomeByMonth[m].facturado += fee;
+      if (c.paid) incomeByMonth[m].cobrado += fee;
+      const tax = Number(c.taxAmount) || 0;
+      taxFacturado += tax;
+      if (c.taxPaid) taxCobrado += tax;
     }
     // Detalle por título de trámite (los expedientes concretos más frecuentes).
     const byTitle = {};
@@ -2128,9 +2154,73 @@ async function handleApi(req, res, url) {
       facturado,
       cobrado,
       pendiente: facturado - cobrado,
+      taxFacturado,
+      taxCobrado,
+      taxPendiente: taxFacturado - taxCobrado,
       incomeByArea,
+      incomeByMonth,
       byTitle: Object.values(byTitle).sort((a, b) => b.count - a.count),
     });
+  }
+
+  // --- Por cobrar: honorarios y tasas pendientes por cliente --------------
+  if (resource === 'receivables') {
+    const buildPending = () => {
+      const now = Date.now();
+      const byClient = new Map();
+      for (const c of db.cases) {
+        const feeDue = (Number(c.fee) || 0) > 0 && !c.paid ? Number(c.fee) : 0;
+        const taxDue = (Number(c.taxAmount) || 0) > 0 && !c.taxPaid ? Number(c.taxAmount) : 0;
+        if (!feeDue && !taxDue) continue;
+        const client = db.clients.find((x) => x.id === c.clientId);
+        if (!client) continue;
+        let e = byClient.get(client.id);
+        if (!e) {
+          e = { clientId: client.id, name: client.name, phone: client.phone,
+            honorarios: 0, tasas: 0, total: 0, oldest: now, items: [] };
+          byClient.set(client.id, e);
+        }
+        e.honorarios += feeDue;
+        e.tasas += taxDue;
+        e.total += feeDue + taxDue;
+        const since = c.updatedAt || c.createdAt || now;
+        if (since < e.oldest) e.oldest = since;
+        e.items.push({ caseId: c.id, title: c.title, fee: feeDue, tax: taxDue, taxModel: c.taxModel || '' });
+      }
+      return [...byClient.values()].map((e) => ({
+        ...e,
+        days: Math.floor((now - e.oldest) / (24 * 3600 * 1000)),
+      })).sort((a, b) => b.total - a.total);
+    };
+
+    if (req.method === 'GET') {
+      const list = buildPending();
+      return json(res, 200, {
+        clients: list,
+        totalHonorarios: list.reduce((s, e) => s + e.honorarios, 0),
+        totalTasas: list.reduce((s, e) => s + e.tasas, 0),
+        total: list.reduce((s, e) => s + e.total, 0),
+      });
+    }
+    // Reclamar por WhatsApp los importes pendientes de un cliente.
+    if (req.method === 'POST' && id === 'remind') {
+      const b = await readBody(req);
+      const entry = buildPending().find((e) => e.clientId === b.clientId);
+      if (!entry) return json(res, 404, { error: 'Este cliente no tiene importes pendientes' });
+      const client = db.clients.find((c) => c.id === entry.clientId);
+      const first = (client.name || '').split(' ')[0];
+      const lines = [`Hola ${first} 👋 Un recordatorio de los importes pendientes de tus trámites:`, ''];
+      for (const it of entry.items) {
+        const parts = [];
+        if (it.fee) parts.push(`honorarios ${it.fee.toLocaleString('es-ES')} €`);
+        if (it.tax) parts.push(`tasa oficial ${it.tax.toLocaleString('es-ES')} €`);
+        lines.push(`• ${it.title}: ${parts.join(' + ')}`);
+      }
+      lines.push('', `Total pendiente: ${entry.total.toLocaleString('es-ES')} €.`,
+        'Cuando puedas, nos dices y lo dejamos al día. ¡Gracias! 🙌');
+      const msg = await sendMessageToClient(db, client, lines.join('\n'));
+      return json(res, 200, { sent: true, messageStatus: msg.status });
+    }
   }
 
   if (req.method === 'GET' && resource === 'stats') {
@@ -2201,6 +2291,14 @@ async function handleApi(req, res, url) {
     if (req.method === 'POST' && !id) {
       const b = backup.create(true);
       security.audit('backup_creada', { user: sessionUser(req), ip: ipOf(req), name: b.name });
+      // Subida a la nube de Microsoft (si está activada).
+      try {
+        const cloud = await uploadBackupToCloud(db, b.name);
+        if (cloud) { b.cloudUrl = cloud.webUrl; security.audit('backup_nube', { name: b.name }); }
+      } catch (err) {
+        b.cloudError = err.message;
+        console.error('No se pudo subir la copia a la nube:', err.message);
+      }
       return json(res, 201, b);
     }
     if (req.method === 'GET' && id) {
@@ -3096,7 +3194,12 @@ setInterval(() => {
     .catch((err) => console.error('Error en automatizaciones:', err.message));
   try {
     const created = backup.ensureDaily();
-    if (created) console.log(`Copia de seguridad diaria creada: ${created.name}`);
+    if (created) {
+      console.log(`Copia de seguridad diaria creada: ${created.name}`);
+      uploadBackupToCloud(db, created.name)
+        .then((cloud) => { if (cloud) console.log(`Copia subida a la nube: ${created.name}`); })
+        .catch((err) => console.error('No se pudo subir la copia a la nube:', err.message));
+    }
   } catch (err) {
     console.error('Error al crear la copia de seguridad:', err.message);
   }

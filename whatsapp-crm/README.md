@@ -77,6 +77,16 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   el botón 📖 busca un trámite (tolerante a acentos) e inserta la respuesta
   lista para enviar, con el nombre del cliente ya puesto. Editable en la pestaña
   «Tarifas y trámites»; viene sembrada con los precios de la gestoría.
+- **💶 Por cobrar**: honorarios y tasas oficiales pendientes de cobro, agrupados
+  por cliente y ordenados por importe, con el total y un botón para reclamar por
+  WhatsApp en un clic (con el desglose de lo pendiente). La barra lateral avisa
+  de cuántos clientes tienen saldo.
+- **📊 Informes financieros**: además del cuadro de trámites, ingresos por mes
+  (cobrado), facturado / cobrado / pendiente y tasas oficiales gestionadas,
+  abonadas y pendientes, con desglose por área y exportación a CSV.
+- **☁️ Copias de seguridad en la nube (Microsoft)**: además de la copia local
+  diaria, la copia se sube automáticamente a SharePoint/OneDrive (activable en
+  Automatizaciones → Microsoft 365), para no perder nada si falla el servidor.
 - **📊 Panel con gráficas**: mensajes por día (recibidos/enviados),
   expedientes por estado, mensajes de la semana y tiempo medio de primera
   respuesta de los últimos 30 días.

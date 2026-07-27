@@ -172,6 +172,11 @@ const DEFAULTS = {
       // {aa}=año en 2 cifras, {aaaa}=año completo, {cliente}=nombre en mayúsculas
       folderTemplate: '{aa} CLIENTES/{aa} {segmento}/{aa} {cliente}/CRM WHATSAPP',
     },
+    // Copia de seguridad diaria subida a SharePoint (además de la copia local).
+    backup: {
+      enabled: false,
+      folderPath: 'Copias de seguridad CRM',
+    },
   },
   // Plantilla aprobada de Meta para cuando la ventana de 24 h está cerrada
   // (el cliente lleva más de 24 h sin escribir). Debe crearse y aprobarse en

@@ -575,6 +575,13 @@ async function main() {
     const autoDefaults = await req('GET', '/api/automations');
     assert(autoDefaults.status === 200 && autoDefaults.data.afterHours.enabled === false,
       'configuración por defecto: todo desactivado');
+    // Copia de seguridad en la nube: la opción se guarda.
+    const cloudSet = await req('PUT', '/api/automations', {
+      microsoft: { backup: { enabled: true, folderPath: 'Copias CRM' } },
+    });
+    assert(cloudSet.data.microsoft.backup.enabled === true && cloudSet.data.microsoft.backup.folderPath === 'Copias CRM',
+      'la subida de copias a la nube se configura');
+    await req('PUT', '/api/automations', { microsoft: { backup: { enabled: false } } });
 
     // Fuera de horario: sin días laborables → siempre cerrado.
     await req('PUT', '/api/automations', {
@@ -819,9 +826,37 @@ async function main() {
     assert(report.data.pendiente === report.data.facturado - report.data.cobrado, 'pendiente = facturado − cobrado');
     assert(report.data.incomeByArea.extranjeria && report.data.incomeByArea.extranjeria.facturado >= 250,
       'informe desglosa la facturación por área');
+    // Informes financieros: tasas oficiales e ingresos por mes.
+    assert(typeof report.data.taxFacturado === 'number' && report.data.taxPendiente === report.data.taxFacturado - report.data.taxCobrado,
+      'informe incluye tasas: pendiente = gestionadas − abonadas');
+    assert(report.data.incomeByMonth && typeof report.data.incomeByMonth === 'object', 'informe incluye ingresos por mes');
     // Con un rango de fechas imposible, no hay trámites.
     const emptyReport = await req('GET', '/api/reports?from=1999-01-01&to=1999-12-31');
     assert(emptyReport.data.total === 0, 'el filtro de fechas del informe acota los resultados');
+
+    console.log('Por cobrar (honorarios y tasas pendientes)');
+    // Cliente con honorarios pendientes (100 €) y tasa pendiente (30 €).
+    const cobrClient = await req('POST', '/api/clients', { name: 'Deudor Prueba', phone: '600112233' });
+    await req('POST', '/api/cases', {
+      clientId: cobrClient.data.id, title: 'Trámite con saldo', type: 'otro',
+      fee: 100, paid: false, taxModel: '790', taxAmount: 30, taxPaid: false, status: 'completado',
+    });
+    const receivables = await req('GET', '/api/receivables');
+    const deudor = receivables.data.clients.find((e) => e.clientId === cobrClient.data.id);
+    assert(deudor && deudor.honorarios === 100 && deudor.tasas === 30 && deudor.total === 130,
+      'por cobrar agrupa honorarios y tasas pendientes por cliente');
+    assert(receivables.data.total >= 130, 'por cobrar suma el total pendiente');
+    const remind = await req('POST', '/api/receivables/remind', { clientId: cobrClient.data.id });
+    assert(remind.status === 200 && remind.data.sent, 'reclamar por WhatsApp envía el recordatorio');
+    const remindMsgs = (await req('GET', '/api/messages?clientId=' + cobrClient.data.id)).data;
+    assert(remindMsgs.some((m) => /Total pendiente: 130/.test(m.text || '')), 'el recordatorio detalla el total pendiente');
+    // Al marcar todo como cobrado, el cliente desaparece de «por cobrar».
+    const deudorCases = (await req('GET', '/api/cases?clientId=' + cobrClient.data.id)).data;
+    await req('PUT', '/api/cases/' + deudorCases[0].id, { paid: true, taxPaid: true });
+    const receivables2 = await req('GET', '/api/receivables');
+    assert(!receivables2.data.clients.some((e) => e.clientId === cobrClient.data.id),
+      'al cobrarlo todo, el cliente sale de «por cobrar»');
+    await req('DELETE', '/api/clients/' + cobrClient.data.id); // limpieza (no altera el panel)
     // Exportación CSV del informe.
     const repCsv = await fetch(`${BASE}/api/export/informe.csv`);
     assert(repCsv.status === 200 && repCsv.headers.get('content-type').includes('text/csv'),
