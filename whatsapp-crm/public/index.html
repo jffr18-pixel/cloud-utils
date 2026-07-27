@@ -32,6 +32,7 @@
       <symbol id="ico-agenda" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3"/><path d="M8 13h2M8 16.5h2M13 13l1.3 1.3L17 12" stroke-width="1.8"/></symbol>
       <symbol id="ico-today" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12h2.5M19 12h2.5M5 5l1.8 1.8M17.2 17.2 19 19M19 5l-1.8 1.8M6.8 17.2 5 19"/></symbol>
       <symbol id="ico-forms" viewBox="0 0 24 24"><rect x="4.5" y="3.5" width="15" height="17" rx="2"/><path d="M8 8h5M8 12h8M8 16h8"/><path d="M15.5 7.5l1.2 1.2 2.3-2.4" stroke-width="1.7"/></symbol>
+      <symbol id="ico-tasks" viewBox="0 0 24 24"><rect x="4" y="4" width="4.5" height="16" rx="1"/><rect x="9.75" y="4" width="4.5" height="16" rx="1"/><rect x="15.5" y="4" width="4.5" height="16" rx="1"/></symbol>
       <symbol id="ico-campaigns" viewBox="0 0 24 24"><path d="M4 10v4a1.5 1.5 0 0 0 1.5 1.5H8l7 4.5V4L8 8.5H5.5A1.5 1.5 0 0 0 4 10Z"/><path d="M18 8.5a5 5 0 0 1 0 7"/></symbol>
       <symbol id="ico-automations" viewBox="0 0 24 24"><path d="M13 2.5 4.5 13.5H11l-1 8L19.5 10H13Z"/></symbol>
       <symbol id="ico-logout" viewBox="0 0 24 24"><path d="M14 4.5H6A1.5 1.5 0 0 0 4.5 6v12A1.5 1.5 0 0 0 6 19.5h8"/><path d="M17 8.5 20.5 12 17 15.5M20 12H10"/></symbol>
@@ -51,6 +52,7 @@
       </div>
       <button class="nav-btn active" data-view="dashboard"><svg class="nav-ico"><use href="#ico-panel"/></svg> <span class="nav-label">Panel</span></button>
       <button class="nav-btn" data-view="today"><svg class="nav-ico"><use href="#ico-today"/></svg> <span class="nav-label">Hoy</span> <span class="badge hidden" id="nav-today"></span></button>
+      <button class="nav-btn" data-view="tasks"><svg class="nav-ico"><use href="#ico-tasks"/></svg> <span class="nav-label">Tareas</span> <span class="badge hidden" id="nav-tasks"></span></button>
       <button class="nav-btn" data-view="inbox"><svg class="nav-ico"><use href="#ico-whatsapp"/></svg> <span class="nav-label">WhatsApp</span> <span class="badge hidden" id="nav-unread"></span></button>
       <button class="nav-btn" data-view="clients"><svg class="nav-ico"><use href="#ico-clients"/></svg> <span class="nav-label">Clientes</span></button>
       <button class="nav-btn" data-view="cases"><svg class="nav-ico"><use href="#ico-cases"/></svg> <span class="nav-label">Expedientes</span></button>
@@ -95,6 +97,19 @@
         </div>
         <p class="hint">Todo lo que requiere tu atención hoy, en un solo sitio. Haz clic en cualquier elemento para ir a él.</p>
         <div id="today-content"></div>
+      </section>
+
+      <!-- Tareas del equipo (kanban) -->
+      <section id="view-tasks" class="view hidden">
+        <div class="panel-head">
+          <h1>Tareas del equipo</h1>
+          <button class="btn primary" id="btn-new-task">＋ Nueva tarea</button>
+        </div>
+        <p class="hint">Reparto de trabajo entre el equipo. Arrastra con los botones ◀ ▶ para mover una tarea de columna.</p>
+        <div class="task-filters" id="task-filters">
+          <button class="chip active" data-assignee="">Todas</button>
+        </div>
+        <div id="tasks-board" class="tasks-board"></div>
       </section>
 
       <!-- WhatsApp -->
@@ -154,6 +169,7 @@
                 <button class="btn btn-icon" id="btn-attach" title="Adjuntar documento o imagen"><svg class="ui-ico"><use href="#ico-attach"/></svg></button>
                 <button class="btn btn-icon" id="btn-note-mode" title="Nota interna: se guarda en el chat pero NO se envía al cliente"><svg class="ui-ico"><use href="#ico-note"/></svg></button>
                 <button class="btn btn-icon" id="btn-schedule" title="Programar el mensaje para más tarde">🕒</button>
+                <button class="btn btn-icon" id="btn-sign" title="Pedir firma de un documento (autorización / RGPD)">✍️</button>
                 <input type="file" id="file-input" class="hidden">
                 <textarea id="chat-input" rows="2" placeholder="Escribe un mensaje…"></textarea>
                 <button class="btn primary" id="btn-send">Enviar</button>

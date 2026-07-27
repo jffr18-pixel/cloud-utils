@@ -136,6 +136,8 @@ const state = {
   users: [],
   activeClientId: null,
   activeClient: null,
+  tasks: [],
+  taskAssignee: '',
   caseFilter: '',
   segFilter: '',
   apptFilter: 'proximas',
@@ -164,6 +166,7 @@ async function refreshView() {
   try {
     if (state.view === 'dashboard') await renderDashboard();
     if (state.view === 'today') await renderToday();
+    if (state.view === 'tasks') await renderTasks();
     if (state.view === 'inbox') await renderInbox();
     if (state.view === 'clients') await renderClients();
     if (state.view === 'cases') await renderCases();
@@ -198,6 +201,7 @@ async function updateUnreadBadge() {
     const tb = $('#nav-today');
     if (urgent) { tb.textContent = urgent; tb.classList.remove('hidden'); } else tb.classList.add('hidden');
   } catch { /* ignore */ }
+  await updateTaskBadge();
 }
 
 // ---------------------------------------------------------------------------
@@ -740,6 +744,42 @@ $('#btn-schedule').addEventListener('click', () => {
   });
 });
 
+// Pedir firma de un documento (autorización de representación / RGPD).
+$('#btn-sign').addEventListener('click', async () => {
+  if (!state.activeClientId) return;
+  const [docs, cases] = await Promise.all([
+    api('signatures/docs'),
+    api('cases?clientId=' + encodeURIComponent(state.activeClientId)),
+  ]);
+  openDialog('Pedir firma de un documento', [
+    {
+      name: 'docType', label: 'Documento a firmar', type: 'select',
+      value: 'representacion', options: docs.map((d) => [d.key, d.label]),
+    },
+    {
+      name: 'caseId', label: 'Expediente (opcional, para vincular la firma)', type: 'select',
+      value: '', options: [['', '— Ninguno —'], ...cases.map((c) => [c.id, c.title])],
+    },
+    {
+      name: 'send', label: 'Enviar el enlace ahora por WhatsApp', type: 'select',
+      value: 'si', options: [['si', 'Sí, enviar por WhatsApp'], ['no', 'No, solo copiar el enlace']],
+    },
+  ], async (v) => {
+    const r = await api('signatures', {
+      method: 'POST',
+      body: { clientId: state.activeClientId, docType: v.docType, caseId: v.caseId || null, send: v.send === 'si' },
+    });
+    await openConversation(state.activeClientId);
+    if (v.send === 'si' && !r.sendError) {
+      alert('Enlace de firma enviado por WhatsApp ✅');
+    } else {
+      try { await navigator.clipboard.writeText(r.signUrl); } catch { /* sin permiso de portapapeles */ }
+      alert('Enlace de firma:\n\n' + r.signUrl + '\n\n(Copiado al portapapeles)'
+        + (r.sendError ? '\n\n⚠️ No se pudo enviar por WhatsApp: ' + r.sendError : ''));
+    }
+  });
+});
+
 // Lista de mensajes programados pendientes del cliente activo (bajo la charla).
 async function renderScheduled() {
   const wrap = $('#chat-scheduled');
@@ -1204,10 +1244,16 @@ function caseFields(item = {}, clients = [], fichas = []) {
     },
     { name: 'dueDate', label: 'Fecha límite', type: 'date', value: item.dueDate },
     { name: 'expiryDate', label: 'Fecha de caducidad (TIE, NIE, ITV… avisa antes de vencer)', type: 'date', value: item.expiryDate },
-    { name: 'fee', label: 'Honorario (€)', type: 'number', value: item.fee || '' },
+    { name: 'fee', label: 'Honorario de la gestoría (€)', type: 'number', value: item.fee || '' },
     {
-      name: 'paid', label: 'Cobrado', type: 'select', value: item.paid ? 'si' : 'no',
+      name: 'paid', label: 'Honorario cobrado', type: 'select', value: item.paid ? 'si' : 'no',
       options: [['no', 'Pendiente de cobro'], ['si', 'Cobrado']],
+    },
+    { name: 'taxModel', label: 'Tasa oficial · modelo (ej. «790 cód. 012», «Tasa 052»)', value: item.taxModel || '' },
+    { name: 'taxAmount', label: 'Tasa oficial · importe (€)', type: 'number', value: item.taxAmount || '' },
+    {
+      name: 'taxPaid', label: 'Tasa oficial abonada', type: 'select', value: item.taxPaid ? 'si' : 'no',
+      options: [['no', 'Pendiente de pago'], ['si', 'Abonada']],
     },
     checklistField(item, fichas),
     { name: 'docs', label: 'Documentación necesaria (una línea por documento; se usa en la automatización)', type: 'textarea', value: item.docs },
@@ -1274,7 +1320,11 @@ function checklistField(item = {}, fichas = []) {
 
 // Normaliza los valores del formulario de expediente antes de enviarlos.
 function caseBody(v) {
-  return { ...v, fee: Number(v.fee) || 0, paid: v.paid === 'si' };
+  return {
+    ...v,
+    fee: Number(v.fee) || 0, paid: v.paid === 'si',
+    taxAmount: Number(v.taxAmount) || 0, taxPaid: v.taxPaid === 'si',
+  };
 }
 
 async function renderCases() {
@@ -1296,7 +1346,10 @@ async function renderCases() {
       ? `<span class="chk-badge ${done === chk.length ? 'ok' : ''}" title="Documentación recibida">📎 ${done}/${chk.length}</span>` : '';
     const fee = Number(c.fee) || 0;
     const feeBadge = fee
-      ? `<span class="fee-badge ${c.paid ? 'paid' : 'due'}" title="${c.paid ? 'Cobrado' : 'Pendiente de cobro'}">${fee.toLocaleString('es-ES')} € ${c.paid ? '✓' : '•'}</span>` : '';
+      ? `<span class="fee-badge ${c.paid ? 'paid' : 'due'}" title="${c.paid ? 'Honorario cobrado' : 'Honorario pendiente de cobro'}">${fee.toLocaleString('es-ES')} € ${c.paid ? '✓' : '•'}</span>` : '';
+    const taxAmt = Number(c.taxAmount) || 0;
+    const taxBadge = (taxAmt || c.taxModel)
+      ? `<span class="tax-badge ${c.taxPaid ? 'paid' : 'due'}" title="Tasa oficial${c.taxModel ? ' (' + esc(c.taxModel) + ')' : ''}: ${c.taxPaid ? 'abonada' : 'pendiente de pago'}">🏛️ ${taxAmt ? taxAmt.toLocaleString('es-ES') + ' € ' : ''}${c.taxPaid ? '✓' : '•'}</span>` : '';
     let expBadge = '';
     if (c.expiryDate) {
       const days = Math.ceil((new Date(c.expiryDate + 'T00:00') - new Date()) / 86400000);
@@ -1308,7 +1361,7 @@ async function renderCases() {
     <div class="row case-row" data-id="${esc(c.id)}">
       <div class="grow">
         <div class="title">${esc(c.title)}</div>
-        <div class="sub">${esc(nameOf(c.clientId))} · <span class="area-badge">${esc(TYPE_LABEL[c.type] || c.type)}</span> ${chkBadge} ${feeBadge} ${expBadge}</div>
+        <div class="sub">${esc(nameOf(c.clientId))} · <span class="area-badge">${esc(TYPE_LABEL[c.type] || c.type)}</span> ${chkBadge} ${feeBadge} ${taxBadge} ${expBadge}</div>
       </div>
       <div class="meta">
         <span class="status ${esc(c.status)}">${esc(STATUS_LABEL[c.status] || c.status)}</span>
@@ -1349,6 +1402,141 @@ $('#btn-new-case').addEventListener('click', async () => {
     await renderCases();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tareas del equipo (panel kanban)
+// ---------------------------------------------------------------------------
+
+const TASK_COLS = [
+  { key: 'por_hacer', label: 'Por hacer', icon: '📋' },
+  { key: 'en_curso', label: 'En curso', icon: '⏳' },
+  { key: 'hecho', label: 'Hecho', icon: '✅' },
+];
+
+function taskFields(item = {}, clients = []) {
+  return [
+    { name: 'title', label: 'Tarea', value: item.title, required: true },
+    {
+      name: 'assignee', label: 'Responsable', type: 'select', value: item.assignee || '',
+      options: [['', 'Sin asignar'], ...state.users.map((u) => [u, u])],
+    },
+    {
+      name: 'status', label: 'Estado', type: 'select', value: item.status || 'por_hacer',
+      options: TASK_COLS.map((c) => [c.key, c.label]),
+    },
+    { name: 'dueDate', label: 'Fecha límite', type: 'date', value: item.dueDate },
+    {
+      name: 'clientId', label: 'Cliente (opcional)', type: 'select', value: item.clientId || '',
+      options: [['', '— Ninguno —'], ...clients.map((c) => [c.id, c.name])],
+    },
+    { name: 'notes', label: 'Notas', type: 'textarea', value: item.notes },
+  ];
+}
+
+function taskBody(v) {
+  return { ...v, dueDate: v.dueDate || null, clientId: v.clientId || null };
+}
+
+async function renderTasks() {
+  const [tasks, clients] = await Promise.all([api('tasks'), api('clients')]);
+  state.clients = clients;
+  const nameOf = (cid) => clients.find((c) => c.id === cid)?.name || '';
+  state.tasks = tasks;
+
+  // Filtro por responsable.
+  const people = [...new Set(tasks.map((t) => t.assignee).filter(Boolean))];
+  $('#task-filters').innerHTML = `<button class="chip ${!state.taskAssignee ? 'active' : ''}" data-assignee="">Todas</button>`
+    + people.map((p) => `<button class="chip ${state.taskAssignee === p ? 'active' : ''}" data-assignee="${esc(p)}">${esc(p)}</button>`).join('')
+    + `<button class="chip ${state.taskAssignee === '__none__' ? 'active' : ''}" data-assignee="__none__">Sin asignar</button>`;
+  $('#task-filters').querySelectorAll('.chip').forEach((chip) => {
+    chip.addEventListener('click', () => { state.taskAssignee = chip.dataset.assignee; renderTasks(); });
+  });
+
+  const visible = tasks.filter((t) => {
+    if (!state.taskAssignee) return true;
+    if (state.taskAssignee === '__none__') return !t.assignee;
+    return t.assignee === state.taskAssignee;
+  });
+
+  const today = new Date().toISOString().slice(0, 10);
+  const cardHtml = (t) => {
+    const idx = TASK_COLS.findIndex((c) => c.key === t.status);
+    const overdue = t.dueDate && t.status !== 'hecho' && t.dueDate < today;
+    return `<div class="task-card" data-id="${esc(t.id)}">
+      <div class="task-title">${esc(t.title)}</div>
+      <div class="task-meta">
+        ${t.assignee ? `<span class="task-who">👤 ${esc(t.assignee)}</span>` : '<span class="task-who none">Sin asignar</span>'}
+        ${t.clientId ? `<span class="task-client">🙍 ${esc(nameOf(t.clientId))}</span>` : ''}
+        ${t.dueDate ? `<span class="task-due ${overdue ? 'over' : ''}">📅 ${fmtDate(t.dueDate)}${overdue ? ' ¡vencida!' : ''}</span>` : ''}
+      </div>
+      ${t.notes ? `<div class="task-notes">${esc(t.notes)}</div>` : ''}
+      <div class="task-actions">
+        <button class="task-move" data-id="${esc(t.id)}" data-dir="-1" ${idx === 0 ? 'disabled' : ''} title="Mover a la izquierda">◀</button>
+        <button class="task-edit" data-id="${esc(t.id)}" title="Editar">✏️</button>
+        <button class="task-del" data-id="${esc(t.id)}" title="Eliminar">🗑️</button>
+        <button class="task-move" data-id="${esc(t.id)}" data-dir="1" ${idx === TASK_COLS.length - 1 ? 'disabled' : ''} title="Mover a la derecha">▶</button>
+      </div>
+    </div>`;
+  };
+
+  $('#tasks-board').innerHTML = TASK_COLS.map((col) => {
+    const items = visible.filter((t) => t.status === col.key);
+    return `<div class="task-col" data-status="${col.key}">
+      <div class="task-col-head">${col.icon} ${col.label} <span class="task-col-n">${items.length}</span></div>
+      <div class="task-col-body">${items.map(cardHtml).join('') || '<p class="task-empty">—</p>'}</div>
+    </div>`;
+  }).join('');
+
+  const board = $('#tasks-board');
+  board.querySelectorAll('.task-move').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const t = tasks.find((x) => x.id === btn.dataset.id);
+      const idx = TASK_COLS.findIndex((c) => c.key === t.status);
+      const next = TASK_COLS[idx + Number(btn.dataset.dir)];
+      if (!next) return;
+      await api('tasks/' + t.id, { method: 'PUT', body: { status: next.key } });
+      await renderTasks();
+      updateTaskBadge();
+    });
+  });
+  board.querySelectorAll('.task-edit').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const t = tasks.find((x) => x.id === btn.dataset.id);
+      openDialog('Editar tarea', taskFields(t, clients), async (v) => {
+        await api('tasks/' + t.id, { method: 'PUT', body: taskBody(v) });
+        await renderTasks();
+        updateTaskBadge();
+      });
+    });
+  });
+  board.querySelectorAll('.task-del').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('¿Eliminar esta tarea?')) return;
+      await api('tasks/' + btn.dataset.id, { method: 'DELETE' });
+      await renderTasks();
+      updateTaskBadge();
+    });
+  });
+}
+
+$('#btn-new-task').addEventListener('click', async () => {
+  const clients = await api('clients');
+  openDialog('Nueva tarea', taskFields({}, clients), async (v) => {
+    await api('tasks', { method: 'POST', body: taskBody(v) });
+    await renderTasks();
+    updateTaskBadge();
+  });
+});
+
+// Insignia de la barra: tareas pendientes (por hacer + en curso).
+async function updateTaskBadge() {
+  try {
+    const tasks = await api('tasks');
+    const pending = tasks.filter((t) => t.status !== 'hecho').length;
+    const b = $('#nav-tasks');
+    if (pending) { b.textContent = pending; b.classList.remove('hidden'); } else b.classList.add('hidden');
+  } catch { /* sin conexión */ }
+}
 
 // ---------------------------------------------------------------------------
 // Plantillas

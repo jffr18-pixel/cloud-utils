@@ -59,6 +59,19 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   con un reproductor dentro de la propia conversación.
 - **⚡ Envío instantáneo**: al pulsar Enter el mensaje aparece al momento en la
   conversación (envío optimista), sin esperar a recargar toda la charla.
+- **✍️ Firma digital de documentos**: pide una autorización de representación o
+  un consentimiento RGPD desde el chat (botón ✍️); el cliente abre un enlace
+  privado en el móvil, firma con el dedo y el PDF firmado —con fecha, hora e IP
+  como prueba— queda adjunto a la conversación, vinculado al expediente y subido
+  a SharePoint. Sin papel ni desplazamientos.
+- **🗂️ Panel de tareas del equipo**: tablero tipo kanban (Por hacer · En curso ·
+  Hecho) para repartir el trabajo entre el equipo, con responsable, fecha límite,
+  cliente vinculado y aviso de tareas vencidas. La barra lateral muestra cuántas
+  quedan pendientes.
+- **🏛️ Tasas oficiales por expediente**: además de tus honorarios, cada
+  expediente puede llevar la tasa oficial (modelo 790, tasa 052…), su importe y
+  si está abonada o pendiente, con distintivo propio separado del cobro de la
+  gestoría.
 - **📊 Panel con gráficas**: mensajes por día (recibidos/enviados),
   expedientes por estado, mensajes de la semana y tiempo medio de primera
   respuesta de los últimos 30 días.

@@ -14,6 +14,7 @@ const backup = require('./lib/backup');
 const msgraph = require('./lib/msgraph');
 const security = require('./lib/security');
 const transcribe = require('./lib/transcribe');
+const pdfsign = require('./lib/pdfsign');
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -649,6 +650,145 @@ async function sendMessageToClient(db, client, text, opts = {}) {
 // Envío usado por las automatizaciones (marca el mensaje como automático).
 function autoSender(db) {
   return (client, text, opts = {}) => sendMessageToClient(db, client, text, { ...opts, auto: true });
+}
+
+// URL pública absoluta (para enlaces que se envían al cliente por WhatsApp).
+function publicBase(req) {
+  if (process.env.PUBLIC_BASE_URL) return String(process.env.PUBLIC_BASE_URL).replace(/\/+$/, '');
+  const proto = (req.headers['x-forwarded-proto'] || '').split(',')[0].trim()
+    || (req.socket && req.socket.encrypted ? 'https' : 'http');
+  const host = req.headers.host || `localhost:${PORT}`;
+  return `${proto}://${host}`;
+}
+
+function longDate(d = new Date()) {
+  const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+    'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  return `${d.getDate()} de ${meses[d.getMonth()]} de ${d.getFullYear()}`;
+}
+
+// Plantillas de documentos para firmar. Se rellenan con los datos del cliente.
+// El texto legal va en español (es el idioma de las autorizaciones).
+const SIGN_DOCS = {
+  representacion: {
+    label: 'Autorización de representación + RGPD',
+    title: 'AUTORIZACIÓN DE REPRESENTACIÓN Y CONSENTIMIENTO DE PROTECCIÓN DE DATOS',
+    build(client, tramite) {
+      const nif = client.nif ? client.nif : '__________';
+      const t = tramite ? `«${tramite}»` : 'los trámites encomendados';
+      return `D./Dª. ${client.name}, con NIF/NIE ${nif}, por medio del presente documento AUTORIZA a BUROCRACIA ZERO (gestoría con domicilio en Toledo) a actuar en su nombre y representación ante los organismos públicos competentes —Oficina de Extranjería, Dirección General de Tráfico (DGT), Agencia Tributaria (AEAT), Tesorería General de la Seguridad Social y demás Administraciones Públicas— para la tramitación de ${t}, así como a presentar, subsanar y recoger en su nombre cuanta documentación sea necesaria.
+
+En cumplimiento del Reglamento (UE) 2016/679 (RGPD) y de la Ley Orgánica 3/2018 (LOPDGDD), el/la firmante CONSIENTE el tratamiento de sus datos personales por parte de Burocracia Zero con la única finalidad de prestar los servicios de gestoría contratados. Los datos se conservarán durante el tiempo legalmente exigible y no se cederán a terceros salvo obligación legal. El/la interesado/a puede ejercer sus derechos de acceso, rectificación, supresión, oposición, limitación y portabilidad dirigiéndose a Burocracia Zero.
+
+Y para que así conste, firma el presente documento de conformidad.
+
+Firmado en Toledo, a ${longDate()}.`;
+    },
+  },
+  rgpd: {
+    label: 'Consentimiento de protección de datos (RGPD)',
+    title: 'CONSENTIMIENTO DE PROTECCIÓN DE DATOS',
+    build(client) {
+      const nif = client.nif ? client.nif : '__________';
+      return `D./Dª. ${client.name}, con NIF/NIE ${nif}, en cumplimiento del Reglamento (UE) 2016/679 (RGPD) y de la Ley Orgánica 3/2018 (LOPDGDD), CONSIENTE el tratamiento de sus datos personales por parte de BUROCRACIA ZERO (gestoría con domicilio en Toledo) con la finalidad de prestar los servicios de gestoría contratados y mantener la comunicación necesaria a través de WhatsApp y otros medios.
+
+Los datos se conservarán durante el tiempo legalmente exigible y no se cederán a terceros salvo obligación legal. El/la interesado/a puede ejercer sus derechos de acceso, rectificación, supresión, oposición, limitación y portabilidad dirigiéndose a Burocracia Zero.
+
+Firmado en Toledo, a ${longDate()}.`;
+    },
+  },
+};
+
+function buildSignatureDoc(docType, client, tramite) {
+  const def = SIGN_DOCS[docType] || SIGN_DOCS.representacion;
+  return { title: def.title, body: def.build(client, tramite) };
+}
+
+// Procesa una firma recibida: genera el PDF firmado, lo adjunta a la
+// conversación (y al expediente si lo hay) y lo sube a SharePoint si procede.
+async function finalizeSignature(db, sig, client, name, signatureDataUrl, req) {
+  const now = new Date();
+  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  const safeName = (client.name || 'cliente').replace(/[^\w.\-]+/g, '_').slice(0, 40);
+  const filename = `Firmado_${safeName}_${stamp}.pdf`;
+  const ip = ipOf(req);
+  const footerLines = [
+    `Firmado por: ${name}`,
+    `NIF/NIE: ${client.nif || '—'}`,
+    `Fecha y hora de firma: ${now.toLocaleString('es-ES')}`,
+    `IP del firmante: ${ip}`,
+    `Referencia del documento: ${sig.id}`,
+  ];
+  const pdf = pdfsign.buildSignedPdf({
+    title: sig.title,
+    body: sig.body,
+    footerLines,
+    signatureJpeg: signatureDataUrl,
+  });
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  const localName = `${newId('sig')}_${filename}`;
+  fs.writeFileSync(path.join(UPLOADS_DIR, localName), pdf);
+
+  // Mensaje en la conversación con el PDF firmado (visible y previsualizable).
+  const msg = {
+    id: newId('msg'),
+    clientId: client.id,
+    direction: 'in',
+    text: `✍️ Documento firmado: ${sig.title}`,
+    media: { kind: 'document', mime: 'application/pdf', filename, localPath: localName, caption: '' },
+    timestamp: Date.now(),
+    status: 'received',
+    caseId: sig.caseId || null,
+    read: false,
+  };
+  db.messages.push(msg);
+
+  sig.status = 'firmado';
+  sig.signedAt = Date.now();
+  sig.signerName = name;
+  sig.signerIp = ip;
+  sig.pdfPath = localName;
+  sig.messageId = msg.id;
+  save();
+  security.audit('documento_firmado', { signatureId: sig.id, clientId: client.id, ip });
+
+  // Subida a SharePoint (si está configurado y activado).
+  try {
+    const msSp = auto.getSettings(db).microsoft.sharepoint;
+    if (msgraph.isConfigured() && msSp.enabled) {
+      const folderPath = client?.sharepointFolder?.path
+        || msgraph.buildFolderPath(msSp.folderTemplate, client || { name: 'SIN NOMBRE' });
+      const uploaded = await msgraph.uploadToSharePoint({
+        hostname: msSp.hostname, sitePath: msSp.sitePath, folderPath, filename, data: pdf,
+      });
+      sig.sharepointUrl = uploaded.webUrl;
+      msg.sharepointUrl = uploaded.webUrl;
+      save();
+    }
+  } catch (err) {
+    sig.sharepointError = err.message;
+    save();
+    console.error('No se pudo subir la firma a SharePoint:', err.message);
+  }
+  return sig;
+}
+
+// Vista de una solicitud de firma para la interfaz (sin el token secreto).
+function publicSignature(sig) {
+  return {
+    id: sig.id,
+    clientId: sig.clientId,
+    caseId: sig.caseId || null,
+    docType: sig.docType,
+    title: sig.title,
+    status: sig.status,
+    createdAt: sig.createdAt,
+    sentAt: sig.sentAt || null,
+    signedAt: sig.signedAt || null,
+    signerName: sig.signerName || null,
+    sharepointUrl: sig.sharepointUrl || null,
+    messageId: sig.messageId || null,
+  };
 }
 
 // Envía los mensajes programados cuya hora ya ha llegado. A diferencia de las
@@ -1313,6 +1453,149 @@ async function handleApi(req, res, url) {
     }
   }
 
+  // --- Tareas del equipo (panel tipo kanban) ------------------------------
+  if (resource === 'tasks') {
+    const STATES = ['por_hacer', 'en_curso', 'hecho'];
+    if (req.method === 'GET') {
+      const list = db.tasks.slice().sort((a, b) =>
+        String(a.dueDate || '9999').localeCompare(String(b.dueDate || '9999'))
+        || (b.createdAt || 0) - (a.createdAt || 0));
+      return json(res, 200, list);
+    }
+    if (req.method === 'POST' && !id) {
+      const b = await readBody(req);
+      const title = String(b.title || '').trim();
+      if (!title) return json(res, 400, { error: 'El título es obligatorio' });
+      const task = {
+        id: newId('task'),
+        title,
+        assignee: b.assignee ? String(b.assignee).trim() : '',
+        status: STATES.includes(b.status) ? b.status : 'por_hacer',
+        dueDate: b.dueDate || null,
+        clientId: b.clientId || null,
+        caseId: b.caseId || null,
+        notes: b.notes ? String(b.notes) : '',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        createdBy: sessionUser(req) || 'equipo',
+      };
+      db.tasks.push(task);
+      save();
+      return json(res, 201, task);
+    }
+    const task = db.tasks.find((t) => t.id === id);
+    if (id && !task) return json(res, 404, { error: 'Tarea no encontrada' });
+    if (req.method === 'PUT' && task) {
+      const b = await readBody(req);
+      if (b.title !== undefined) task.title = String(b.title).trim() || task.title;
+      if (b.assignee !== undefined) task.assignee = String(b.assignee).trim();
+      if (b.status !== undefined && STATES.includes(b.status)) task.status = b.status;
+      if (b.dueDate !== undefined) task.dueDate = b.dueDate || null;
+      if (b.clientId !== undefined) task.clientId = b.clientId || null;
+      if (b.caseId !== undefined) task.caseId = b.caseId || null;
+      if (b.notes !== undefined) task.notes = String(b.notes);
+      task.updatedAt = Date.now();
+      save();
+      return json(res, 200, task);
+    }
+    if (req.method === 'DELETE' && task) {
+      db.tasks = db.tasks.filter((t) => t.id !== id);
+      save();
+      return json(res, 200, { ok: true });
+    }
+  }
+
+  // --- Firma digital de autorizaciones / consentimientos ------------------
+  if (resource === 'signatures') {
+    if (req.method === 'GET' && id === 'docs') {
+      // Catálogo de documentos disponibles para firmar.
+      return json(res, 200, Object.entries(SIGN_DOCS).map(([key, d]) => ({ key, label: d.label })));
+    }
+    if (req.method === 'GET' && !id) {
+      const clientId = url.searchParams.get('clientId');
+      let list = db.signatures.map(publicSignature);
+      if (clientId) list = list.filter((s) => s.clientId === clientId);
+      list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      return json(res, 200, list);
+    }
+    if (req.method === 'POST' && !id) {
+      const b = await readBody(req);
+      const client = db.clients.find((c) => c.id === b.clientId);
+      if (!client) return json(res, 404, { error: 'Cliente no encontrado' });
+      const docType = SIGN_DOCS[b.docType] ? b.docType : 'representacion';
+      let caseTitle = '';
+      if (b.caseId) {
+        const cse = db.cases.find((c) => c.id === b.caseId);
+        if (cse) caseTitle = cse.title;
+      }
+      const doc = buildSignatureDoc(docType, client, caseTitle);
+      const sig = {
+        id: newId('sig'),
+        clientId: client.id,
+        caseId: b.caseId || null,
+        docType,
+        title: doc.title,
+        body: doc.body,
+        status: 'pendiente', // pendiente | firmado | anulado
+        token: crypto.randomBytes(20).toString('hex'),
+        createdAt: Date.now(),
+        createdBy: sessionUser(req) || 'equipo',
+        sentAt: null,
+        signedAt: null,
+        signerName: null,
+        signerIp: null,
+        pdfPath: null,
+        sharepointUrl: null,
+      };
+      db.signatures.push(sig);
+      const signUrl = `${publicBase(req)}/firmar/${sig.token}`;
+      // Nota interna en la conversación para que quede constancia.
+      db.messages.push({
+        id: newId('msg'), clientId: client.id, direction: 'note',
+        text: `✍️ Firma solicitada: ${doc.title}\n${signUrl}`,
+        author: sessionUser(req) || 'equipo', timestamp: Date.now(), status: 'note', read: true,
+      });
+      save();
+      // Envío del enlace al cliente por WhatsApp (opcional).
+      if (b.send) {
+        const first = (client.name || '').split(' ')[0];
+        const msg = `Hola ${first} 👋 Para continuar con tu trámite necesitamos tu firma. `
+          + `Abre este enlace en el móvil, revisa el documento y fírmalo con el dedo:\n${signUrl}`;
+        try {
+          await sendMessageToClient(db, client, msg);
+          sig.sentAt = Date.now();
+          save();
+        } catch (err) {
+          return json(res, 201, { ...publicSignature(sig), signUrl, sendError: err.message });
+        }
+      }
+      return json(res, 201, { ...publicSignature(sig), signUrl });
+    }
+    const sig = db.signatures.find((s) => s.id === id);
+    if (id && !sig) return json(res, 404, { error: 'Solicitud de firma no encontrada' });
+    if (req.method === 'GET' && sig) {
+      return json(res, 200, { ...publicSignature(sig), signUrl: `${publicBase(req)}/firmar/${sig.token}` });
+    }
+    if (req.method === 'POST' && sig && parts[3] === 'resend') {
+      // Reenvía el enlace al cliente.
+      const client = db.clients.find((c) => c.id === sig.clientId);
+      if (!client) return json(res, 404, { error: 'Cliente no encontrado' });
+      if (sig.status !== 'pendiente') return json(res, 400, { error: 'La firma ya no está pendiente' });
+      const first = (client.name || '').split(' ')[0];
+      const signUrl = `${publicBase(req)}/firmar/${sig.token}`;
+      const msg = `Hola ${first} 👋 Te reenviamos el enlace para firmar tu documento:\n${signUrl}`;
+      await sendMessageToClient(db, client, msg);
+      sig.sentAt = Date.now();
+      save();
+      return json(res, 200, { ...publicSignature(sig), signUrl });
+    }
+    if (req.method === 'DELETE' && sig) {
+      sig.status = 'anulado';
+      save();
+      return json(res, 200, { ok: true });
+    }
+  }
+
   // Simulador de mensajes entrantes (solo modo demo, para probar sin Meta).
   if (req.method === 'POST' && resource === 'simulate-incoming') {
     const b = await readBody(req);
@@ -1374,6 +1657,10 @@ async function handleApi(req, res, url) {
         docs: b.docs || '', // documentación necesaria (para la automatización)
         fee: Number(b.fee) || 0, // honorario del trámite (€)
         paid: Boolean(b.paid), // cobrado o pendiente
+        // Tasa oficial del trámite, separada de los honorarios de la gestoría.
+        taxModel: b.taxModel ? String(b.taxModel).trim().slice(0, 60) : '', // ej. «790 cód. 012»
+        taxAmount: Number(b.taxAmount) || 0, // importe de la tasa oficial (€)
+        taxPaid: Boolean(b.taxPaid), // tasa abonada o pendiente
         // Checklist de documentación recibida: [{ item, done }]
         checklist: Array.isArray(b.checklist)
           ? b.checklist.map((c) => ({ item: String(c.item || '').trim(), done: Boolean(c.done) })).filter((c) => c.item)
@@ -1407,6 +1694,9 @@ async function handleApi(req, res, url) {
       }
       if (b.fee !== undefined) item.fee = Number(b.fee) || 0;
       if (b.paid !== undefined) item.paid = Boolean(b.paid);
+      if (b.taxModel !== undefined) item.taxModel = String(b.taxModel).trim().slice(0, 60);
+      if (b.taxAmount !== undefined) item.taxAmount = Number(b.taxAmount) || 0;
+      if (b.taxPaid !== undefined) item.taxPaid = Boolean(b.taxPaid);
       if (Array.isArray(b.checklist)) {
         item.checklist = b.checklist
           .map((c) => ({ item: String(c.item || '').trim(), done: Boolean(c.done) }))
@@ -2395,6 +2685,95 @@ function renderBookingConfirmed(client, lang, date, time) {
   return statusPageShell(`Burocracia Zero · ${client.name}`, body, lang, client.statusToken || '', '/reservar/');
 }
 
+// --- Páginas públicas de firma digital -------------------------------------
+
+function signPageShell(title, bodyHtml, withScript = false) {
+  return `<!doctype html>
+<html lang="es" dir="ltr"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>${escHtml(title)}</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --charcoal:#1d1d1b; --cream:#f5f4f7; --lilac:#9272b0; --lilac-dark:#77599c; --yellow:#ffea63; --muted:#6f6d75; --ok:#1d7a34; --danger:#c0392b; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Lexend",-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; background:var(--cream); color:var(--charcoal); line-height:1.5; }
+  .wrap { max-width:640px; margin:0 auto; padding:24px 18px 60px; }
+  header { text-align:center; padding:18px 0 10px; }
+  .logo-word { line-height:.86; display:inline-block; }
+  .logo-word b { display:block; font-weight:800; font-size:30px; letter-spacing:-1px; }
+  .logo-word span { display:block; font-weight:300; font-size:23px; }
+  h1 { font-size:18px; margin:18px 0 6px; font-weight:700; }
+  .doc { background:#fff; border:1px solid #e7e5ea; border-radius:14px; padding:18px 18px 16px; margin-bottom:16px; box-shadow:0 1px 2px rgba(0,0,0,.03); }
+  .doc-title { font-weight:700; font-size:14px; margin-bottom:10px; }
+  .doc-body { font-size:13px; color:#2b2a30; white-space:pre-wrap; line-height:1.6; }
+  .field { margin:14px 0; }
+  .field label { display:block; font-size:13px; font-weight:600; margin-bottom:6px; }
+  .field input[type=text] { width:100%; font-family:inherit; font-size:15px; padding:11px 13px; border:1px solid #d8d5df; border-radius:10px; }
+  .sign-label { font-size:13px; font-weight:600; margin-bottom:6px; }
+  .sign-box { position:relative; }
+  #pad { width:100%; height:200px; background:#fff; border:2px dashed #c9c3d6; border-radius:12px; touch-action:none; display:block; }
+  .sign-hint { position:absolute; top:50%; left:0; right:0; text-align:center; transform:translateY(-50%); color:#b7b2c2; font-size:14px; pointer-events:none; }
+  .sign-tools { display:flex; justify-content:flex-end; margin-top:8px; }
+  .link-btn { background:none; border:0; color:var(--lilac-dark); font-weight:600; font-size:13px; cursor:pointer; text-decoration:underline; }
+  .submit { width:100%; margin-top:18px; padding:14px; border:0; border-radius:12px; background:var(--charcoal); color:#fff; font-family:inherit; font-weight:700; font-size:15px; cursor:pointer; }
+  .submit:disabled { opacity:.5; }
+  .msg { text-align:center; font-size:13.5px; margin-top:12px; font-weight:600; }
+  .msg.err { color:var(--danger); }
+  .empty { background:#fff; border:1px solid #e6e3db; border-radius:14px; padding:26px; text-align:center; color:var(--muted); }
+  .ok-card { background:#fff; border:1px solid #e7e5ea; border-radius:16px; padding:34px 26px; text-align:center; }
+  .ok-check { width:56px; height:56px; margin:0 auto 12px; border-radius:50%; background:#e4f5e8; color:var(--ok); font-size:30px; font-weight:800; display:flex; align-items:center; justify-content:center; }
+  .legal { font-size:11.5px; color:var(--muted); margin-top:12px; }
+  footer { text-align:center; color:var(--muted); font-size:12.5px; margin-top:26px; }
+</style>
+</head><body>
+<div class="wrap">
+<header><div class="logo-word" role="img" aria-label="Burocracia Zero"><b>Burocracia</b><span>Zero</span></div></header>
+${bodyHtml}
+<footer>Burocracia Zero · Simplificamos tus trámites</footer>
+</div>
+${withScript ? '<script src="/firmar.js"></script>' : ''}
+</body></html>`;
+}
+
+function renderSignPage(sig, client) {
+  const first = escHtml((client.name || '').split(' ')[0]);
+  const body = `
+    <h1>Hola ${first}, firma tu documento</h1>
+    <p class="legal">Revisa el documento y fírmalo con el dedo. Es un enlace privado y seguro.</p>
+    <div class="doc">
+      <div class="doc-title">${escHtml(sig.title)}</div>
+      <div class="doc-body">${escHtml(sig.body)}</div>
+    </div>
+    <form id="sign-form" data-token="${escHtml(sig.token)}" data-name="${escHtml(client.name || '')}">
+      <div class="field">
+        <label for="signer">Nombre y apellidos</label>
+        <input type="text" id="signer" name="signer" value="${escHtml(client.name || '')}" autocomplete="name">
+      </div>
+      <div class="sign-label">Tu firma</div>
+      <div class="sign-box">
+        <canvas id="pad"></canvas>
+        <div class="sign-hint" id="pad-hint">✍️ Firma aquí con el dedo</div>
+      </div>
+      <div class="sign-tools"><button type="button" class="link-btn" id="clear">Borrar y repetir</button></div>
+      <button type="submit" class="submit" id="submit">Firmar y enviar</button>
+      <div class="msg" id="msg"></div>
+      <p class="legal">Al firmar aceptas el contenido del documento. Se registrará la fecha, la hora y tu dirección IP como prueba de la firma.</p>
+    </form>`;
+  return signPageShell(`Firmar · ${client.name}`, body, true);
+}
+
+function renderSignDone(sig) {
+  const body = `<div class="ok-card"><div class="ok-check">✓</div>
+    <h1>¡Documento firmado!</h1>
+    <p class="legal" style="font-size:14px">Gracias. Hemos recibido tu firma correctamente${sig.signedAt ? ` el ${new Date(sig.signedAt).toLocaleString('es-ES')}` : ''}. Ya puedes cerrar esta página.</p></div>`;
+  return signPageShell('Documento firmado', body);
+}
+
 // ---------------------------------------------------------------------------
 // Servidor
 // ---------------------------------------------------------------------------
@@ -2516,6 +2895,41 @@ const server = http.createServer(async (req, res) => {
       }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       return res.end(renderBookingPage(db, client, lang, s));
+    }
+
+    // Firma digital de un documento (enlace privado por solicitud).
+    if (url.pathname.startsWith('/firmar/')) {
+      if (!security.rateLimit(`firmar:${ipOf(req)}`, Number(process.env.RATE_LIMIT_API || 600))) {
+        res.writeHead(429, { 'Content-Type': 'text/plain; charset=utf-8' });
+        return res.end('Demasiadas peticiones');
+      }
+      const token = url.pathname.slice('/firmar/'.length).split('/')[0];
+      const db = load();
+      const sig = token && token.length >= 16 ? db.signatures.find((s) => s.token === token) : null;
+      const client = sig ? db.clients.find((c) => c.id === sig.clientId) : null;
+      if (!sig || !client || sig.status === 'anulado') {
+        res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+        return res.end(signPageShell('Enlace no válido',
+          '<div class="empty">Este enlace de firma no es válido o ha caducado. Escríbenos por WhatsApp.</div>'));
+      }
+      if (sig.status === 'firmado') {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        return res.end(renderSignDone(sig));
+      }
+      if (req.method === 'POST') {
+        const raw = await readRawBody(req, 6_000_000);
+        let b = {};
+        try { b = raw ? JSON.parse(raw) : {}; } catch { return json(res, 400, { error: 'JSON inválido' }); }
+        const name = String(b.name || '').trim();
+        if (!name) return json(res, 400, { error: 'Escribe tu nombre completo.' });
+        if (!b.signature || !/^data:image\/jpe?g/.test(String(b.signature))) {
+          return json(res, 400, { error: 'Falta la firma.' });
+        }
+        await finalizeSignature(db, sig, client, name, b.signature, req);
+        return json(res, 200, { ok: true });
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(renderSignPage(sig, client));
     }
 
     // Ficheros estáticos de la interfaz.

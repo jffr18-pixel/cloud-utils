@@ -469,6 +469,71 @@ async function main() {
     });
     assert(feed2.data.paid === false && feed2.data.checklist.length === 1, 'editar honorario/checklist del expediente');
 
+    // Tasas oficiales (separadas de los honorarios de la gestoría).
+    const taxCase = await req('POST', '/api/cases', {
+      clientId, title: 'Nacionalidad', type: 'extranjeria', fee: 400, paid: false,
+      taxModel: '790 cód. 026', taxAmount: 104.05, taxPaid: false,
+    });
+    assert(taxCase.data.taxModel === '790 cód. 026' && taxCase.data.taxAmount === 104.05 && taxCase.data.taxPaid === false,
+      'expediente guarda la tasa oficial (modelo, importe y estado)');
+    const taxUpd = await req('PUT', `/api/cases/${taxCase.data.id}`, { taxPaid: true });
+    assert(taxUpd.data.taxPaid === true, 'marcar la tasa oficial como abonada');
+    await req('PUT', `/api/cases/${taxCase.data.id}`, { status: 'completado' }); // no altera el conteo del panel
+
+    console.log('Tareas del equipo');
+    const taskBad = await req('POST', '/api/tasks', { title: '   ' });
+    assert(taskBad.status === 400, 'tarea sin título rechazada');
+    const task = await req('POST', '/api/tasks', { title: 'Preparar cita extranjería', assignee: 'Carmen', dueDate: '2026-08-01', clientId });
+    assert(task.status === 201 && task.data.status === 'por_hacer', 'crear tarea (por hacer)');
+    const taskList = await req('GET', '/api/tasks');
+    assert(taskList.data.some((t) => t.id === task.data.id), 'la tarea aparece en la lista');
+    const taskMove = await req('PUT', `/api/tasks/${task.data.id}`, { status: 'en_curso' });
+    assert(taskMove.data.status === 'en_curso', 'mover la tarea a «en curso»');
+    const taskBadStatus = await req('PUT', `/api/tasks/${task.data.id}`, { status: 'inventado' });
+    assert(taskBadStatus.data.status === 'en_curso', 'un estado inválido no cambia la tarea');
+    const taskDel = await req('DELETE', `/api/tasks/${task.data.id}`);
+    assert(taskDel.status === 200, 'eliminar la tarea');
+    assert(!(await req('GET', '/api/tasks')).data.some((t) => t.id === task.data.id), 'la tarea ya no está');
+
+    console.log('Firma digital de documentos');
+    const signDocs = await req('GET', '/api/signatures/docs');
+    assert(signDocs.data.some((d) => d.key === 'representacion'), 'catálogo de documentos para firmar');
+    const signReq = await req('POST', '/api/signatures', { clientId, docType: 'representacion', caseId: taxCase.data.id, send: false });
+    assert(signReq.status === 201 && signReq.data.status === 'pendiente' && /\/firmar\//.test(signReq.data.signUrl),
+      'crear solicitud de firma con enlace');
+    const signBadClient = await req('POST', '/api/signatures', { clientId: 'no-existe', docType: 'rgpd' });
+    assert(signBadClient.status === 404, 'firma con cliente inexistente → 404');
+    const signToken = signReq.data.signUrl.split('/firmar/')[1];
+    // La página pública de firma se sirve como HTML.
+    const signPage = await fetch(BASE + '/firmar/' + signToken);
+    const signHtml = await signPage.text();
+    assert(signPage.status === 200 && /AUTORIZACIÓN DE REPRESENTACIÓN/.test(signHtml) && /id="pad"/.test(signHtml),
+      'la página de firma muestra el documento y el lienzo');
+    // Firma inválida (sin imagen) → 400.
+    const signNoImg = await fetch(BASE + '/firmar/' + signToken, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Prueba', signature: '' }),
+    });
+    assert(signNoImg.status === 400, 'firma sin imagen rechazada');
+    // Firma correcta (JPEG mínimo) → genera el PDF y adjunta el mensaje.
+    const tinyJpeg = 'data:image/jpeg;base64,' + Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64');
+    const signDone = await fetch(BASE + '/firmar/' + signToken, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'María López', signature: tinyJpeg }),
+    });
+    assert(signDone.status === 200, 'firmar el documento devuelve 200');
+    const signList = await req('GET', '/api/signatures?clientId=' + clientId);
+    const signed = signList.data.find((s) => s.id === signReq.data.id);
+    assert(signed && signed.status === 'firmado' && signed.signerName === 'María López', 'la firma queda registrada');
+    assert(signed.messageId, 'el PDF firmado se adjunta a la conversación');
+    // El PDF firmado se puede descargar desde /api/media/:id.
+    const signPdf = await fetch(BASE + '/api/media/' + signed.messageId);
+    assert(signPdf.status === 200 && (signPdf.headers.get('content-type') || '').includes('application/pdf'),
+      'el PDF firmado se sirve como application/pdf');
+    // Reabrir el enlace ya firmado muestra la confirmación.
+    const signAgain = await (await fetch(BASE + '/firmar/' + signToken)).text();
+    assert(/Documento firmado/.test(signAgain), 'el enlace ya firmado muestra la confirmación');
+
     console.log('Plantillas y recordatorios');
     const tpl = await req('POST', '/api/templates', { name: 'Saludo', text: 'Hola {nombre}' });
     assert(tpl.status === 201, 'crear plantilla');
