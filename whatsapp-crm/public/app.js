@@ -482,8 +482,13 @@ async function openConversation(clientId) {
     let mediaHtml = '';
     if (m.media) {
       const src = `/api/media/${encodeURIComponent(m.id)}`;
+      const isPdf = (m.media.mime || '') === 'application/pdf'
+        || /\.pdf$/i.test(m.media.filename || '');
       if (m.media.kind === 'image' || m.media.kind === 'sticker') {
-        mediaHtml = `<a href="${src}" target="_blank"><img class="msg-media" src="${src}" alt="imagen"></a>`;
+        mediaHtml = `<a href="${src}" target="_blank"><img class="msg-media" src="${src}" alt="imagen" loading="lazy"></a>`;
+      } else if (isPdf) {
+        // PDF: botón para previsualizarlo dentro del CRM, sin descargar.
+        mediaHtml = `<button class="msg-file pdf-view" data-src="${src}" data-name="${esc(m.media.filename || 'documento.pdf')}">📄 ${esc(m.media.filename || 'Documento PDF')} <span class="pdf-eye">👁 Ver</span></button>`;
       } else {
         const icon = m.media.kind === 'video' ? '🎬' : m.media.kind === 'audio' ? '🎧' : '📄';
         mediaHtml = `<a class="msg-file" href="${src}" target="_blank" download="${esc(m.media.filename || 'adjunto')}">${icon} ${esc(m.media.filename || 'Adjunto')}</a>`;
@@ -515,6 +520,9 @@ async function openConversation(clientId) {
         await openConversation(clientId);
       });
     });
+  });
+  box.querySelectorAll('.pdf-view').forEach((btn) => {
+    btn.addEventListener('click', () => openPdfPreview(btn.dataset.src, btn.dataset.name));
   });
 
   await api('messages/read', { method: 'POST', body: { clientId } });
@@ -649,6 +657,21 @@ function closePanels(except) {
   if (fp && except !== 'ficha') fp.classList.add('hidden');
   if (except !== 'qr') $('#quick-replies').classList.add('hidden');
 }
+
+// Vista previa de PDF dentro del CRM (sin descargar).
+function openPdfPreview(src, name) {
+  $('#pdf-title').textContent = name || 'Documento';
+  $('#pdf-download').href = src;
+  $('#pdf-download').setAttribute('download', name || 'documento.pdf');
+  $('#pdf-frame').src = src;
+  $('#pdf-modal').classList.remove('hidden');
+}
+function closePdfPreview() {
+  $('#pdf-modal').classList.add('hidden');
+  $('#pdf-frame').src = 'about:blank';
+}
+$('#pdf-close').addEventListener('click', closePdfPreview);
+$('#pdf-modal').addEventListener('mousedown', (e) => { if (e.target.id === 'pdf-modal') closePdfPreview(); });
 $('#btn-emoji').addEventListener('click', (e) => {
   e.stopPropagation();
   buildEmojiPanel();
@@ -906,6 +929,23 @@ $('#btn-new-client').addEventListener('click', () => {
 
 $('#btn-export-clients').addEventListener('click', () => { location.href = '/api/export/clients.csv'; });
 $('#btn-export-cases').addEventListener('click', () => { location.href = '/api/export/cases.csv'; });
+
+// Importar contactos del móvil (.vcf): pone el nombre guardado a los clientes.
+$('#btn-import-contacts').addEventListener('click', () => $('#contacts-file').click());
+$('#contacts-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const vcard = await file.text();
+    const r = await api('contacts/import', { method: 'POST', body: { vcard } });
+    alert(`Contactos leídos: ${r.contacts}\nCoinciden con tus clientes: ${r.matched}\nNombres actualizados: ${r.updated}`
+      + (r.updated ? '' : '\n\n(No se cambió ningún nombre: tus clientes ya tienen nombre o no coinciden los teléfonos.)'));
+    await renderClients();
+  } catch (err) {
+    alert('No se pudo importar: ' + err.message);
+  }
+});
 
 async function openClientDetail(id) {
   const [client, cases] = await Promise.all([
@@ -2249,6 +2289,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (e.key === 'Escape') {
+    if (!$('#pdf-modal').classList.contains('hidden')) { closePdfPreview(); return; }
     if (!$('#palette').classList.contains('hidden')) { closePalette(); return; }
     if (!$('#shortcuts').classList.contains('hidden')) { $('#shortcuts').classList.add('hidden'); return; }
     if (!qrPanel().classList.contains('hidden')) { qrPanel().classList.add('hidden'); return; }

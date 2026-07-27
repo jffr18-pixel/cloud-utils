@@ -162,6 +162,8 @@
         <div class="panel-head">
           <h1>Clientes</h1>
           <div>
+            <button class="btn small" id="btn-import-contacts" title="Importar los nombres de tu agenda del móvil (.vcf)">📇 Importar contactos</button>
+            <input type="file" id="contacts-file" class="hidden" accept=".vcf,.vcard,text/vcard,text/x-vcard">
             <button class="btn small" id="btn-export-clients">📤 Exportar CSV</button>
             <button class="btn primary" id="btn-new-client">＋ Nuevo cliente</button>
           </div>
@@ -460,6 +462,18 @@
         </div>
       </section>
     </main>
+  </div>
+
+  <!-- Vista previa de PDF -->
+  <div id="pdf-modal" class="pdf-modal hidden">
+    <div class="pdf-box">
+      <div class="pdf-bar">
+        <span class="pdf-title" id="pdf-title"></span>
+        <a class="btn small" id="pdf-download" download>⬇ Descargar</a>
+        <button class="btn small" id="pdf-close">✕ Cerrar</button>
+      </div>
+      <iframe id="pdf-frame" title="Vista previa PDF"></iframe>
+    </div>
   </div>
 
   <!-- Paleta de comandos / buscador global (Ctrl/Cmd+K) -->

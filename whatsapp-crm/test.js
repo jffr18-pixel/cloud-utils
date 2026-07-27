@@ -265,6 +265,22 @@ async function main() {
     const search = await req('GET', '/api/clients?q=renta');
     assert(search.data.length === 1, 'búsqueda por etiqueta');
 
+    console.log('Importar contactos (vCard)');
+    const numClient = await req('POST', '/api/clients', { name: '612000111', phone: '612000111' });
+    const vcard = [
+      'BEGIN:VCARD', 'VERSION:3.0', 'FN:Pedro Gómez', 'TEL;TYPE=CELL:+34 612 000 111', 'END:VCARD',
+      'BEGIN:VCARD', 'VERSION:3.0', 'FN:Nombre Distinto', 'TEL:612345678', 'END:VCARD',
+    ].join('\n');
+    const imp = await req('POST', '/api/contacts/import', { vcard });
+    assert(imp.data.contacts === 2, 'lee los contactos del vCard');
+    assert(imp.data.matched === 2, 'empareja los contactos por teléfono con los clientes');
+    assert(imp.data.updated === 1, 'solo rellena el nombre del cliente sin nombre (no pisa los ya nombrados)');
+    const pedroImp = (await req('GET', '/api/clients?q=Pedro')).data;
+    assert(pedroImp.some((c) => c.name === 'Pedro Gómez'), 'el cliente sin nombre recibe el nombre del contacto');
+    const stillMaria = (await req('GET', '/api/clients?q=María')).data;
+    assert(stillMaria.some((c) => c.name === 'María López'), 'no se sobrescribe un nombre ya editado');
+    await req('DELETE', '/api/clients/' + numClient.data.id); // limpieza: no altera el conteo del panel
+
     console.log('Mensajes');
     const sent = await req('POST', '/api/messages', { clientId, text: 'Hola María' });
     assert(sent.status === 201 && sent.data.status === 'demo', 'envío en modo demo');

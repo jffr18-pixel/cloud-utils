@@ -365,6 +365,39 @@ function isAuthenticated(req) {
   return true;
 }
 
+// Analiza un fichero vCard (.vcf exportado del móvil) → [{ name, phones[] }].
+function parseVCards(text) {
+  const out = [];
+  const blocks = String(text || '').split(/BEGIN:VCARD/i).slice(1);
+  for (const block of blocks) {
+    const body = block.split(/END:VCARD/i)[0];
+    // Deshace el "folding" (líneas continuadas que empiezan por espacio/tab).
+    const lines = body.replace(/\r?\n[ \t]/g, '').split(/\r?\n/);
+    let name = '';
+    let nField = '';
+    const phones = [];
+    for (const line of lines) {
+      const m = /^([^:;]+)(;[^:]*)?:(.*)$/.exec(line.trim());
+      if (!m) continue;
+      const prop = m[1].toUpperCase();
+      const val = m[3].trim();
+      if (!val) continue;
+      if (prop === 'FN') name = val;
+      else if (prop === 'N') nField = val.split(';').filter(Boolean).reverse().join(' ').trim();
+      else if (prop === 'TEL') phones.push(val);
+    }
+    const finalName = name || nField;
+    if (finalName && phones.length) out.push({ name: finalName, phones });
+  }
+  return out;
+}
+
+// El nombre parece un teléfono (o está vacío) → conviene rellenarlo del contacto.
+function looksLikePhone(name) {
+  const s = String(name || '').trim();
+  return !s || /^[+\d][\d\s().-]{4,}$/.test(s);
+}
+
 // Solo se admiten URLs https de JotForm para embeber (coherente con la CSP).
 function isJotformUrl(u) {
   try {
@@ -818,12 +851,15 @@ async function handleApi(req, res, url) {
     // descarga y con CSP sandbox, para que un adjunto malicioso enviado por
     // WhatsApp no pueda ejecutar nada en el origen del CRM.
     const { disposition, extraHeaders } = security.mediaDisposition(media.mime, filename);
+    // El id del adjunto es inmutable, así que el navegador puede cachearlo.
+    const cacheHeader = { 'Cache-Control': 'private, max-age=604800' };
     if (media.localPath) {
       const full = path.join(UPLOADS_DIR, path.basename(media.localPath));
       if (!fs.existsSync(full)) return json(res, 404, { error: 'Fichero no disponible' });
       res.writeHead(200, {
         'Content-Type': media.mime || 'application/octet-stream',
         'Content-Disposition': disposition,
+        ...cacheHeader,
         ...extraHeaders,
       });
       return fs.createReadStream(full).pipe(res);
@@ -831,12 +867,23 @@ async function handleApi(req, res, url) {
     try {
       const upstream = await wa.fetchInboundMedia(media);
       if (!upstream.ok) return json(res, 502, { error: `El proveedor devolvió HTTP ${upstream.status}` });
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      // Cachea el adjunto entrante en disco: la próxima vez se sirve al instante
+      // (sin volver a descargarlo del proveedor de WhatsApp).
+      try {
+        fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+        const safe = path.basename(filename).replace(/[^\w.\-]+/g, '_').slice(0, 80) || 'adjunto';
+        const localName = `${newId('in')}_${safe}`;
+        fs.writeFileSync(path.join(UPLOADS_DIR, localName), buf);
+        media.localPath = localName;
+        save();
+      } catch (e) { /* si no se puede cachear, se sirve igualmente */ }
       res.writeHead(200, {
         'Content-Type': media.mime || upstream.headers.get('content-type') || 'application/octet-stream',
         'Content-Disposition': disposition,
+        ...cacheHeader,
         ...extraHeaders,
       });
-      const buf = Buffer.from(await upstream.arrayBuffer());
       return res.end(buf);
     } catch (err) {
       return json(res, 502, { error: err.message });
@@ -1003,6 +1050,31 @@ async function handleApi(req, res, url) {
   }
 
   // --- Conversaciones y mensajes ------------------------------------------
+  // --- Importar contactos del móvil (vCard .vcf) ---------------------------
+  if (req.method === 'POST' && resource === 'contacts' && id === 'import') {
+    const b = await readBody(req, 15_000_000);
+    const contacts = parseVCards(b.vcard || '');
+    let matched = 0;
+    let updated = 0;
+    for (const ct of contacts) {
+      let client = null;
+      for (const raw of ct.phones) {
+        client = findClientByPhone(db, normalizePhone(raw));
+        if (client) break;
+      }
+      if (!client) continue;
+      matched += 1;
+      // Solo rellena el nombre si el cliente no tiene uno "de verdad"
+      // (estaba vacío o era el propio número): no pisa nombres que ya editaste.
+      if (looksLikePhone(client.name) && ct.name.trim() && client.name !== ct.name.trim()) {
+        client.name = ct.name.trim();
+        updated += 1;
+      }
+    }
+    if (updated) save();
+    return json(res, 200, { contacts: contacts.length, matched, updated });
+  }
+
   if (req.method === 'GET' && resource === 'conversations') {
     return json(res, 200, conversationSummaries(db));
   }
