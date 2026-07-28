@@ -850,12 +850,24 @@ async function main() {
     assert(remind.status === 200 && remind.data.sent, 'reclamar por WhatsApp envía el recordatorio');
     const remindMsgs = (await req('GET', '/api/messages?clientId=' + cobrClient.data.id)).data;
     assert(remindMsgs.some((m) => /Total pendiente: 130/.test(m.text || '')), 'el recordatorio detalla el total pendiente');
-    // Al marcar todo como cobrado, el cliente desaparece de «por cobrar».
-    const deudorCases = (await req('GET', '/api/cases?clientId=' + cobrClient.data.id)).data;
-    await req('PUT', '/api/cases/' + deudorCases[0].id, { paid: true, taxPaid: true });
+
+    // Registrar cobro con forma de cobro (caja/banco).
+    const collectBad = await req('POST', '/api/receivables/collect', { clientId: cobrClient.data.id, payMethod: 'tarjeta' });
+    assert(collectBad.status === 400, 'forma de cobro inválida rechazada');
+    const collect = await req('POST', '/api/receivables/collect', { clientId: cobrClient.data.id, payMethod: 'caja', includeTax: true });
+    assert(collect.status === 200 && collect.data.honorarios === 100 && collect.data.tasas === 30,
+      'registrar cobro marca honorarios y tasas pagados');
+    const deudorCase = (await req('GET', '/api/cases?clientId=' + cobrClient.data.id)).data[0];
+    assert(deudorCase.paid === true && deudorCase.payMethod === 'caja' && deudorCase.taxPaid === true,
+      'el expediente guarda la forma de cobro (caja)');
+    // El informe desglosa lo cobrado por caja y banco.
+    const finReport = await req('GET', '/api/reports');
+    assert(finReport.data.cobradoCaja >= 100 && typeof finReport.data.cobradoBanco === 'number',
+      'el informe desglosa lo cobrado por caja y banco');
+    // Al cobrarlo todo, el cliente desaparece de «por cobrar».
     const receivables2 = await req('GET', '/api/receivables');
     assert(!receivables2.data.clients.some((e) => e.clientId === cobrClient.data.id),
-      'al cobrarlo todo, el cliente sale de «por cobrar»');
+      'tras registrar el cobro, el cliente sale de «por cobrar»');
     await req('DELETE', '/api/clients/' + cobrClient.data.id); // limpieza (no altera el panel)
     // Exportación CSV del informe.
     const repCsv = await fetch(`${BASE}/api/export/informe.csv`);

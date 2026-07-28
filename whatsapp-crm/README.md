@@ -80,7 +80,9 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
 - **💶 Por cobrar**: honorarios y tasas oficiales pendientes de cobro, agrupados
   por cliente y ordenados por importe, con el total y un botón para reclamar por
   WhatsApp en un clic (con el desglose de lo pendiente). La barra lateral avisa
-  de cuántos clientes tienen saldo.
+  de cuántos clientes tienen saldo. Con «Registrar cobro» marcas lo pagado
+  eligiendo la **forma de cobro (Caja o Banco)**, y los informes desglosan
+  cuánto has cobrado en caja y cuánto en banco (para cuadrar la caja).
 - **📊 Informes financieros**: además del cuadro de trámites, ingresos por mes
   (cobrado), facturado / cobrado / pendiente y tasas oficiales gestionadas,
   abonadas y pendientes, con desglose por área y exportación a CSV.

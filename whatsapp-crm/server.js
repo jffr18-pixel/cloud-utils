@@ -17,6 +17,7 @@ const transcribe = require('./lib/transcribe');
 const pdfsign = require('./lib/pdfsign');
 
 const PORT = Number(process.env.PORT || 3000);
+const PAY_METHODS = ['caja', 'banco']; // formas de cobro del honorario
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const UPLOADS_DIR = path.join(path.dirname(DB_FILE), 'uploads');
 const STICKERS_DIR = path.join(PUBLIC_DIR, 'stickers');
@@ -1814,6 +1815,7 @@ async function handleApi(req, res, url) {
         docs: b.docs || '', // documentación necesaria (para la automatización)
         fee: Number(b.fee) || 0, // honorario del trámite (€)
         paid: Boolean(b.paid), // cobrado o pendiente
+        payMethod: PAY_METHODS.includes(b.payMethod) ? b.payMethod : '', // forma de cobro: caja | banco
         // Tasa oficial del trámite, separada de los honorarios de la gestoría.
         taxModel: b.taxModel ? String(b.taxModel).trim().slice(0, 60) : '', // ej. «790 cód. 012»
         taxAmount: Number(b.taxAmount) || 0, // importe de la tasa oficial (€)
@@ -1851,6 +1853,7 @@ async function handleApi(req, res, url) {
       }
       if (b.fee !== undefined) item.fee = Number(b.fee) || 0;
       if (b.paid !== undefined) item.paid = Boolean(b.paid);
+      if (b.payMethod !== undefined) item.payMethod = PAY_METHODS.includes(b.payMethod) ? b.payMethod : '';
       if (b.taxModel !== undefined) item.taxModel = String(b.taxModel).trim().slice(0, 60);
       if (b.taxAmount !== undefined) item.taxAmount = Number(b.taxAmount) || 0;
       if (b.taxPaid !== undefined) item.taxPaid = Boolean(b.taxPaid);
@@ -2114,6 +2117,8 @@ async function handleApi(req, res, url) {
     const incomeByMonth = {}; // { 'YYYY-MM': { facturado, cobrado } }
     let facturado = 0;
     let cobrado = 0;
+    let cobradoCaja = 0; // honorarios cobrados en efectivo (caja)
+    let cobradoBanco = 0; // honorarios cobrados por banco (transferencia/tarjeta)
     let taxFacturado = 0; // tasas oficiales gestionadas
     let taxCobrado = 0; // tasas oficiales ya abonadas
     for (const c of cases) {
@@ -2125,7 +2130,11 @@ async function handleApi(req, res, url) {
       byMonth[m] = (byMonth[m] || 0) + 1;
       const fee = Number(c.fee) || 0;
       facturado += fee;
-      if (c.paid) cobrado += fee;
+      if (c.paid) {
+        cobrado += fee;
+        if (c.payMethod === 'caja') cobradoCaja += fee;
+        else if (c.payMethod === 'banco') cobradoBanco += fee;
+      }
       incomeByArea[c.type] = incomeByArea[c.type] || { facturado: 0, cobrado: 0 };
       incomeByArea[c.type].facturado += fee;
       if (c.paid) incomeByArea[c.type].cobrado += fee;
@@ -2153,6 +2162,9 @@ async function handleApi(req, res, url) {
       byMonth,
       facturado,
       cobrado,
+      cobradoCaja,
+      cobradoBanco,
+      cobradoSinMetodo: cobrado - cobradoCaja - cobradoBanco,
       pendiente: facturado - cobrado,
       taxFacturado,
       taxCobrado,
@@ -2220,6 +2232,35 @@ async function handleApi(req, res, url) {
         'Cuando puedas, nos dices y lo dejamos al día. ¡Gracias! 🙌');
       const msg = await sendMessageToClient(db, client, lines.join('\n'));
       return json(res, 200, { sent: true, messageStatus: msg.status });
+    }
+    // Registrar el cobro de un cliente: marca sus honorarios (y opcionalmente
+    // las tasas) pendientes como pagados, con la forma de cobro (caja/banco).
+    if (req.method === 'POST' && id === 'collect') {
+      const b = await readBody(req);
+      const method = PAY_METHODS.includes(b.payMethod) ? b.payMethod : '';
+      if (!method) return json(res, 400, { error: 'Indica la forma de cobro (caja o banco)' });
+      const client = db.clients.find((c) => c.id === b.clientId);
+      if (!client) return json(res, 404, { error: 'Cliente no encontrado' });
+      let honorarios = 0;
+      let tasas = 0;
+      for (const c of db.cases) {
+        if (c.clientId !== client.id) continue;
+        if ((Number(c.fee) || 0) > 0 && !c.paid) {
+          c.paid = true;
+          c.payMethod = method;
+          honorarios += Number(c.fee) || 0;
+          c.updatedAt = Date.now();
+        }
+        if (b.includeTax && (Number(c.taxAmount) || 0) > 0 && !c.taxPaid) {
+          c.taxPaid = true;
+          tasas += Number(c.taxAmount) || 0;
+          c.updatedAt = Date.now();
+        }
+      }
+      if (!honorarios && !tasas) return json(res, 404, { error: 'Este cliente no tiene importes pendientes' });
+      save();
+      security.audit('cobro_registrado', { clientId: client.id, method, honorarios, tasas, user: sessionUser(req) });
+      return json(res, 200, { honorarios, tasas, method });
     }
   }
 

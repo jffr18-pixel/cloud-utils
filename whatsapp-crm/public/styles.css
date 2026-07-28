@@ -586,7 +586,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .cobro-items li { padding: 1px 0; }
 .cobro-age { font-size: 11.5px; color: var(--muted); }
 .cobro-age.over { color: var(--danger); font-weight: 600; }
-.cobro-remind { white-space: nowrap; flex: none; }
+.cobro-actions { display: flex; flex-direction: column; gap: 6px; flex: none; }
+.cobro-remind, .cobro-collect { white-space: nowrap; }
 .chart-card.chart-wide { grid-column: 1 / -1; }
 .exp-badge { display: inline-block; border-radius: 6px; padding: 1px 7px; font-weight: 600; font-size: 11.5px; white-space: nowrap; background: var(--accent-light); color: var(--muted); }
 .exp-badge.soon { background: #fdf2e3; color: #a8690a; }
