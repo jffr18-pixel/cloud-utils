@@ -174,6 +174,7 @@ async function refreshView() {
     if (state.view === 'clients') await renderClients();
     if (state.view === 'cases') await renderCases();
     if (state.view === 'appointments') await renderAppointments();
+    if (state.view === 'calendar') await renderCalendar();
     if (state.view === 'agenda') await renderAgenda();
     if (state.view === 'templates') await renderTemplates();
     if (state.view === 'fichas') await renderFichas();
@@ -2439,6 +2440,91 @@ function todayIso() {
   const n = new Date();
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
 }
+
+// --- Calendario de Outlook (lectura del calendario compartido) ---
+function calDayLabel(iso) {
+  const d = new Date(iso);
+  const dias = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const t = new Date(); const tk = t.toDateString() === d.toDateString();
+  const tm = new Date(t); tm.setDate(tm.getDate() + 1);
+  const isTom = tm.toDateString() === d.toDateString();
+  const base = `${dias[d.getDay()]} ${d.getDate()} ${meses[d.getMonth()]}`;
+  return tk ? `Hoy · ${base}` : isTom ? `Mañana · ${base}` : base;
+}
+function calHM(dt) {
+  if (!dt) return '';
+  // dt viene como "2026-07-28T10:00:00.0000000" (hora de Madrid).
+  const m = /T(\d{2}):(\d{2})/.exec(dt);
+  return m ? `${m[1]}:${m[2]}` : '';
+}
+
+async function renderCalendar() {
+  const days = state.calDays || 14;
+  const content = $('#cal-content');
+  content.innerHTML = '<p class="hint">Cargando el calendario de Outlook…</p>';
+  const pad = (n) => String(n).padStart(2, '0');
+  const now = new Date();
+  const from = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const t = new Date(now); t.setDate(t.getDate() + days);
+  const to = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
+  let data;
+  try {
+    data = await api(`outlook-calendar?from=${from}&to=${to}`);
+  } catch (err) {
+    content.innerHTML = `<p class="hint">No se pudo cargar el calendario: ${esc(err.message)}</p>`;
+    return;
+  }
+  $('#cal-sub').textContent = data.calendarName
+    ? `Calendario «${data.calendarName}»${data.user ? ' · ' + data.user : ''} — incluye lo creado directamente en Outlook, no solo las citas del CRM.`
+    : 'Eventos del calendario de Outlook configurado.';
+  if (!data.configured) {
+    content.innerHTML = '<div class="empty-card">📅 Microsoft 365 no está conectado todavía. Actívalo en <b>Automatizaciones → Microsoft 365</b> para ver aquí tu calendario de Outlook.</div>';
+    return;
+  }
+  if (data.error) {
+    content.innerHTML = `<div class="empty-card">⚠️ No se pudo leer el calendario: ${esc(data.error)}<br><span class="hint">Comprueba el permiso Calendars.Read y el nombre del calendario en Automatizaciones.</span></div>`;
+    return;
+  }
+  const events = data.events || [];
+  if (!events.length) {
+    content.innerHTML = '<div class="today-clear">📅 No hay eventos en el calendario para este periodo.</div>';
+    return;
+  }
+  // Agrupa por día (fecha local del inicio).
+  const byDay = new Map();
+  for (const e of events) {
+    const day = (e.start || '').slice(0, 10);
+    if (!byDay.has(day)) byDay.set(day, []);
+    byDay.get(day).push(e);
+  }
+  content.innerHTML = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([day, items]) => `
+    <div class="cal-day">
+      <div class="cal-day-head">${esc(calDayLabel(day))}</div>
+      ${items.map((e) => {
+        const time = e.isAllDay ? 'Todo el día' : `${calHM(e.start)}${e.end ? '–' + calHM(e.end) : ''}`;
+        const isCrm = (e.categories || []).includes('CRM WhatsApp');
+        return `<div class="cal-ev">
+          <span class="cal-ev-time">${esc(time)}</span>
+          <div class="cal-ev-body">
+            <div class="cal-ev-subj">${isCrm ? '📲 ' : ''}${esc(e.subject)}</div>
+            ${(e.location || e.organizer) ? `<div class="cal-ev-meta">${e.location ? '📍 ' + esc(e.location) : ''}${e.location && e.organizer ? ' · ' : ''}${e.organizer ? '👤 ' + esc(e.organizer) : ''}</div>` : ''}
+          </div>
+          ${e.webLink ? `<a class="btn small" href="${esc(e.webLink)}" target="_blank" title="Abrir en Outlook">Abrir</a>` : ''}
+        </div>`;
+      }).join('')}
+    </div>`).join('');
+}
+
+$('#btn-cal-refresh').addEventListener('click', renderCalendar);
+document.querySelectorAll('#cal-range .chip').forEach((chip) => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('#cal-range .chip').forEach((c) => c.classList.remove('active'));
+    chip.classList.add('active');
+    state.calDays = Number(chip.dataset.cal);
+    renderCalendar();
+  });
+});
 
 async function renderAppointments() {
   const [appts, clients] = await Promise.all([api('appointments'), api('clients')]);

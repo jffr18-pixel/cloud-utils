@@ -113,6 +113,35 @@ async function resolveCalendarId(calendarUser, calendarName) {
   return id;
 }
 
+// Lee los eventos del calendario (por defecto el principal; si se indica un
+// nombre, ese calendario) entre dos fechas ISO (incluye eventos recurrentes,
+// porque usa calendarView). Devuelve una lista normalizada y ligera.
+async function listCalendarEvents({ calendarUser, calendarName = '', from, to }) {
+  let base = `/users/${encodeURIComponent(calendarUser)}/calendarView`;
+  if (calendarName) {
+    const calId = await resolveCalendarId(calendarUser, calendarName);
+    if (calId) base = `/users/${encodeURIComponent(calendarUser)}/calendars/${calId}/calendarView`;
+  }
+  const qs = `?startDateTime=${encodeURIComponent(from)}&endDateTime=${encodeURIComponent(to)}`
+    + '&$select=subject,start,end,isAllDay,location,organizer,webLink,categories,showAs'
+    + '&$orderby=start/dateTime&$top=250';
+  const data = await graph(base + qs, {
+    headers: { Prefer: 'outlook.timezone="Europe/Madrid"' },
+  });
+  return (data.value || []).map((e) => ({
+    id: e.id,
+    subject: e.subject || '(sin título)',
+    start: e.start?.dateTime || null,
+    end: e.end?.dateTime || null,
+    isAllDay: Boolean(e.isAllDay),
+    location: e.location?.displayName || '',
+    organizer: e.organizer?.emailAddress?.name || '',
+    webLink: e.webLink || '',
+    categories: e.categories || [],
+    showAs: e.showAs || '',
+  }));
+}
+
 async function createCalendarEvent(calendarUser, appt, client, calendarName = '') {
   // Por defecto, el calendario principal; si se indica un nombre, ese calendario.
   let path = `/users/${encodeURIComponent(calendarUser)}/calendar/events`;
@@ -300,6 +329,7 @@ module.exports = {
   listFolders,
   createFolder,
   resolveCalendarId,
+  listCalendarEvents,
   createCalendarEvent,
   updateCalendarEvent,
   deleteCalendarEvent,

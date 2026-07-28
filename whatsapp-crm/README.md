@@ -42,6 +42,11 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
 - **📅 Citas**: agenda con vista por días, confirmación por WhatsApp al
   reservar y recordatorio automático el día anterior (activable en
   Automatizaciones).
+- **🗓️ Calendario de Outlook**: pestaña que muestra, dentro del CRM, los
+  eventos del calendario compartido de Outlook (el mismo donde se crean las
+  citas), incluidos los que se crean directamente en Outlook. Solo lectura,
+  agrupados por día, con rango de 7/14/30 días y enlace para abrir cada evento.
+  Usa el permiso `Calendars.ReadWrite` que ya se concede para crear citas.
 - **🟢 Estados de conversación**: cada chat puede estar Abierta / Pendiente /
   Resuelta y asignarse a una persona del equipo; se ve en la bandeja.
 - **🗒️ Notas internas**: botón 🗒️ en el chat para guardar notas que el

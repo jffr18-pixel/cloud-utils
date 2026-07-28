@@ -1134,6 +1134,10 @@ async function main() {
     const msTest = await req('GET', '/api/test-microsoft');
     assert(msTest.status === 200 && msTest.data.configured === false && msTest.data.ok === false,
       'sin credenciales de Microsoft, la prueba lo indica');
+    // Calendario de Outlook: sin credenciales responde configured:false y sin eventos.
+    const cal = await req('GET', '/api/outlook-calendar');
+    assert(cal.status === 200 && cal.data.configured === false && Array.isArray(cal.data.events) && cal.data.events.length === 0,
+      'el calendario de Outlook indica cuando Microsoft no está configurado');
     const msSettings = await req('PUT', '/api/automations', {
       microsoft: { calendar: { enabled: true, user: 'jose@burocraciazero.es', calendarName: 'CITAS BZ COMPARTIDO' } },
     });

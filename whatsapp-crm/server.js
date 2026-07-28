@@ -1201,6 +1201,32 @@ async function handleApi(req, res, url) {
     return json(res, 200, { ...result, configured: msgraph.isConfigured() });
   }
 
+  // Calendario de Outlook (lectura del calendario compartido configurado).
+  if (req.method === 'GET' && resource === 'outlook-calendar') {
+    const cal = auto.getSettings(db).microsoft.calendar;
+    if (!msgraph.isConfigured()) {
+      return json(res, 200, { configured: false, calendarName: cal.calendarName || '', events: [] });
+    }
+    // Rango: por defecto desde hoy (00:00) hasta +14 días; admite from/to (ISO date).
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const dayIso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const fromDay = url.searchParams.get('from') || dayIso(now);
+    let toDay = url.searchParams.get('to');
+    if (!toDay) { const t = new Date(now); t.setDate(t.getDate() + 14); toDay = dayIso(t); }
+    // calendarView usa instantes; se envían como hora local de Madrid.
+    const from = `${fromDay}T00:00:00`;
+    const to = `${toDay}T23:59:59`;
+    try {
+      const events = await msgraph.listCalendarEvents({
+        calendarUser: cal.user, calendarName: cal.calendarName || '', from, to,
+      });
+      return json(res, 200, { configured: true, calendarName: cal.calendarName || '', user: cal.user, from: fromDay, to: toDay, events });
+    } catch (err) {
+      return json(res, 200, { configured: true, calendarName: cal.calendarName || '', error: err.message, events: [] });
+    }
+  }
+
   // Panel «Hoy»: lista accionable del día (citas, recordatorios, vencimientos,
   // documentación pendiente, caducidades próximas y chats sin responder).
   if (req.method === 'GET' && resource === 'today') {
