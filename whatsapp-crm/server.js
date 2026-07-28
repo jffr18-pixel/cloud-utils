@@ -684,9 +684,10 @@ async function sendMessageToClient(db, client, text, opts = {}) {
   let sendResult = { demo: true, id: null };
   let status = 'demo';
   let viaTemplate = false;
+  const sendOpts = opts.replyToWamid ? { replyToWamid: opts.replyToWamid } : {};
   try {
     if (opts.media) {
-      sendResult = await wa.sendMedia(client.phone, opts.media);
+      sendResult = await wa.sendMedia(client.phone, opts.media, sendOpts);
     } else if (opts.interactiveList) {
       // Menú nativo de WhatsApp; siempre responde a un mensaje reciente del
       // cliente, así que la ventana de 24 h está abierta.
@@ -704,7 +705,7 @@ async function sendMessageToClient(db, client, text, opts = {}) {
         sendResult = await wa.sendTemplate(client.phone, settings.template24h.name,
           settings.template24h.lang, [(client.name || '').split(' ')[0], text]);
       } else {
-        sendResult = await wa.sendText(client.phone, text);
+        sendResult = await wa.sendText(client.phone, text, sendOpts);
       }
     }
     status = sendResult.demo ? 'demo' : 'sent';
@@ -735,6 +736,8 @@ async function sendMessageToClient(db, client, text, opts = {}) {
     auto: Boolean(opts.auto), // enviado por una automatización
     viaTemplate, // enviado como plantilla aprobada (ventana de 24 h cerrada)
     viaScheduled: Boolean(opts.scheduled), // enviado desde un mensaje programado
+    // Cita del mensaje al que se responde (para mostrarla en el chat).
+    replyTo: opts.replySnapshot || null,
     read: true,
   };
   db.messages.push(msg);
@@ -950,6 +953,18 @@ async function handleWebhookPayload(db, body) {
     const phone = normalizePhone(inMsg.from);
     const client = ensureClientForPhone(db, phone, inMsg.name);
     if (!inMsg.historic) freshIncoming.push({ client, text: inMsg.text });
+    // Si el cliente responde citando un mensaje, se enlaza con el original.
+    let replyTo = null;
+    if (inMsg.replyToWamid) {
+      const quoted = db.messages.find((m) => m.waMessageId === inMsg.replyToWamid && m.clientId === client.id);
+      if (quoted) {
+        replyTo = {
+          id: quoted.id,
+          direction: quoted.direction,
+          text: String(quoted.text || (quoted.media ? '📎 ' + (quoted.media.filename || 'Adjunto') : '')).slice(0, 140),
+        };
+      }
+    }
     const msg = {
       id: newId('msg'),
       clientId: client.id,
@@ -960,6 +975,7 @@ async function handleWebhookPayload(db, body) {
       status: 'received',
       waMessageId: inMsg.waMessageId,
       ycloudId: inMsg.ycloudId || null,
+      replyTo,
       // El historial importado (Coexistence) no debe contar como "sin leer".
       read: Boolean(inMsg.historic),
     };
@@ -1423,6 +1439,21 @@ async function handleApi(req, res, url) {
       const client = db.clients.find((c) => c.id === b.clientId);
       if (!client) return json(res, 404, { error: 'Cliente no encontrado' });
 
+      // Responder citando un mensaje: se localiza el mensaje citado (del mismo
+      // cliente) para enlazar la respuesta y mostrar la cita en el chat.
+      const replyOpts = {};
+      if (b.replyTo) {
+        const quoted = db.messages.find((m) => m.id === b.replyTo && m.clientId === client.id);
+        if (quoted) {
+          replyOpts.replyToWamid = quoted.waMessageId || null;
+          replyOpts.replySnapshot = {
+            id: quoted.id,
+            direction: quoted.direction,
+            text: String(quoted.text || (quoted.media ? '📎 ' + (quoted.media.filename || 'Adjunto') : '')).slice(0, 140),
+          };
+        }
+      }
+
       // Nota interna: se guarda en la conversación pero NO se envía al cliente.
       if (b.note) {
         if (!b.text || !String(b.text).trim()) return json(res, 400, { error: 'La nota está vacía' });
@@ -1506,6 +1537,7 @@ async function handleApi(req, res, url) {
           }
         }
         const msg = await sendMessageToClient(db, client, String(b.text || '').trim() || `📎 ${filename}`, {
+          ...replyOpts,
           media: {
             kind,
             mime,
@@ -1519,7 +1551,7 @@ async function handleApi(req, res, url) {
       }
 
       if (!b.text || !String(b.text).trim()) return json(res, 400, { error: 'El mensaje está vacío' });
-      const msg = await sendMessageToClient(db, client, String(b.text).trim());
+      const msg = await sendMessageToClient(db, client, String(b.text).trim(), replyOpts);
       return json(res, 201, msg);
     }
   }

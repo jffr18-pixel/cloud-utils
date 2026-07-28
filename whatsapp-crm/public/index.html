@@ -150,6 +150,8 @@
                   </select>
                   <select id="conv-assign" title="Asignar a"><option value="">Sin asignar</option></select>
                   <button class="btn small btn-icon" id="btn-pin" title="Fijar conversación arriba">📌</button>
+                  <button class="btn small btn-icon" id="btn-gallery" title="Galería: fotos y documentos de la conversación">🖼️</button>
+                  <button class="btn small btn-icon" id="btn-notify" title="Avisos de mensajes nuevos">🔕</button>
                   <button class="btn small" id="btn-open-client">Ver ficha</button>
                 </div>
               </div>
@@ -159,6 +161,20 @@
               </div>
               <div class="chat-messages" id="chat-messages"></div>
               <div id="chat-scheduled" class="chat-scheduled hidden"></div>
+              <div id="reply-bar" class="reply-bar hidden">
+                <div class="reply-bar-body">
+                  <span class="reply-bar-who" id="reply-bar-who"></span>
+                  <span class="reply-bar-text" id="reply-bar-text"></span>
+                </div>
+                <button class="reply-bar-x" id="reply-cancel" title="Cancelar respuesta">✕</button>
+              </div>
+              <div id="rec-bar" class="rec-bar hidden">
+                <span class="rec-dot"></span>
+                <span class="rec-label">Grabando nota de voz…</span>
+                <span class="rec-time" id="rec-time">00:00</span>
+                <button class="btn small" id="rec-cancel" title="Cancelar">Cancelar</button>
+                <button class="btn small primary" id="rec-send" title="Enviar nota de voz">Enviar 🎤</button>
+              </div>
               <div class="chat-compose">
                 <div id="quick-replies" class="pop-panel hidden"></div>
                 <div id="emoji-panel" class="pop-panel hidden"></div>
@@ -176,6 +192,7 @@
                 <button class="btn btn-icon" id="btn-sign" title="Pedir firma de un documento (autorización / RGPD)">✍️</button>
                 <button class="btn btn-icon" id="btn-kb" title="Buscar un trámite e insertar precio y documentos">📖</button>
                 <div id="kb-panel" class="pop-panel hidden"></div>
+                <button class="btn btn-icon" id="btn-voice" title="Grabar y enviar una nota de voz">🎤</button>
                 <input type="file" id="file-input" class="hidden">
                 <textarea id="chat-input" rows="2" placeholder="Escribe un mensaje…"></textarea>
                 <button class="btn primary" id="btn-send">Enviar</button>
@@ -531,6 +548,26 @@
         <button class="btn small" id="pdf-close">✕ Cerrar</button>
       </div>
       <iframe id="pdf-frame" title="Vista previa PDF"></iframe>
+    </div>
+  </div>
+
+  <!-- Visor de imágenes (lightbox) -->
+  <div id="lightbox" class="lightbox hidden">
+    <div class="lightbox-bar">
+      <a class="btn small" id="lightbox-download" download>⬇ Descargar</a>
+      <button class="btn small" id="lightbox-close">✕ Cerrar</button>
+    </div>
+    <img id="lightbox-img" alt="imagen" title="Clic para ampliar/reducir">
+  </div>
+
+  <!-- Galería de adjuntos de la conversación -->
+  <div id="gallery-modal" class="pdf-modal hidden">
+    <div class="gallery-box">
+      <div class="pdf-bar">
+        <span class="pdf-title">Galería de la conversación</span>
+        <button class="btn small" id="gallery-close">✕ Cerrar</button>
+      </div>
+      <div id="gallery-grid" class="gallery-grid"></div>
     </div>
   </div>
 

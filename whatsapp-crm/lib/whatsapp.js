@@ -53,11 +53,13 @@ function endpoint() {
   };
 }
 
-async function sendText(toPhone, text) {
+async function sendText(toPhone, text, opts = {}) {
   if (!isConfigured()) {
     return { demo: true, id: null };
   }
-  return sendPayload(toPhone, { type: 'text', text: { preview_url: false, body: text } });
+  const payload = { type: 'text', text: { preview_url: false, body: text } };
+  if (opts.replyToWamid) payload.context = { message_id: opts.replyToWamid };
+  return sendPayload(toPhone, payload);
 }
 
 // Sube un fichero al proveedor y devuelve el id de medio para usarlo en un
@@ -89,12 +91,13 @@ async function uploadMedia(data, filename, mime) {
 }
 
 // Envía un mensaje con adjunto. `media`: { kind, mediaId, filename, caption }.
-async function sendMedia(toPhone, media) {
+async function sendMedia(toPhone, media, opts = {}) {
   if (!isConfigured()) return { demo: true, id: null };
   const mediaObj = { id: media.mediaId };
   if (media.caption && media.kind !== 'audio' && media.kind !== 'sticker') mediaObj.caption = media.caption;
   if (media.filename && media.kind === 'document') mediaObj.filename = media.filename;
   const payload = { to: toPhone, type: media.kind, [media.kind]: mediaObj };
+  if (opts.replyToWamid) payload.context = { message_id: opts.replyToWamid };
   return sendPayload(toPhone, payload);
 }
 
@@ -354,6 +357,7 @@ function parseYCloudEvent(ev) {
       media: extractMedia(im),
       waMessageId: im.wamid || im.id,
       ycloudId: im.id || null,
+      replyToWamid: im.context?.id || im.context?.messageId || null,
       timestamp: Date.parse(im.sendTime) || Date.now(),
       historic: ev.type === 'whatsapp.smb.history',
     });
@@ -415,6 +419,7 @@ function parseWebhook(body) {
           text: extractText(msg),
           media: extractMedia(msg),
           waMessageId: msg.id,
+          replyToWamid: msg.context?.id || null,
           timestamp: Number(msg.timestamp) * 1000 || Date.now(),
         });
       }

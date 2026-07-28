@@ -136,6 +136,8 @@ const state = {
   users: [],
   activeClientId: null,
   activeClient: null,
+  activeMessages: [],
+  replyTo: null,
   tasks: [],
   taskAssignee: '',
   knowledge: [],
@@ -486,7 +488,7 @@ function messageHtml(m) {
     const isPdf = (m.media.mime || '') === 'application/pdf'
       || /\.pdf$/i.test(m.media.filename || '');
     if (m.media.kind === 'image' || m.media.kind === 'sticker') {
-      mediaHtml = `<a href="${src}" target="_blank"><img class="msg-media" src="${src}" alt="imagen" loading="lazy"></a>`;
+      mediaHtml = `<img class="msg-media msg-img" src="${src}" alt="imagen" loading="lazy" data-full="${src}" data-name="${esc(m.media.filename || 'imagen')}">`;
     } else if (isPdf) {
       // PDF: botón para previsualizarlo dentro del CRM, sin descargar.
       mediaHtml = `<button class="msg-file pdf-view" data-src="${src}" data-name="${esc(m.media.filename || 'documento.pdf')}">📄 ${esc(m.media.filename || 'Documento PDF')} <span class="pdf-eye">👁 Ver</span></button>`;
@@ -504,8 +506,14 @@ function messageHtml(m) {
   }
   const transcriptHtml = m.transcript
     ? `<div class="msg-transcript">🎤 <span>${esc(m.transcript)}</span></div>` : '';
+  // Cita del mensaje al que se responde (WhatsApp «responder»).
+  const quoteHtml = m.replyTo
+    ? `<div class="msg-quote ${m.replyTo.direction === 'in' ? 'q-in' : 'q-out'}">${esc(m.replyTo.text || '(mensaje)')}</div>` : '';
+  // Botón de responder (no en burbujas temporales aún sin id definitivo).
+  const replyBtn = String(m.id || '').startsWith('tmp-')
+    ? '' : `<button class="msg-reply" data-mid="${esc(m.id)}" title="Responder citando">↩</button>`;
   return `
-  <div class="msg ${m.direction} ${m.status === 'error' ? 'error' : ''}" data-mid="${esc(m.id)}">${mediaHtml}${esc(m.text)}${transcriptHtml}
+  <div class="msg ${m.direction} ${m.status === 'error' ? 'error' : ''}" data-mid="${esc(m.id)}">${replyBtn}${quoteHtml}${mediaHtml}${esc(m.text)}${transcriptHtml}
     <span class="msg-meta">${m.auto ? '🤖 automático · ' : ''}${m.viaScheduled ? '🕒 programado · ' : ''}${m.viaTemplate ? '📋 plantilla · ' : ''}${m.viaApp ? '📱 desde el móvil · ' : ''}${m.viaProvider ? '☁️ vía YCloud · ' : ''}${fmtTime(m.timestamp)} ${MSG_STATUS[m.status] || ''}${m.error ? ' · ' + esc(m.error) : ''}</span>
   </div>`;
 }
@@ -528,6 +536,12 @@ function bindMsgButtons(scope, clientId) {
   });
   scope.querySelectorAll('.pdf-view').forEach((btn) => {
     btn.addEventListener('click', () => openPdfPreview(btn.dataset.src, btn.dataset.name));
+  });
+  scope.querySelectorAll('.msg-reply').forEach((btn) => {
+    btn.addEventListener('click', () => startReply(btn.dataset.mid));
+  });
+  scope.querySelectorAll('.msg-img').forEach((img) => {
+    img.addEventListener('click', () => openLightbox(img.dataset.full, img.dataset.name));
   });
 }
 
@@ -578,11 +592,15 @@ async function openConversation(clientId) {
   $('#btn-pin').title = client.pinned ? 'Desfijar conversación' : 'Fijar conversación arriba';
   renderChatHeader(client, msgs);
   state.lastMessageCount = msgs.length;
+  state.activeMessages = msgs;
 
   const box = $('#chat-messages');
   box.innerHTML = msgs.map(messageHtml).join('');
   box.scrollTop = box.scrollHeight;
   bindMsgButtons(box, clientId);
+  // Si había una respuesta citada en curso, se mantiene visible.
+  if (state.replyTo && state.replyTo.clientId === clientId) showReplyBar();
+  else cancelReply();
 
   await renderScheduled();
   await api('messages/read', { method: 'POST', body: { clientId } });
@@ -632,10 +650,13 @@ async function sendCurrentMessage() {
   if (!text || !state.activeClientId) return;
   const clientId = state.activeClientId;
   const isNote = state.noteMode;
+  // Respuesta citada en curso (solo para mensajes al cliente, no notas).
+  const reply = (!isNote && state.replyTo && state.replyTo.clientId === clientId) ? state.replyTo : null;
   // Envío optimista: la burbuja aparece al instante y se libera el cuadro de
   // texto, sin esperar a que el servidor responda ni repintar toda la charla.
   $('#chat-input').value = '';
   $('#quick-replies').classList.add('hidden');
+  cancelReply();
   const box = $('#chat-messages');
   const tempId = 'tmp-' + (++tempMsgSeq);
   const temp = {
@@ -646,6 +667,7 @@ async function sendCurrentMessage() {
     author: 'equipo',
     timestamp: Date.now(),
     status: isNote ? 'note' : 'sending',
+    replyTo: reply ? { id: reply.id, direction: reply.direction, text: reply.text } : null,
     read: true,
   };
   box.insertAdjacentHTML('beforeend', messageHtml(temp));
@@ -654,7 +676,7 @@ async function sendCurrentMessage() {
   try {
     const saved = await api('messages', {
       method: 'POST',
-      body: { clientId, text, note: isNote },
+      body: { clientId, text, note: isNote, replyTo: reply ? reply.id : null },
     });
     // Se sustituye la burbuja temporal por la definitiva del servidor.
     if (tempNode && state.activeClientId === clientId) {
@@ -673,6 +695,155 @@ async function sendCurrentMessage() {
     alert(err.message);
   }
 }
+
+// --- Responder citando un mensaje ---
+function startReply(mid) {
+  const m = (state.activeMessages || []).find((x) => x.id === mid);
+  if (!m) return;
+  state.replyTo = {
+    clientId: state.activeClientId,
+    id: m.id,
+    direction: m.direction,
+    text: String(m.text || (m.media ? '📎 ' + (m.media.filename || 'Adjunto') : '')).slice(0, 140),
+  };
+  showReplyBar();
+  $('#chat-input').focus();
+}
+function showReplyBar() {
+  const bar = $('#reply-bar');
+  if (!bar || !state.replyTo) return;
+  const who = state.replyTo.direction === 'in' ? (state.activeClient?.name || 'Cliente') : 'Tú';
+  $('#reply-bar-who').textContent = who;
+  $('#reply-bar-text').textContent = state.replyTo.text || '(mensaje)';
+  bar.classList.remove('hidden');
+}
+function cancelReply() {
+  state.replyTo = null;
+  const bar = $('#reply-bar');
+  if (bar) bar.classList.add('hidden');
+}
+
+// --- Visor de imágenes (lightbox) con zoom y descarga ---
+function openLightbox(src, name) {
+  $('#lightbox-img').src = src;
+  $('#lightbox-img').classList.remove('zoomed');
+  $('#lightbox-download').href = src;
+  $('#lightbox-download').setAttribute('download', name || 'imagen');
+  $('#lightbox').classList.remove('hidden');
+}
+function closeLightbox() {
+  $('#lightbox').classList.add('hidden');
+  $('#lightbox-img').src = '';
+}
+
+// --- Galería de adjuntos de la conversación ---
+function openGallery() {
+  const media = (state.activeMessages || []).filter((m) => m.media
+    && (m.media.kind === 'image' || m.media.kind === 'document' || m.media.kind === 'video' || m.media.kind === 'audio')
+    && m.media.kind !== 'sticker');
+  const grid = $('#gallery-grid');
+  if (!media.length) {
+    grid.innerHTML = '<p class="hint" style="grid-column:1/-1">No hay fotos ni documentos en esta conversación.</p>';
+  } else {
+    grid.innerHTML = media.map((m) => {
+      const src = `/api/media/${encodeURIComponent(m.id)}`;
+      if (m.media.kind === 'image') {
+        return `<button class="gal-item gal-img" data-full="${src}" data-name="${esc(m.media.filename || 'imagen')}"><img src="${src}" loading="lazy" alt=""></button>`;
+      }
+      const icon = m.media.kind === 'video' ? '🎬' : m.media.kind === 'audio' ? '🎧' : '📄';
+      return `<a class="gal-item gal-file" href="${src}" target="_blank" title="${esc(m.media.filename || 'Adjunto')}"><span class="gal-ico">${icon}</span><span class="gal-name">${esc(m.media.filename || 'Adjunto')}</span></a>`;
+    }).join('');
+    grid.querySelectorAll('.gal-img').forEach((b) => {
+      b.addEventListener('click', () => openLightbox(b.dataset.full, b.dataset.name));
+    });
+  }
+  $('#gallery-modal').classList.remove('hidden');
+}
+
+// --- Notas de voz salientes (grabar con el micro y enviar) ---
+let mediaRecorder = null;
+let recChunks = [];
+let recStartMs = 0;
+let recTimer = null;
+async function toggleVoiceRecording() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') { stopVoiceRecording(true); return; }
+  if (!navigator.mediaDevices || !window.MediaRecorder) {
+    return alert('Tu navegador no permite grabar audio.');
+  }
+  if (!state.activeClientId) return;
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch {
+    return alert('No se pudo acceder al micrófono. Da permiso al navegador e inténtalo de nuevo.');
+  }
+  // Elige el formato más compatible con WhatsApp que soporte el navegador
+  // (ogg/opus y mp4/aac los acepta WhatsApp; webm queda como último recurso,
+  // reproducible dentro del CRM aunque el proveedor pueda rechazarlo al enviar).
+  const mime = ['audio/ogg;codecs=opus', 'audio/mp4', 'audio/webm;codecs=opus', 'audio/webm']
+    .find((t) => window.MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || '';
+  mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  recChunks = [];
+  mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.push(e.data); };
+  mediaRecorder.onstop = async () => {
+    stream.getTracks().forEach((t) => t.stop());
+    const blob = new Blob(recChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+    if (state._recCancelled || blob.size < 400) { updateRecUI(false); return; }
+    await sendVoiceNote(blob);
+    updateRecUI(false);
+  };
+  state._recCancelled = false;
+  mediaRecorder.start();
+  recStartMs = Date.now();
+  updateRecUI(true);
+  recTimer = setInterval(() => {
+    const s = Math.floor((Date.now() - recStartMs) / 1000);
+    $('#rec-time').textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+    if (s >= 180) stopVoiceRecording(false); // límite de 3 min
+  }, 250);
+}
+function stopVoiceRecording(send) {
+  state._recCancelled = !send;
+  if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+  if (recTimer) { clearInterval(recTimer); recTimer = null; }
+}
+function updateRecUI(recording) {
+  $('#rec-bar').classList.toggle('hidden', !recording);
+  $('#btn-voice').classList.toggle('recording', recording);
+  if (!recording) $('#rec-time').textContent = '00:00';
+}
+async function sendVoiceNote(blob) {
+  const clientId = state.activeClientId;
+  const ext = /ogg/.test(blob.type) ? 'ogg' : /mp4/.test(blob.type) ? 'm4a' : 'webm';
+  const dataUrl = await new Promise((resolve) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.readAsDataURL(blob);
+  });
+  const base64 = String(dataUrl).split(',')[1] || '';
+  try {
+    await api('messages', {
+      method: 'POST',
+      body: { clientId, file: { data: base64, mime: blob.type || 'audio/webm', name: `nota-voz.${ext}` } },
+    });
+    if (state.activeClientId === clientId) await openConversation(clientId);
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+// Listeners de las nuevas funciones del chat.
+$('#reply-cancel').addEventListener('click', cancelReply);
+$('#btn-notify').addEventListener('click', toggleNotify);
+$('#btn-voice').addEventListener('click', toggleVoiceRecording);
+$('#rec-cancel').addEventListener('click', () => stopVoiceRecording(false));
+$('#rec-send').addEventListener('click', () => stopVoiceRecording(true));
+$('#btn-gallery').addEventListener('click', openGallery);
+$('#gallery-close').addEventListener('click', () => $('#gallery-modal').classList.add('hidden'));
+$('#gallery-modal').addEventListener('mousedown', (e) => { if (e.target.id === 'gallery-modal') $('#gallery-modal').classList.add('hidden'); });
+$('#lightbox-close').addEventListener('click', closeLightbox);
+$('#lightbox').addEventListener('mousedown', (e) => { if (e.target.id === 'lightbox') closeLightbox(); });
+$('#lightbox-img').addEventListener('click', () => $('#lightbox-img').classList.toggle('zoomed'));
 
 $('#tpl-select').addEventListener('change', async () => {
   const id = $('#tpl-select').value;
@@ -2700,9 +2871,93 @@ $('#connection-badge').addEventListener('click', async () => {
 
 // Sondeo cada 5 s: refresca la bandeja y el contador de no leídos
 // para que los mensajes entrantes del webhook aparezcan solos.
+// ---------------------------------------------------------------------------
+// Avisos de mensajes nuevos: notificación de escritorio + sonido + título
+// ---------------------------------------------------------------------------
+const notifyState = { on: localStorage.getItem('crm_notify') === '1', baseline: null, blink: null, origTitle: document.title };
+
+function updateNotifyButton() {
+  const b = $('#btn-notify');
+  if (!b) return;
+  b.textContent = notifyState.on ? '🔔' : '🔕';
+  b.classList.toggle('active', notifyState.on);
+  b.title = notifyState.on ? 'Avisos de mensajes nuevos activados' : 'Avisos de mensajes nuevos silenciados';
+}
+async function toggleNotify() {
+  if (!notifyState.on) {
+    if ('Notification' in window && Notification.permission === 'default') {
+      try { await Notification.requestPermission(); } catch { /* ignore */ }
+    }
+    notifyState.on = true;
+  } else {
+    notifyState.on = false;
+  }
+  localStorage.setItem('crm_notify', notifyState.on ? '1' : '0');
+  updateNotifyButton();
+}
+// Pitido corto generado con WebAudio (sin ficheros externos, compatible con la CSP).
+function playBeep() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    const ctx = new AC();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = 660;
+    g.gain.setValueAtTime(0.001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.32);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + 0.34);
+    o.onended = () => ctx.close();
+  } catch { /* audio no disponible */ }
+}
+function blinkTitle(n) {
+  if (notifyState.blink) return;
+  let on = true;
+  notifyState.blink = setInterval(() => {
+    document.title = on ? `(${n}) 🔔 Nuevo mensaje` : notifyState.origTitle;
+    on = !on;
+  }, 1000);
+}
+function stopBlink() {
+  if (notifyState.blink) { clearInterval(notifyState.blink); notifyState.blink = null; }
+  document.title = notifyState.origTitle;
+}
+window.addEventListener('focus', stopBlink);
+
+async function checkNewMessages() {
+  let dash;
+  try { dash = await api('dashboard'); } catch { return; }
+  const unread = dash.unreadMessages || 0;
+  if (notifyState.baseline === null) { notifyState.baseline = unread; return; } // primera vuelta: sin avisar
+  if (unread > notifyState.baseline && notifyState.on) {
+    // Averigua de quién es el mensaje más reciente sin leer.
+    let who = 'un cliente';
+    try {
+      const convs = await api('conversations');
+      const pend = convs.filter((c) => c.unread > 0).sort((a, b) => b.lastTimestamp - a.lastTimestamp)[0];
+      if (pend) who = pend.clientName || who;
+    } catch { /* ignore */ }
+    playBeep();
+    if (document.hidden || !document.hasFocus()) blinkTitle(unread);
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        const n = new Notification('Nuevo mensaje de WhatsApp', {
+          body: `${who} te ha escrito`, icon: '/icon-192.png', tag: 'crm-wa',
+        });
+        n.onclick = () => { window.focus(); stopBlink(); showView('inbox'); n.close(); };
+      } catch { /* ignore */ }
+    }
+  }
+  notifyState.baseline = unread;
+}
+updateNotifyButton();
+
 setInterval(async () => {
   try {
     await updateUnreadBadge();
+    await checkNewMessages();
     if (state.view === 'inbox') {
       if ($('#conv-search').value.trim()) return; // no pisar los resultados de búsqueda
       const convs = filterConvs(await api('conversations'));

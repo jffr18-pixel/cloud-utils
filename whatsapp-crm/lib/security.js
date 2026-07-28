@@ -87,7 +87,8 @@ function applySecurityHeaders(req, res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  // El micrófono se permite solo al propio origen (grabar notas de voz).
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(self), geolocation=()');
   if (String(req.headers['x-forwarded-proto'] || '').includes('https')) {
     res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
   }

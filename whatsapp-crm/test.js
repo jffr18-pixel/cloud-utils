@@ -287,6 +287,20 @@ async function main() {
     const empty = await req('POST', '/api/messages', { clientId, text: '  ' });
     assert(empty.status === 400, 'mensaje vacío rechazado');
 
+    // Responder citando un mensaje: la respuesta guarda la cita del original.
+    const reply = await req('POST', '/api/messages', { clientId, text: 'Te respondo a esto', replyTo: sent.data.id });
+    assert(reply.status === 201 && reply.data.replyTo && reply.data.replyTo.id === sent.data.id
+      && /Hola María/.test(reply.data.replyTo.text), 'la respuesta cita el mensaje original');
+    const replyBad = await req('POST', '/api/messages', { clientId, text: 'Cita inexistente', replyTo: 'no-existe' });
+    assert(replyBad.status === 201 && !replyBad.data.replyTo, 'una cita a un id inexistente se ignora sin fallar');
+
+    // Nota de voz saliente: se envía como adjunto de audio.
+    const voice = await req('POST', '/api/messages', {
+      clientId, file: { data: Buffer.from('fake-ogg-audio').toString('base64'), mime: 'audio/ogg', name: 'nota-voz.ogg' },
+    });
+    assert(voice.status === 201 && voice.data.media && voice.data.media.kind === 'audio',
+      'la nota de voz se guarda como adjunto de audio');
+
     const sim = await req('POST', '/api/simulate-incoming', {
       phone: '699 88 77 66', name: 'Pedro García', text: '¿Cómo va mi trámite?',
     });

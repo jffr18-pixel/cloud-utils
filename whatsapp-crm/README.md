@@ -59,6 +59,17 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   con un reproductor dentro de la propia conversación.
 - **⚡ Envío instantáneo**: al pulsar Enter el mensaje aparece al momento en la
   conversación (envío optimista), sin esperar a recargar toda la charla.
+- **🎤 Notas de voz salientes**: graba una nota de voz con el micrófono desde el
+  propio chat y envíala al cliente (botón 🎤). Se graba en el formato más
+  compatible con WhatsApp que ofrezca el navegador.
+- **🔔 Avisos de mensajes nuevos**: notificación de escritorio, un pitido y el
+  título de la pestaña parpadeando cuando entra un WhatsApp, aunque estés en
+  otra sección. Se activa/silencia con la campana de la cabecera del chat.
+- **🖼️ Visor de fotos y galería**: las imágenes se abren en un visor a pantalla
+  completa con zoom y descarga, y el botón 🖼️ muestra todas las fotos y
+  documentos de la conversación.
+- **↩️ Responder citando**: responde a un mensaje concreto citándolo (como en
+  WhatsApp); la cita se muestra sobre tu respuesta y en la burbuja enviada.
 - **✍️ Firma digital de documentos**: pide una autorización de representación o
   un consentimiento RGPD desde el chat (botón ✍️); el cliente abre un enlace
   privado en el móvil, firma con el dedo y el PDF firmado —con fecha, hora e IP

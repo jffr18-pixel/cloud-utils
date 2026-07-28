@@ -459,6 +459,75 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .sched-when { font-weight: 700; color: var(--accent-dark); white-space: nowrap; }
 .sched-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sched-cancel { padding: 2px 8px; }
+
+/* Responder citando un mensaje */
+.msg { position: relative; }
+.msg-reply {
+  position: absolute; top: 4px; right: 4px; border: 0; background: rgba(255,255,255,.7);
+  border-radius: 6px; width: 22px; height: 22px; font-size: 13px; cursor: pointer;
+  opacity: 0; transition: opacity .12s; line-height: 1; color: var(--accent-dark);
+}
+.msg:hover .msg-reply { opacity: 1; }
+.msg-reply:hover { background: #fff; }
+.msg-quote {
+  border-left: 3px solid var(--accent); background: rgba(146,114,176,.10);
+  border-radius: 6px; padding: 5px 9px; margin-bottom: 5px; font-size: 12.5px;
+  color: var(--ink-soft, #4a4750); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; max-width: 100%;
+}
+.msg.out .msg-quote { background: rgba(146,114,176,.16); }
+/* Barra de respuesta sobre el cuadro de texto */
+.reply-bar {
+  display: flex; align-items: center; gap: 10px; padding: 8px 16px;
+  background: #f3eef9; border-top: 1px solid var(--border);
+}
+.reply-bar-body { flex: 1; min-width: 0; border-left: 3px solid var(--accent); padding-left: 9px; }
+.reply-bar-who { display: block; font-size: 11.5px; font-weight: 700; color: var(--accent-dark); }
+.reply-bar-text { display: block; font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reply-bar-x { border: 0; background: none; cursor: pointer; font-size: 15px; color: var(--muted); }
+
+/* Grabación de nota de voz */
+.rec-bar {
+  display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+  background: #fdecea; border-top: 1px solid #f2c9c3;
+}
+.rec-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--danger); animation: recpulse 1s infinite; }
+@keyframes recpulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+.rec-label { font-size: 13px; font-weight: 600; color: var(--danger); }
+.rec-time { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--danger); }
+.rec-bar .primary { margin-left: auto; }
+#btn-voice.recording { background: var(--danger); color: #fff; }
+#btn-notify.active { background: var(--accent-light); }
+
+/* Visor de imágenes (lightbox) */
+.lightbox {
+  position: fixed; inset: 0; z-index: 1200; background: rgba(20,18,26,.92);
+  display: flex; align-items: center; justify-content: center; padding: 40px;
+}
+.lightbox-bar { position: absolute; top: 14px; right: 16px; display: flex; gap: 8px; }
+.lightbox-bar .btn { background: rgba(255,255,255,.9); }
+#lightbox-img { max-width: 94vw; max-height: 88vh; border-radius: 8px; cursor: zoom-in; object-fit: contain; }
+#lightbox-img.zoomed { max-width: none; max-height: none; width: auto; cursor: zoom-out; }
+
+/* Galería de adjuntos */
+.gallery-box {
+  background: var(--panel); border-radius: 14px; width: min(760px, 94vw);
+  max-height: 86vh; display: flex; flex-direction: column; overflow: hidden;
+}
+.gallery-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px; padding: 16px; overflow-y: auto;
+}
+.gal-item {
+  border: 1px solid var(--border); border-radius: 10px; overflow: hidden; cursor: pointer;
+  background: #fbfaf7; padding: 0; aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+  text-decoration: none; color: inherit;
+}
+.gal-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gal-file { flex-direction: column; gap: 6px; padding: 10px; text-align: center; }
+.gal-ico { font-size: 26px; }
+.gal-name { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.gal-item:hover { border-color: var(--accent); }
 .msg .msg-file {
   display: inline-flex; align-items: center; gap: 7px;
   background: rgba(29, 26, 34, .06); border-radius: 10px; padding: 9px 13px;
