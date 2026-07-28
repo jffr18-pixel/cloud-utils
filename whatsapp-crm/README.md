@@ -22,6 +22,12 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   libre, para que WhatsApp no lo rechace.
 - **👥 Clientes**: ficha con nombre, teléfono, NIF/DNI, email, etiquetas y notas.
   Si un número desconocido te escribe, se crea la ficha automáticamente.
+- **🖼️ Foto del cliente**: cada cliente puede tener una foto que se muestra en la
+  lista de conversaciones y en la cabecera del chat (en lugar de las iniciales).
+  Se asigna subiendo una imagen o usando una foto que el cliente haya enviado
+  por el chat (botón «📷 foto»). Nota: no es la foto de perfil de WhatsApp —Meta
+  no la comparte con las cuentas de empresa por privacidad—, sino una que asigna
+  la gestoría.
 - **📁 Expedientes**: trámites por cliente (fiscal, laboral, contabilidad,
   extranjería, vehículos…), con estado (pendiente, en curso, esperando
   documentación, completado) y fecha límite con aviso de vencidos.

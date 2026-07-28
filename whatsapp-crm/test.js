@@ -890,6 +890,24 @@ async function main() {
     assert((await repCsv.text()).includes('Trámite'), 'el CSV del informe incluye la cabecera');
 
     console.log('Estado del trámite (página pública)');
+    console.log('Foto del cliente (avatar)');
+    const noPhoto = await fetch(`${BASE}/api/clients/${clientId}/avatar`);
+    assert(noPhoto.status === 404, 'sin foto asignada → 404');
+    // PNG mínimo (1x1) en base64.
+    const tinyPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const upPhoto = await req('POST', `/api/clients/${clientId}/avatar`, { file: { data: tinyPng, mime: 'image/png', name: 'foto.png' } });
+    assert(upPhoto.status === 200 && upPhoto.data.avatar === true, 'subir una foto del cliente');
+    const getPhoto = await fetch(`${BASE}/api/clients/${clientId}/avatar`);
+    assert(getPhoto.status === 200 && (getPhoto.headers.get('content-type') || '').startsWith('image/'),
+      'la foto del cliente se sirve como imagen');
+    const convWithAvatar = (await req('GET', '/api/conversations')).data.find((c) => c.clientId === clientId);
+    assert(convWithAvatar && convWithAvatar.avatar === true, 'la conversación indica que el cliente tiene foto');
+    const badPhoto = await req('POST', `/api/clients/${clientId}/avatar`, { file: { data: 'x', mime: 'application/pdf', name: 'x.pdf' } });
+    assert(badPhoto.status === 400, 'un archivo que no es imagen se rechaza');
+    const delPhoto = await req('DELETE', `/api/clients/${clientId}/avatar`);
+    assert(delPhoto.status === 200, 'quitar la foto del cliente');
+    assert((await fetch(`${BASE}/api/clients/${clientId}/avatar`)).status === 404, 'tras quitarla, ya no hay foto');
+
     const linkRes = await req('POST', `/api/clients/${clientId}/estado-link`);
     assert(linkRes.status === 200 && typeof linkRes.data.token === 'string' && linkRes.data.token.length >= 16,
       'genera un token de estado para el cliente');

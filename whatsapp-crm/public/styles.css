@@ -280,6 +280,22 @@ body {
 .avatar.a1 { background: linear-gradient(135deg, #77599c, #5f4585); }
 .avatar.a2 { background: linear-gradient(135deg, #b49fd8, #8d74bf); }
 .avatar.a3 { background: linear-gradient(135deg, #4e4458, #2c2733); }
+.avatar.avatar-img { background: none; overflow: hidden; padding: 0; }
+.avatar.avatar-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Foto del cliente en la cabecera del chat */
+.chat-avatar-btn {
+  position: relative; width: 40px; height: 40px; min-width: 40px; padding: 0;
+  border: 0; background: none; cursor: pointer; border-radius: 12px;
+}
+.chat-avatar-btn .avatar { width: 40px; height: 40px; min-width: 40px; }
+.chat-avatar-cam {
+  position: absolute; right: -3px; bottom: -3px; font-size: 11px;
+  background: #fff; border-radius: 50%; width: 17px; height: 17px;
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(0,0,0,.25);
+}
+.msg-setphoto { vertical-align: middle; }
+.photo-menu-btn { display: block; width: 100%; text-align: left; margin-bottom: 8px; padding: 11px 14px; }
 
 .tag {
   display: inline-block; background: var(--accent-light); color: var(--accent-dark);

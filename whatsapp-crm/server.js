@@ -673,6 +673,7 @@ function conversationSummaries(db) {
       convStatus: client.convStatus || 'abierta',
       assignedTo: client.assignedTo || null,
       pinned: Boolean(client.pinned),
+      avatar: Boolean(client.avatarPath),
     });
   }
   // Las conversaciones fijadas van primero; el resto, por actividad reciente.
@@ -1331,6 +1332,68 @@ async function handleApi(req, res, url) {
       const host = req.headers.host || `localhost:${PORT}`;
       return json(res, 200, { token: client.statusToken, url: `${proto}://${host}/estado/${client.statusToken}` });
     }
+    // Foto del cliente (avatar). No es la foto de WhatsApp —Meta no la
+    // comparte— sino una imagen que la gestoría asigna a cada cliente.
+    if (parts[3] === 'avatar') {
+      if (req.method === 'GET') {
+        if (!client.avatarPath) return json(res, 404, { error: 'Sin foto' });
+        const full = path.join(UPLOADS_DIR, path.basename(client.avatarPath));
+        if (!fs.existsSync(full)) return json(res, 404, { error: 'Foto no disponible' });
+        const ext = path.extname(full).slice(1).toLowerCase();
+        const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp'
+          : ext === 'gif' ? 'image/gif' : 'image/jpeg';
+        res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'private, max-age=60' });
+        return fs.createReadStream(full).pipe(res);
+      }
+      if (req.method === 'POST') {
+        const b = await readBody(req, 12_000_000);
+        let data = null;
+        let mime = 'image/jpeg';
+        if (b.fromMessageId) {
+          // Usar una imagen que el cliente envió por el chat.
+          const src = db.messages.find((m) => m.id === b.fromMessageId && m.clientId === client.id);
+          if (!src || !src.media || src.media.kind !== 'image') {
+            return json(res, 400, { error: 'Ese mensaje no es una imagen' });
+          }
+          mime = src.media.mime || 'image/jpeg';
+          if (src.media.localPath) {
+            const full = path.join(UPLOADS_DIR, path.basename(src.media.localPath));
+            if (fs.existsSync(full)) data = fs.readFileSync(full);
+          }
+          if (!data) {
+            const up = await wa.fetchInboundMedia(src.media);
+            if (!up || !up.ok) return json(res, 502, { error: 'No se pudo obtener la imagen' });
+            data = Buffer.from(await up.arrayBuffer());
+          }
+        } else if (b.file && b.file.data) {
+          mime = b.file.mime || 'image/jpeg';
+          if (!/^image\//.test(mime)) return json(res, 400, { error: 'El archivo debe ser una imagen' });
+          data = Buffer.from(b.file.data, 'base64');
+          if (data.length > 8_000_000) return json(res, 400, { error: 'La imagen supera los 8 MB' });
+        } else {
+          return json(res, 400, { error: 'Falta la imagen' });
+        }
+        fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+        const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : mime === 'image/gif' ? 'gif' : 'jpg';
+        // Se borra la foto anterior si existía.
+        if (client.avatarPath) {
+          try { fs.rmSync(path.join(UPLOADS_DIR, path.basename(client.avatarPath)), { force: true }); } catch { /* noop */ }
+        }
+        const name = `avatar_${client.id}_${Date.now()}.${ext}`;
+        fs.writeFileSync(path.join(UPLOADS_DIR, name), data);
+        client.avatarPath = name;
+        save();
+        return json(res, 200, { ok: true, avatar: true });
+      }
+      if (req.method === 'DELETE') {
+        if (client.avatarPath) {
+          try { fs.rmSync(path.join(UPLOADS_DIR, path.basename(client.avatarPath)), { force: true }); } catch { /* noop */ }
+          client.avatarPath = null;
+          save();
+        }
+        return json(res, 200, { ok: true });
+      }
+    }
     if (req.method === 'GET') return json(res, 200, client);
     if (req.method === 'PUT') {
       const b = await readBody(req);
@@ -1357,6 +1420,9 @@ async function handleApi(req, res, url) {
       return json(res, 200, client);
     }
     if (req.method === 'DELETE') {
+      if (client.avatarPath) {
+        try { fs.rmSync(path.join(UPLOADS_DIR, path.basename(client.avatarPath)), { force: true }); } catch { /* noop */ }
+      }
       db.clients = db.clients.filter((c) => c.id !== id);
       db.messages = db.messages.filter((m) => m.clientId !== id);
       db.cases = db.cases.filter((c) => c.clientId !== id);

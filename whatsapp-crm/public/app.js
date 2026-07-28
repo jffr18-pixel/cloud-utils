@@ -384,8 +384,11 @@ function renderCasesChart(byStatus) {
 
 const CONV_DOT = { abierta: '🟢', pendiente: '🟡', resuelta: '⚪' };
 
-// Avatar con iniciales y color estable derivado del nombre.
-function avatarHtml(name) {
+// Avatar: foto del cliente si la tiene; si no, iniciales con color estable.
+function avatarHtml(name, clientId, hasAvatar) {
+  if (hasAvatar && clientId) {
+    return `<span class="avatar avatar-img"><img src="/api/clients/${encodeURIComponent(clientId)}/avatar" alt="" loading="lazy"></span>`;
+  }
   const parts = (name || '?').trim().split(/\s+/);
   const initials = (parts[0]?.[0] || '?') + (parts[1]?.[0] || '');
   let hash = 0;
@@ -398,7 +401,7 @@ function convRowHtml(c) {
   const tags = (c.tags || []).slice(0, 2).map((t) => `<span class="conv-tag">${esc(t)}</span>`).join('');
   return `
     <div class="row conv-row ${c.pinned ? 'pinned' : ''}" data-client-id="${esc(c.clientId)}">
-      ${avatarHtml(c.clientName)}
+      ${avatarHtml(c.clientName, c.clientId, c.avatar)}
       <div class="grow">
         <div class="title">${c.pinned ? '<span class="conv-pin">📌</span>' : ''}<span class="conv-dot">${CONV_DOT[c.convStatus] || '🟢'}</span>${esc(c.clientName)}
           ${c.assignedTo ? `<span class="conv-assigned">· ${esc(c.assignedTo)}</span>` : ''}</div>
@@ -501,6 +504,9 @@ function messageHtml(m) {
       mediaHtml = `<a class="msg-file" href="${src}" target="_blank" download="${esc(m.media.filename || 'adjunto')}">${icon} ${esc(m.media.filename || 'Adjunto')}</a>`;
     }
     mediaHtml += `<button class="btn small msg-link-case" data-msg-id="${esc(m.id)}" title="Guardar en un expediente">${m.caseId ? '📁 en expediente' : '📁 asignar a expediente'}</button> `;
+    if (m.media.kind === 'image' && !String(m.id || '').startsWith('tmp-')) {
+      mediaHtml += `<button class="btn small msg-setphoto" data-msg-id="${esc(m.id)}" title="Usar esta imagen como foto del cliente">📷 foto</button> `;
+    }
     if (m.sharepointUrl) {
       mediaHtml += `<a class="btn small" href="${esc(m.sharepointUrl)}" target="_blank" title="Abrir en SharePoint">☁️ SharePoint</a> `;
     }
@@ -544,6 +550,12 @@ function bindMsgButtons(scope, clientId) {
   scope.querySelectorAll('.msg-img').forEach((img) => {
     img.addEventListener('click', () => openLightbox(img.dataset.full, img.dataset.name));
   });
+  scope.querySelectorAll('.msg-setphoto').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('¿Usar esta imagen como foto del cliente?')) return;
+      await setPhotoFromMessage(btn.dataset.msgId);
+    });
+  });
 }
 
 // Actualiza la cabecera con la ventana de servicio de 24 h y la nota fija.
@@ -586,6 +598,8 @@ async function openConversation(clientId) {
   $('#chat').classList.remove('hidden');
   $('#chat-name').textContent = client.name;
   $('#chat-phone').textContent = '+' + client.phone;
+  $('#chat-avatar').innerHTML = avatarHtml(client.name, client.id, Boolean(client.avatarPath))
+    + '<span class="chat-avatar-cam">📷</span>';
   $('#conv-status').value = client.convStatus || 'abierta';
   $('#conv-assign').innerHTML = '<option value="">Sin asignar</option>'
     + state.users.map((u) => `<option value="${esc(u)}" ${client.assignedTo === u ? 'selected' : ''}>${esc(u)}</option>`).join('');
@@ -832,6 +846,74 @@ async function sendVoiceNote(blob) {
     alert(err.message);
   }
 }
+
+// --- Foto del cliente (avatar) ---
+// Nota: no es la foto de perfil de WhatsApp (Meta no la comparte); es una foto
+// que la gestoría asigna a cada cliente para reconocerlo de un vistazo.
+async function afterAvatarChange(clientId) {
+  if (state.activeClient && state.activeClient.id === clientId) state.activeClient.avatarPath = undefined;
+  if (state.activeClientId === clientId) await openConversation(clientId);
+  if (state.view === 'inbox') await renderInbox();
+  if (state.view === 'clients') await renderClients();
+}
+function triggerAvatarUpload(clientId) {
+  state._avatarTarget = clientId;
+  const inp = $('#avatar-file');
+  inp.value = '';
+  inp.click();
+}
+async function setPhotoFromMessage(mid) {
+  try {
+    await api('clients/' + state.activeClientId + '/avatar', { method: 'POST', body: { fromMessageId: mid } });
+    await afterAvatarChange(state.activeClientId);
+  } catch (err) { alert(err.message); }
+}
+async function removeAvatar(clientId) {
+  try {
+    await api('clients/' + clientId + '/avatar', { method: 'DELETE' });
+    await afterAvatarChange(clientId);
+  } catch (err) { alert(err.message); }
+}
+function openPhotoMenu() {
+  const clientId = state.activeClientId;
+  if (!clientId) return;
+  const hasAvatar = Boolean(state.activeClient && state.activeClient.avatarPath);
+  const lastImg = [...(state.activeMessages || [])].reverse().find((m) => m.media && m.media.kind === 'image');
+  openDialog('Foto del cliente', [{
+    name: 'noop', type: 'custom',
+    label: 'WhatsApp no comparte la foto de perfil del cliente; aquí puedes ponerle una tú.',
+    mount(el) {
+      const mk = (txt, fn) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'btn photo-menu-btn'; b.textContent = txt;
+        b.addEventListener('click', async () => { $('#dialog').close(); await fn(); });
+        return b;
+      };
+      el.appendChild(mk('📤 Subir una foto', () => triggerAvatarUpload(clientId)));
+      if (lastImg) el.appendChild(mk('🖼️ Usar la última foto que envió', () => setPhotoFromMessage(lastImg.id)));
+      if (hasAvatar) el.appendChild(mk('🗑️ Quitar la foto', () => removeAvatar(clientId)));
+    },
+    getValue() { return null; },
+  }], async () => {});
+}
+$('#chat-avatar').addEventListener('click', openPhotoMenu);
+$('#avatar-file').addEventListener('change', async () => {
+  const file = $('#avatar-file').files[0];
+  const clientId = state._avatarTarget;
+  $('#avatar-file').value = '';
+  if (!file || !clientId) return;
+  if (file.size > 8_000_000) return alert('La imagen no puede superar los 8 MB.');
+  try {
+    const data = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    await api('clients/' + clientId + '/avatar', { method: 'POST', body: { file: { name: file.name, mime: file.type, data } } });
+    await afterAvatarChange(clientId);
+  } catch (err) { alert(err.message); }
+});
 
 // Listeners de las nuevas funciones del chat.
 $('#reply-cancel').addEventListener('click', cancelReply);
@@ -1259,7 +1341,7 @@ async function renderClients() {
   state.clients = clients;
   $('#client-list').innerHTML = clients.map((c) => `
     <div class="row client-row" data-id="${esc(c.id)}">
-      ${avatarHtml(c.name)}
+      ${avatarHtml(c.name, c.id, Boolean(c.avatarPath))}
       <div class="grow">
         <div class="title">${esc(c.name)} <span class="seg-badge seg-${esc(c.segment || 'particular')}">${esc(SEGMENT_LABEL[c.segment] || 'Particulares')}</span></div>
         <div class="sub">+${esc(c.phone)}${c.nif ? ' · ' + esc(c.nif) : ''}${c.email ? ' · ' + esc(c.email) : ''}</div>
