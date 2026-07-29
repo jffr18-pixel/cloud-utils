@@ -723,6 +723,30 @@ async function sendCurrentMessage() {
   }
 }
 
+// Sugerir una respuesta con IA: pide un borrador al servidor (basado en el
+// hilo reciente y la base de conocimiento) y lo pone en el cuadro de texto
+// para que se revise y edite antes de enviar. No envía nada por sí solo.
+async function suggestReply() {
+  if (!state.activeClientId) return;
+  const btn = $('#btn-suggest');
+  const input = $('#chat-input');
+  btn.disabled = true;
+  btn.classList.add('loading');
+  try {
+    const { suggestion } = await api('suggest-reply', { method: 'POST', body: { clientId: state.activeClientId } });
+    if (suggestion) {
+      input.value = suggestion;
+      input.focus();
+      input.dispatchEvent(new Event('input'));
+    }
+  } catch (err) {
+    alert(err.message || 'No se pudo generar la sugerencia.');
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('loading');
+  }
+}
+
 // --- Responder citando un mensaje ---
 function startReply(mid) {
   const m = (state.activeMessages || []).find((x) => x.id === mid);
@@ -940,6 +964,7 @@ $('#chat-window').addEventListener('click', () => {
 $('#reply-cancel').addEventListener('click', cancelReply);
 $('#btn-notify').addEventListener('click', toggleNotify);
 $('#btn-voice').addEventListener('click', toggleVoiceRecording);
+$('#btn-suggest').addEventListener('click', suggestReply);
 $('#rec-cancel').addEventListener('click', () => stopVoiceRecording(false));
 $('#rec-send').addEventListener('click', () => stopVoiceRecording(true));
 $('#btn-gallery').addEventListener('click', openGallery);

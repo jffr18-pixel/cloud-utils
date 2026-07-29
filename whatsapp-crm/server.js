@@ -663,6 +663,17 @@ function findClientByPhone(db, phone) {
   return db.clients.find((c) => c.phone === phone) || null;
 }
 
+// Relevancia de una ficha de la base de conocimiento respecto a un texto
+// (para elegir qué información pasar a la IA al sugerir una respuesta).
+function kbRelevance(k, hay) {
+  if (!hay || !k) return 0;
+  let score = 0;
+  const kws = String(k.keywords || '').split(/[,\n]/).map((x) => x.trim().toLowerCase()).filter(Boolean);
+  for (const kw of kws) if (hay.includes(kw)) score += 2;
+  if (k.title && hay.includes(String(k.title).toLowerCase())) score += 3;
+  return score;
+}
+
 function ensureClientForPhone(db, phone, name) {
   let client = findClientByPhone(db, phone);
   if (!client) {
@@ -1695,6 +1706,38 @@ async function handleApi(req, res, url) {
 
   if (req.method === 'GET' && resource === 'conversations') {
     return json(res, 200, convSummV());
+  }
+
+  // Sugerir una respuesta para el cliente con IA (a partir del hilo reciente y
+  // de la base de conocimiento). Devuelve un borrador; no envía nada.
+  if (req.method === 'POST' && resource === 'suggest-reply') {
+    const b = await readBody(req);
+    const client = db.clients.find((c) => c.id === b.clientId);
+    if (!client) return json(res, 404, { error: 'Cliente no encontrado' });
+    if (!canSeeClient(client, me)) return json(res, 403, { error: 'No tienes acceso a este cliente' });
+    if (!assistant.isConfigured()) return json(res, 400, { error: 'La IA no está configurada (falta OPENAI_API_KEY).' });
+    const msgs = db.messages.filter((m) => m.clientId === client.id)
+      .sort((a, b2) => a.timestamp - b2.timestamp).slice(-12);
+    if (!msgs.length) return json(res, 400, { error: 'Todavía no hay conversación con este cliente.' });
+    const transcript = msgs.map((m) => `${m.direction === 'in' ? 'Cliente' : 'Gestoría'}: ${m.text || (m.media ? '[adjunto]' : '')}`).join('\n');
+    const lastIn = [...msgs].reverse().find((m) => m.direction === 'in');
+    const hay = String((lastIn && lastIn.text) || '').toLowerCase();
+    const kb = (db.knowledge || []).map((k) => ({ k, score: kbRelevance(k, hay) }))
+      .filter((x) => x.score > 0).sort((a, b2) => b2.score - a.score).slice(0, 4).map((x) => x.k);
+    const kbText = kb.map((k) => `- ${k.title}: ${String(k.notes || k.docs || '').slice(0, 300)}`).join('\n');
+    const first = (client.name || '').split(' ')[0];
+    const messages = [
+      { role: 'system', content: 'Eres el asistente de una gestoría española de extranjería («Burocracia Zero»). Redacta en español una respuesta BREVE, cordial y profesional al último mensaje del cliente. Usa la información de la gestoría si viene al caso. No inventes datos concretos (fechas, importes, números de expediente) que no aparezcan; si falta un dato, di que lo confirmarás. No firmes con un nombre inventado.' },
+      { role: 'user', content: `Cliente: ${client.name}.\n\nConversación reciente:\n${transcript}\n\n${kbText ? `Información de la gestoría que puede ayudar:\n${kbText}\n\n` : ''}Escribe SOLO el texto de la respuesta para enviar por WhatsApp a ${first}.` },
+    ];
+    try {
+      const suggestion = await assistant.chat(messages, { temperature: 0.4 });
+      if (!suggestion) return json(res, 502, { error: 'No se pudo generar la sugerencia.' });
+      return json(res, 200, { suggestion });
+    } catch (err) {
+      console.error('Sugerir respuesta:', err.message);
+      return json(res, 502, { error: 'No se pudo generar la sugerencia ahora mismo.' });
+    }
   }
 
   if (resource === 'messages') {

@@ -734,6 +734,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .est-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .est-actions .btn { text-decoration: none; }
 
+/* Botón «sugerir respuesta» mientras la IA piensa */
+.btn.loading { opacity: 0.5; pointer-events: none; animation: bz-pulse 1s ease-in-out infinite; }
+@keyframes bz-pulse { 50% { opacity: 0.85; } }
+
 /* Reparto y compartir clientes/expedientes entre usuarios */
 .share-users { display: flex; flex-wrap: wrap; gap: 8px; }
 .share-user {

@@ -275,6 +275,35 @@ async function interpret(text, opts = {}) {
   return parseAgentResponse(json);
 }
 
+// Chat genérico con el modelo (sin herramientas): devuelve el texto de la
+// respuesta. Se usa para «sugerir respuesta» a un cliente. Con timeout.
+async function chat(messages, opts = {}) {
+  if (!isConfigured()) throw new Error('IA no configurada (falta OPENAI_API_KEY)');
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), Number(process.env.AGENT_TIMEOUT_MS || 20000));
+  let res;
+  try {
+    res = await fetch(endpoint(), {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: opts.model || model(),
+        temperature: typeof opts.temperature === 'number' ? opts.temperature : 0.4,
+        messages,
+      }),
+      signal: ctrl.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`IA HTTP ${res.status}${detail ? ': ' + detail.slice(0, 200) : ''}`);
+  }
+  const json = await res.json().catch(() => ({}));
+  return String((json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content) || '').trim();
+}
+
 // Valida que una fecha venga en formato YYYY-MM-DD.
 function validDate(s) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
@@ -287,5 +316,5 @@ function validTime(s) {
 
 module.exports = {
   isConfigured, apiKey, endpoint, model, parseAllowed, buildAgentRequest,
-  parseAgentResponse, interpret, resolveClient, looksLikePhone, validDate, validTime, TOOLS,
+  parseAgentResponse, interpret, chat, resolveClient, looksLikePhone, validDate, validTime, TOOLS,
 };

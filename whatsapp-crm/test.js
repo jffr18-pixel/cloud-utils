@@ -526,6 +526,13 @@ async function testTelegramAssistant() {
     });
     const alert = await waitFor(() => sent.find((s) => String(s.chat_id) === '555' && /Nuevo WhatsApp/.test(s.text || '')));
     assert(alert && /alguna novedad/.test(alert.text), 'un WhatsApp entrante avisa por Telegram al usuario');
+
+    // Sugerir respuesta con IA: usa el modelo (simulado) y devuelve un borrador.
+    toolReply = { choices: [{ message: { content: 'Hola Pedro, tu expediente sigue en trámite; en cuanto tengamos novedades te avisamos.' } }] };
+    const sug = await (await fetch(TG_BASE + '/api/suggest-reply', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: pedro.id }),
+    })).json();
+    assert(sug.suggestion && /en trámite/.test(sug.suggestion), 'el CRM sugiere una respuesta con IA a partir del hilo');
   } finally {
     server.kill();
     mock.close();
@@ -1735,6 +1742,10 @@ async function main() {
     if (prevTok === undefined) delete process.env.TELEGRAM_BOT_TOKEN; else process.env.TELEGRAM_BOT_TOKEN = prevTok;
 
     await testTelegramAssistant();
+
+    // Sugerir respuesta sin IA configurada → error claro (este servidor no tiene OPENAI_API_KEY).
+    const sugNoAI = await req('POST', '/api/suggest-reply', { clientId });
+    assert(sugNoAI.status === 400 && /IA/.test(sugNoAI.data.error || ''), 'sugerir respuesta avisa si la IA no está configurada');
 
     console.log('Cobros automáticos');
     // Se ejecuta al final para no interferir con otros recuentos de mensajes.

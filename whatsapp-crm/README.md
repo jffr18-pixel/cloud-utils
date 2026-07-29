@@ -132,6 +132,10 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   el botón 📖 busca un trámite (tolerante a acentos) e inserta la respuesta
   lista para enviar, con el nombre del cliente ya puesto. Editable en la pestaña
   «Precios y tasas»; viene sembrada con los precios de la gestoría.
+- **✨ Respuesta sugerida con IA**: en el chat, el botón ✨ propone un borrador
+  de respuesta al último mensaje del cliente, usando el hilo reciente y la base
+  de conocimiento. El texto aparece en el cuadro para que lo revises y edites
+  antes de enviar (no se envía solo). Requiere `OPENAI_API_KEY`.
 - **💶 Por cobrar**: honorarios y tasas oficiales pendientes de cobro, agrupados
   por cliente y ordenados por importe, con el total y un botón para reclamar por
   WhatsApp en un clic (con el desglose de lo pendiente). La barra lateral avisa
