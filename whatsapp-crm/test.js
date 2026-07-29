@@ -411,6 +411,27 @@ async function main() {
     const ycEchoMsg = anaMsgs2.data.find((m) => m.waMessageId === 'wamid.YC2');
     assert(ycEchoMsg && ycEchoMsg.direction === 'out' && ycEchoMsg.viaApp === true,
       'eco de YCloud registrado como saliente desde la app');
+    // Sincronización de lectura: responder desde el móvil marca como leído lo
+    // anterior del cliente (así el CRM no lo muestra «sin leer»).
+    const anaAfterEcho = (await req('GET', '/api/conversations')).data.find((c) => c.clientId === ana.clientId);
+    assert(anaAfterEcho && anaAfterEcho.unread === 0,
+      'responder desde el móvil marca como leídos los mensajes previos del cliente');
+    // Leer en el móvil sin responder (evento de lectura del proveedor).
+    await req('POST', '/webhook', {
+      id: 'evt_newin', type: 'whatsapp.inbound_message.received', apiVersion: 'v2',
+      whatsappInboundMessage: {
+        id: 'yc_msg_3', wamid: 'wamid.YC3', from: '+34677111222', to: '+34911222333',
+        sendTime: '2026-07-25T11:00:00.000Z', type: 'text', text: { body: 'Otra consulta rápida' },
+      },
+    });
+    let anaU = (await req('GET', '/api/conversations')).data.find((c) => c.clientId === ana.clientId);
+    assert(anaU.unread === 1, 'un mensaje nuevo posterior vuelve a contar como no leído');
+    await req('POST', '/webhook', {
+      id: 'evt_read', type: 'whatsapp.inbound_message.updated', apiVersion: 'v2',
+      whatsappInboundMessage: { id: 'yc_msg_3', wamid: 'wamid.YC3', from: '+34677111222', status: 'read', readTime: '2026-07-25T11:01:00.000Z' },
+    });
+    anaU = (await req('GET', '/api/conversations')).data.find((c) => c.clientId === ana.clientId);
+    assert(anaU.unread === 0, 'leer en el móvil (sin responder) marca el mensaje como leído en el CRM');
 
     const ycStatus = await req('POST', '/webhook', {
       id: 'evt_3', type: 'whatsapp.message.updated', apiVersion: 'v2',

@@ -952,7 +952,7 @@ async function transcribeInbound(msgId, media) {
 }
 
 async function handleWebhookPayload(db, body) {
-  const { incoming, echoes, statuses } = wa.parseWebhook(body);
+  const { incoming, echoes, statuses, reads } = wa.parseWebhook(body);
   const freshIncoming = [];
   for (const inMsg of incoming) {
     if (db.messages.some((m) => m.waMessageId && m.waMessageId === inMsg.waMessageId)) continue;
@@ -994,22 +994,43 @@ async function handleWebhookPayload(db, body) {
   }
   // Coexistence: mensajes que la gestoría envió desde la app del móvil.
   // Se registran como salientes para que la conversación se vea completa.
+  const echoByClient = new Map(); // clientId -> timestamp de la última respuesta desde el móvil
   for (const echo of echoes) {
-    if (db.messages.some((m) => m.waMessageId && m.waMessageId === echo.waMessageId)) continue;
     const phone = normalizePhone(echo.to);
     const client = ensureClientForPhone(db, phone, '');
+    const ts = echo.timestamp || Date.now();
+    echoByClient.set(client.id, Math.max(echoByClient.get(client.id) || 0, ts));
+    if (db.messages.some((m) => m.waMessageId && m.waMessageId === echo.waMessageId)) continue;
     db.messages.push({
       id: newId('msg'),
       clientId: client.id,
       direction: 'out',
       text: echo.text,
       media: echo.media || null,
-      timestamp: echo.timestamp,
+      timestamp: ts,
       status: 'sent',
       viaApp: true,
       waMessageId: echo.waMessageId,
       read: true,
     });
+  }
+  // Sincronización de lectura con el móvil (para que el CRM no muestre como «sin
+  // leer» lo que ya has visto en el teléfono):
+  //  1) Si respondes a un cliente desde el móvil, se dan por leídos sus mensajes
+  //     anteriores a esa respuesta.
+  //  2) Lecturas explícitas que notifique el proveedor (leer sin responder).
+  let readSynced = 0;
+  for (const [clientId, ts] of echoByClient) {
+    for (const m of db.messages) {
+      if (m.clientId === clientId && m.direction === 'in' && !m.read && m.timestamp <= ts) {
+        m.read = true; readSynced += 1;
+      }
+    }
+  }
+  for (const r of reads || []) {
+    const m = db.messages.find((x) => (x.waMessageId && r.waMessageId && x.waMessageId === r.waMessageId)
+      || (x.ycloudId && r.ycloudId && x.ycloudId === r.ycloudId));
+    if (m && m.direction === 'in' && !m.read) { m.read = true; readSynced += 1; }
   }
   for (const st of statuses) {
     const msg = db.messages.find((m) => m.waMessageId && st.ids.includes(m.waMessageId));
@@ -1036,7 +1057,7 @@ async function handleWebhookPayload(db, body) {
       });
     }
   }
-  if (incoming.length || echoes.length || statuses.length) save();
+  if (incoming.length || echoes.length || statuses.length || readSynced) save();
 
   // Automatizaciones sobre los mensajes recién llegados. Primero se atienden
   // las selecciones del menú de áreas (precios); si no lo es, el mensaje de

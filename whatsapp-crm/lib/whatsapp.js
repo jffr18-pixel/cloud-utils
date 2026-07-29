@@ -346,8 +346,18 @@ function parseYCloudEvent(ev) {
   const incoming = [];
   const echoes = [];
   const statuses = [];
+  const reads = []; // mensajes entrantes leídos desde el móvil (Coexistence)
   const im = ev.whatsappInboundMessage;
   const om = ev.whatsappMessage;
+
+  // Lectura sincronizada desde la app del móvil: el mensaje entrante se marcó
+  // como leído en el teléfono. YCloud lo notifica con un evento de
+  // actualización del mensaje entrante (best-effort: varias formas posibles).
+  if ((ev.type === 'whatsapp.inbound_message.updated' || ev.type === 'whatsapp.inbound_message.read') && im) {
+    if (im.status === 'read' || im.readTime || im.seenTime) {
+      reads.push({ waMessageId: im.wamid || im.id, ycloudId: im.id || null, from: im.from || '' });
+    }
+  }
 
   if ((ev.type === 'whatsapp.inbound_message.received' || ev.type === 'whatsapp.smb.history') && im) {
     incoming.push({
@@ -386,7 +396,7 @@ function parseYCloudEvent(ev) {
       timestamp: Date.parse(om.createTime || om.sendTime) || Date.now(),
     });
   }
-  return { incoming, echoes, statuses };
+  return { incoming, echoes, statuses, reads };
 }
 
 // Extrae los mensajes entrantes de la carga del webhook.
@@ -404,10 +414,16 @@ function parseWebhook(body) {
   const incoming = [];
   const echoes = [];
   const statuses = [];
+  const reads = [];
   for (const entry of body?.entry || []) {
     for (const change of entry?.changes || []) {
       const value = change?.value;
       if (!value) continue;
+      // Coexistence: lecturas de mensajes entrantes hechas en la app del móvil
+      // (best-effort; el nombre del campo puede variar entre versiones).
+      for (const r of value.message_reads || value.smb_message_reads || []) {
+        reads.push({ waMessageId: r.id || r.message_id, from: r.from || null });
+      }
       const contactNames = {};
       for (const contact of value.contacts || []) {
         contactNames[contact.wa_id] = contact?.profile?.name || '';
@@ -438,7 +454,7 @@ function parseWebhook(body) {
       }
     }
   }
-  return { incoming, echoes, statuses };
+  return { incoming, echoes, statuses, reads };
 }
 
 module.exports = {

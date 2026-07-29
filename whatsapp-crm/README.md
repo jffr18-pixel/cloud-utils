@@ -11,6 +11,11 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   mensajes sin leer, envío y recepción de mensajes y **de documentos, fotos,
   vídeos y audios** (botón 📎), y estados de entrega (enviado / entregado /
   leído).
+- **📱 Sincronización de lectura con el móvil (Coexistence)**: si respondes a un
+  cliente desde la app de WhatsApp del móvil, el CRM da por leídos sus mensajes
+  anteriores; y si el proveedor lo notifica, también se marcan al leerlos en el
+  móvil sin responder. Así el contador de «sin leer» del CRM no se descuadra
+  con lo que ya has visto en el teléfono.
 - **🔐 Acceso con contraseña**: definiendo `CRM_PASSWORD` la interfaz exige
   iniciar sesión (usuario `admin` por defecto, configurable con `CRM_USER`).
   Sesiones de 30 días y bloqueo tras 10 intentos fallidos. **Imprescindible
