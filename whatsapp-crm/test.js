@@ -325,6 +325,120 @@ async function testIsolationServer() {
   }
 }
 
+// Asistente por Telegram de extremo a extremo: se levanta un servidor «mock»
+// que hace de API de Telegram y de modelo de IA a la vez, y se comprueba el
+// ciclo completo (autorización → interpretar → confirmar → ejecutar).
+async function testTelegramAssistant() {
+  const http = require('http');
+  const MOCK_PORT = 3785;
+  const TG_PORT = 3786;
+  const TG_BASE = `http://127.0.0.1:${TG_PORT}`;
+  const tgDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crm-tg-'));
+
+  // Estado del mock.
+  const updates = [];          // cola de updates que el bot irá recogiendo
+  const sent = [];             // mensajes que el bot envía (sendMessage)
+  const edited = [];           // ediciones (editMessageText)
+  let msgSeq = 100;
+  let toolReply = null;        // qué debe responder el «modelo» en la próxima llamada
+
+  const readJson = (req) => new Promise((resolve) => {
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    req.on('end', () => { try { resolve(JSON.parse(body || '{}')); } catch { resolve({}); } });
+  });
+
+  const mock = http.createServer(async (req, res) => {
+    const send = (obj) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+    const body = await readJson(req);
+    const m = req.url.match(/\/bot[^/]+\/(\w+)$/);
+    const method = m ? m[1] : (req.url.includes('/chat/completions') ? 'chat' : '');
+    if (method === 'getUpdates') {
+      if (updates.length) { const drained = updates.splice(0); return send({ ok: true, result: drained }); }
+      // Emula el long-polling: espera un poco antes de responder vacío.
+      return setTimeout(() => send({ ok: true, result: [] }), 120);
+    }
+    if (method === 'sendMessage') { sent.push(body); return send({ ok: true, result: { message_id: (msgSeq += 1), chat: { id: body.chat_id } } }); }
+    if (method === 'editMessageText') { edited.push(body); return send({ ok: true, result: { message_id: body.message_id } }); }
+    if (method === 'answerCallbackQuery' || method === 'sendChatAction') { return send({ ok: true, result: true }); }
+    if (method === 'chat') { return send(toolReply || { choices: [{ message: { content: 'De acuerdo.' } }] }); }
+    return send({ ok: false });
+  });
+  await new Promise((r) => mock.listen(MOCK_PORT, r));
+
+  const server = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
+    env: {
+      ...process.env, PORT: String(TG_PORT), DATA_DIR: tgDataDir,
+      CRM_PASSWORD: '', WHATSAPP_TOKEN: '', WHATSAPP_PHONE_NUMBER_ID: '',
+      TELEGRAM_BOT_TOKEN: '123:ABC', TELEGRAM_ALLOWED: '555:',
+      TELEGRAM_API_BASE: `http://127.0.0.1:${MOCK_PORT}`,
+      OPENAI_API_KEY: 'sk-test', AGENT_URL: `http://127.0.0.1:${MOCK_PORT}/v1/chat/completions`,
+    },
+    stdio: 'ignore',
+  });
+
+  const post = (p, b) => fetch(TG_BASE + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).then((r) => r.json());
+  const waitFor = async (fn, ms = 5000) => {
+    const until = Date.now() + ms;
+    while (Date.now() < until) { const v = fn(); if (v) return v; await new Promise((r) => setTimeout(r, 80)); }
+    return null;
+  };
+
+  try {
+    for (let i = 0; i < 50; i += 1) {
+      try { await fetch(TG_BASE + '/api/status'); break; } catch { await new Promise((r) => setTimeout(r, 100)); }
+    }
+
+    // Un ID que no está en la lista blanca no puede usar el asistente.
+    updates.push({ update_id: 1, message: { message_id: 1, chat: { id: 777 }, from: { id: 777 }, text: 'hola' } });
+    const denied = await waitFor(() => sent.find((s) => String(s.chat_id) === '777' && /No estás autorizado/.test(s.text)));
+    assert(denied && /777/.test(denied.text), 'un ID no autorizado es rechazado y ve su propio ID');
+
+    // Seed de un cliente para poder enviarle un WhatsApp.
+    const pedro = await post('/api/clients', { name: 'Pedro Ramírez', phone: '600777888' });
+
+    // El modelo devolverá una orden de enviar WhatsApp a Pedro.
+    toolReply = { choices: [{ message: { tool_calls: [{ id: 't1', type: 'function', function: {
+      name: 'enviar_whatsapp', arguments: JSON.stringify({ destinatario: 'Pedro', mensaje: 'Hola Pedro, llega 10 minutos antes.' }),
+    } }] } }] };
+    updates.push({ update_id: 2, message: { message_id: 2, chat: { id: 555 }, from: { id: 555 }, text: 'dile a Pedro que llegue antes' } });
+
+    const confirm = await waitFor(() => sent.find((s) => String(s.chat_id) === '555' && s.reply_markup && /Pedro Ramírez/.test(s.text)));
+    assert(confirm && /Hola Pedro, llega 10 minutos antes/.test(confirm.text), 'propone el envío a Pedro y pide confirmación');
+    const btn = confirm.reply_markup.inline_keyboard[0][0].callback_data;
+    assert(/^ok:/.test(btn), 'el botón de confirmar lleva el token de la acción');
+
+    // Antes de confirmar, no debe existir ningún mensaje saliente.
+    const before = await (await fetch(TG_BASE + '/api/messages?clientId=' + pedro.id)).json();
+    assert(!before.some((mm) => mm.direction === 'out'), 'sin confirmar no se envía nada');
+
+    // Confirmar → se ejecuta el envío.
+    updates.push({ update_id: 3, callback_query: { id: 'cq1', data: btn, message: { message_id: 20, chat: { id: 555 } } } });
+    const done = await waitFor(() => edited.find((e) => /✅/.test(e.text)));
+    assert(done, 'al confirmar, el bot marca la acción como hecha');
+    const after = await waitFor(async () => {
+      const list = await (await fetch(TG_BASE + '/api/messages?clientId=' + pedro.id)).json();
+      return list.find((mm) => mm.direction === 'out' && /Hola Pedro, llega 10 minutos antes/.test(mm.text || '')) ? list : null;
+    });
+    assert(after, 'tras confirmar, el WhatsApp queda registrado en la conversación del cliente');
+
+    // Cancelar una acción no ejecuta nada.
+    toolReply = { choices: [{ message: { tool_calls: [{ id: 't2', type: 'function', function: {
+      name: 'crear_recordatorio', arguments: JSON.stringify({ texto: 'probar cancelación' }),
+    } }] } }] };
+    updates.push({ update_id: 4, message: { message_id: 4, chat: { id: 555 }, from: { id: 555 }, text: 'recuérdame probar' } });
+    const remConfirm = await waitFor(() => sent.find((s) => /Recordatorio/.test(s.text) && s.reply_markup));
+    const remBtn = remConfirm.reply_markup.inline_keyboard[0][0].callback_data.replace(/^ok:/, 'no:');
+    updates.push({ update_id: 5, callback_query: { id: 'cq2', data: remBtn, message: { message_id: 21, chat: { id: 555 } } } });
+    const cancelled = await waitFor(() => edited.find((e) => /Cancelado/.test(e.text)));
+    assert(cancelled, 'cancelar deja la acción sin ejecutar');
+  } finally {
+    server.kill();
+    mock.close();
+    fs.rmSync(tgDataDir, { recursive: true, force: true });
+  }
+}
+
 async function main() {
   const server = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
     env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, WHATSAPP_TOKEN: '', WHATSAPP_PHONE_NUMBER_ID: '' },
@@ -1485,6 +1599,41 @@ async function main() {
 
     console.log('Aislamiento por usuario');
     await testIsolationServer();
+
+    console.log('Asistente (núcleo)');
+    const asst = require('./lib/assistant');
+    // Lista blanca de Telegram.
+    const allowed = asst.parseAllowed(' 111:jose , 222:carmen ,333, malo:x ');
+    assert(allowed.get('111') === 'jose' && allowed.get('222') === 'carmen', 'parseAllowed liga id→usuario del CRM');
+    assert(allowed.get('333') === null && !allowed.has('malo'), 'parseAllowed admite id suelto y descarta ids no numéricos');
+    // Detección de teléfonos y validaciones.
+    assert(asst.looksLikePhone('600 111 222') && asst.looksLikePhone('+34600111222'), 'reconoce teléfonos');
+    assert(!asst.looksLikePhone('Juan Pérez'), 'un nombre no es un teléfono');
+    assert(asst.validDate('2026-07-30') && !asst.validDate('30/07/2026'), 'valida fechas YYYY-MM-DD');
+    assert(asst.validTime('09:30') && asst.validTime('9:5') === false && asst.validTime('24:00') === false, 'valida horas HH:MM');
+    // Resolución de clientes respetando visibilidad.
+    const fakeDb = { clients: [
+      { id: 'a', name: 'Juan Pérez', phone: '34600111222', owner: 'jose' },
+      { id: 'b', name: 'Juana López', phone: '34600333444', owner: 'jose' },
+      { id: 'c', name: 'Ahmed Ben', phone: '34600555666', owner: 'carmen' },
+    ] };
+    const seeJose = (c) => !c.owner || c.owner === 'jose';
+    assert(asst.resolveClient(fakeDb, 'Juan Pérez', seeJose).client?.id === 'a', 'resuelve por nombre exacto');
+    assert(Array.isArray(asst.resolveClient(fakeDb, 'Jua', seeJose).ambiguous), 'nombre ambiguo devuelve varios');
+    assert(asst.resolveClient(fakeDb, '600111222', seeJose).client?.id === 'a', 'resuelve por teléfono');
+    assert(asst.resolveClient(fakeDb, 'Ahmed', seeJose).none === true, 'no resuelve un cliente de otro usuario por nombre');
+    assert(asst.resolveClient(fakeDb, '600555666', seeJose).blocked === true, 'teléfono de otro usuario queda bloqueado');
+    assert(asst.resolveClient(fakeDb, '699000000', seeJose).phone === '34699000000', 'teléfono nuevo se marca para crear');
+    // Construcción de la petición al modelo y lectura de su respuesta.
+    const rq = asst.buildAgentRequest('manda a Juan hola', { today: '2026-07-29' });
+    assert(rq.body.tools.some((t) => t.function.name === 'enviar_whatsapp'), 'la petición incluye las herramientas');
+    assert(/2026-07-29/.test(rq.body.messages[0].content), 'el modelo recibe la fecha de hoy');
+    const toolResp = asst.parseAgentResponse({ choices: [{ message: { tool_calls: [{ function: { name: 'crear_cita', arguments: '{"cliente":"Juan","fecha":"2026-07-30","hora":"10:00"}' } }] } }] });
+    assert(toolResp.tool === 'crear_cita' && toolResp.args.hora === '10:00', 'lee la herramienta y sus argumentos');
+    const textResp = asst.parseAgentResponse({ choices: [{ message: { content: '¿A qué hora?' } }] });
+    assert(textResp.reply === '¿A qué hora?', 'una respuesta sin herramienta se devuelve como texto');
+
+    await testTelegramAssistant();
 
     console.log('Cobros automáticos');
     // Se ejecuta al final para no interferir con otros recuentos de mensajes.

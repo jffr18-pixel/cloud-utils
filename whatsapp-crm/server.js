@@ -15,6 +15,8 @@ const msgraph = require('./lib/msgraph');
 const security = require('./lib/security');
 const transcribe = require('./lib/transcribe');
 const pdfsign = require('./lib/pdfsign');
+const telegram = require('./lib/telegram');
+const assistant = require('./lib/assistant');
 
 const PORT = Number(process.env.PORT || 3000);
 // Formas de cobro del honorario. «banco» se mantiene por compatibilidad con
@@ -780,6 +782,37 @@ async function sendMessageToClient(db, client, text, opts = {}) {
   db.messages.push(msg);
   save();
   return msg;
+}
+
+// Alta de una cita: crea el registro, avisa al cliente (confirmación por
+// WhatsApp) y la sincroniza con el calendario de Outlook si está activado.
+// La usan tanto la API como el asistente por Telegram.
+async function addAppointment(db, client, { date, time, reason, notes } = {}) {
+  const appt = {
+    id: newId('cit'),
+    clientId: client.id,
+    date,              // YYYY-MM-DD
+    time,              // HH:MM
+    reason: (reason || '').trim(),
+    notes: notes || '',
+    status: 'activa',  // activa | cancelada | completada
+    confirmationSentAt: null,
+    remindedAt: null,
+    createdAt: Date.now(),
+  };
+  db.appointments.push(appt);
+  save();
+  await auto.onAppointmentCreated(db, appt, client, autoSender(db));
+  const msCal = auto.getSettings(db).microsoft.calendar;
+  if (msgraph.isConfigured() && msCal.enabled && msCal.user) {
+    try {
+      appt.msEventId = await msgraph.createCalendarEvent(msCal.user, appt, client, msCal.calendarName);
+    } catch (err) {
+      console.error('No se pudo crear el evento en Outlook:', err.message);
+    }
+  }
+  save();
+  return appt;
 }
 
 // Envío usado por las automatizaciones (marca el mensaje como automático).
@@ -2290,31 +2323,7 @@ async function handleApi(req, res, url) {
       if (!client) return json(res, 404, { error: 'Cliente no encontrado' });
       if (!canSeeClient(client, me)) return json(res, 403, { error: 'No tienes acceso a este cliente' });
       if (!b.date || !b.time) return json(res, 400, { error: 'Fecha y hora son obligatorias' });
-      const appt = {
-        id: newId('cit'),
-        clientId: client.id,
-        date: b.date,      // YYYY-MM-DD
-        time: b.time,      // HH:MM
-        reason: (b.reason || '').trim(),
-        notes: b.notes || '',
-        status: 'activa',  // activa | cancelada | completada
-        confirmationSentAt: null,
-        remindedAt: null,
-        createdAt: Date.now(),
-      };
-      db.appointments.push(appt);
-      save();
-      await auto.onAppointmentCreated(db, appt, client, autoSender(db));
-      // Sincronización con el calendario de Outlook (si está activada).
-      const msCal = auto.getSettings(db).microsoft.calendar;
-      if (msgraph.isConfigured() && msCal.enabled && msCal.user) {
-        try {
-          appt.msEventId = await msgraph.createCalendarEvent(msCal.user, appt, client, msCal.calendarName);
-        } catch (err) {
-          console.error('No se pudo crear el evento en Outlook:', err.message);
-        }
-      }
-      save();
+      const appt = await addAppointment(db, client, { date: b.date, time: b.time, reason: b.reason, notes: b.notes });
       return json(res, 201, appt);
     }
     const appt = db.appointments.find((a) => a.id === id);
@@ -3623,6 +3632,272 @@ setInterval(() => {
     .catch((err) => console.error('Error al enviar mensajes programados:', err.message));
 }, 60 * 1000);
 
+// ---------------------------------------------------------------------------
+// Asistente por Telegram
+// ---------------------------------------------------------------------------
+// José (o Carmen) le escribe o le manda una nota de voz al bot y este ejecuta
+// acciones en el CRM: mandar un WhatsApp, crear una cita, un recordatorio o
+// hacer consultas. Solo responde a los IDs de la lista blanca, cada uno ligado
+// a su usuario del CRM (respeta el aislamiento), y pide confirmación antes de
+// mandar nada o crear nada.
+
+const TG_ALLOWED = assistant.parseAllowed(process.env.TELEGRAM_ALLOWED);
+const tgPending = new Map(); // token -> { chatId, crmUser, action, expires }
+let tgOffset = 0;
+
+const TG_HELP = [
+  '👋 Soy tu asistente de Burocracia Zero. Dime qué necesitas por texto o por nota de voz. Ejemplos:',
+  '',
+  '• «Manda por WhatsApp a Juan que su cita es mañana a las 10».',
+  '• «Ponme una cita con María el jueves a las 12 por la renovación del NIE».',
+  '• «Recuérdame el lunes llamar a la asesoría».',
+  '• «¿Qué tengo hoy?» · «¿Quién me debe dinero?» · «Busca a Ahmed».',
+  '',
+  'Antes de enviar cualquier WhatsApp o crear algo te pediré que lo confirmes.',
+].join('\n');
+
+function tgToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function tgStash(chatId, crmUser, action) {
+  const token = newId('tg');
+  tgPending.set(token, { chatId, crmUser, action, expires: Date.now() + 10 * 60 * 1000 });
+  return token;
+}
+
+// Limpia acciones pendientes caducadas (para no acumular memoria).
+function tgSweep() {
+  const now = Date.now();
+  for (const [k, v] of tgPending) if (v.expires < now) tgPending.delete(k);
+}
+
+async function handleTelegramUpdate(update) {
+  if (update.callback_query) return handleTgCallback(update.callback_query);
+  const msg = update.message;
+  if (!msg || !msg.chat) return;
+  const chatId = msg.chat.id;
+  const fromId = String((msg.from && msg.from.id) || '');
+
+  // Autorización: solo los IDs de la lista blanca.
+  if (!TG_ALLOWED.has(fromId)) {
+    await telegram.sendMessage(chatId,
+      `⛔ No estás autorizado para usar este asistente.\nTu ID de Telegram es: ${fromId}\nPídele al administrador que te dé de alta.`);
+    return;
+  }
+  const crmUser = TG_ALLOWED.get(fromId);
+
+  const text0 = (msg.text || '').trim();
+  if (text0 === '/start' || text0 === '/help' || text0 === '/ayuda') { await telegram.sendMessage(chatId, TG_HELP); return; }
+  if (text0 === '/id') { await telegram.sendMessage(chatId, `Tu ID de Telegram es ${fromId}.`); return; }
+
+  // Nota de voz → transcribir con el mismo servicio que el CRM.
+  let text = text0;
+  if (msg.voice || msg.audio) {
+    if (!transcribe.isConfigured()) {
+      await telegram.sendMessage(chatId, 'Para entender notas de voz hay que configurar OPENAI_API_KEY.');
+      return;
+    }
+    try {
+      await telegram.sendChatAction(chatId);
+      const media = msg.voice || msg.audio;
+      const buf = await telegram.downloadFile(media.file_id);
+      text = await transcribe.run(buf, 'nota.ogg', media.mime_type || 'audio/ogg');
+      if (text) await telegram.sendMessage(chatId, `🎙️ Te he entendido: «${text}»`);
+    } catch (err) {
+      await telegram.sendMessage(chatId, 'No pude transcribir la nota de voz: ' + err.message);
+      return;
+    }
+  }
+  if (!text) { await telegram.sendMessage(chatId, 'Dime qué necesitas por texto o nota de voz. Escribe /ayuda para ver ejemplos.'); return; }
+
+  // Interpretar la orden.
+  let intent;
+  try {
+    await telegram.sendChatAction(chatId);
+    intent = await assistant.interpret(text, { today: tgToday() });
+  } catch (err) {
+    await telegram.sendMessage(chatId, 'El asistente ha tenido un problema: ' + err.message);
+    return;
+  }
+  if (intent.reply) { await telegram.sendMessage(chatId, intent.reply); return; }
+  await routeTgTool(chatId, crmUser, intent.tool, intent.args || {});
+}
+
+// Traduce una herramienta del modelo en una respuesta directa (consultas) o en
+// una acción que se propone y queda pendiente de confirmación (envíos/altas).
+async function routeTgTool(chatId, crmUser, tool, args) {
+  const db = load();
+  const visible = (c) => canSeeClient(c || {}, crmUser);
+
+  if (tool === 'consultar_agenda') {
+    const fecha = assistant.validDate(args.fecha) ? args.fecha : tgToday();
+    const citas = db.appointments
+      .filter((a) => a.date === fecha && a.status !== 'cancelada' && visible(db.clients.find((c) => c.id === a.clientId)))
+      .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+    if (!citas.length) { await telegram.sendMessage(chatId, `📅 No tienes citas para el ${fecha}.`); return; }
+    const nameOf = (id) => (db.clients.find((c) => c.id === id) || {}).name || '(cliente)';
+    const lines = citas.map((a) => `• ${a.time} — ${nameOf(a.clientId)}${a.reason ? ` (${a.reason})` : ''}`);
+    await telegram.sendMessage(chatId, `📅 Citas del ${fecha}:\n${lines.join('\n')}`);
+    return;
+  }
+
+  if (tool === 'buscar_cliente') {
+    const q = String(args.consulta || '').toLowerCase().trim();
+    const hits = db.clients.filter((c) => visible(c)
+      && [c.name, c.phone, c.nif, c.email, (c.tags || []).join(' ')].join(' ').toLowerCase().includes(q)).slice(0, 8);
+    if (!hits.length) { await telegram.sendMessage(chatId, `No encuentro clientes que coincidan con «${args.consulta}».`); return; }
+    const lines = hits.map((c) => {
+      const abiertos = db.cases.filter((k) => k.clientId === c.id && k.status !== 'completado').length;
+      return `• ${c.name} · +${c.phone}${abiertos ? ` · ${abiertos} expediente(s) abierto(s)` : ''}`;
+    });
+    await telegram.sendMessage(chatId, `👥 Resultados:\n${lines.join('\n')}`);
+    return;
+  }
+
+  if (tool === 'pendientes_cobro') {
+    const now = Date.now();
+    const byClient = new Map();
+    for (const c of db.cases) {
+      const client = db.clients.find((x) => x.id === c.clientId);
+      if (!client || !visible(client)) continue;
+      const feeDue = (Number(c.fee) || 0) > 0 && !c.paid ? Number(c.fee) : 0;
+      const taxDue = (Number(c.taxAmount) || 0) > 0 && !c.taxPaid ? Number(c.taxAmount) : 0;
+      if (!feeDue && !taxDue) continue;
+      const e = byClient.get(client.id) || { name: client.name, total: 0 };
+      e.total += feeDue + taxDue;
+      byClient.set(client.id, e);
+    }
+    const list = [...byClient.values()].sort((a, b) => b.total - a.total);
+    if (!list.length) { await telegram.sendMessage(chatId, '✅ No hay importes pendientes de cobro.'); return; }
+    const total = list.reduce((s, e) => s + e.total, 0);
+    const lines = list.slice(0, 15).map((e) => `• ${e.name}: ${e.total.toLocaleString('es-ES')} €`);
+    await telegram.sendMessage(chatId, `💶 Pendiente de cobro (${total.toLocaleString('es-ES')} € en total):\n${lines.join('\n')}`);
+    return;
+  }
+
+  if (tool === 'enviar_whatsapp') {
+    const mensaje = String(args.mensaje || '').trim();
+    if (!mensaje) { await telegram.sendMessage(chatId, '¿Qué mensaje quieres que le envíe?'); return; }
+    const r = assistant.resolveClient(db, args.destinatario, visible);
+    if (r.ambiguous) {
+      await telegram.sendMessage(chatId, `Hay varios clientes que coinciden con «${args.destinatario}»:\n`
+        + r.ambiguous.map((c) => `• ${c.name} · +${c.phone}`).join('\n') + '\nDime cuál (nombre completo o teléfono).');
+      return;
+    }
+    if (r.blocked) { await telegram.sendMessage(chatId, 'Ese contacto pertenece a otro usuario, no puedo escribirle desde tu cuenta.'); return; }
+    if (r.none) { await telegram.sendMessage(chatId, `No encuentro ningún cliente llamado «${args.destinatario}». Si es nuevo, dime su número de teléfono.`); return; }
+    const dest = r.client ? `${r.client.name} (+${r.client.phone})` : `el nuevo número +${r.phone}`;
+    const action = r.client
+      ? { type: 'wa', clientId: r.client.id, message: mensaje }
+      : { type: 'wa', phone: r.phone, name: `+${r.phone}`, message: mensaje };
+    const token = tgStash(chatId, crmUser, action);
+    await telegram.sendMessage(chatId, `📲 Voy a enviar por WhatsApp a ${dest}:\n\n«${mensaje}»\n\n¿Lo confirmas?`,
+      { replyMarkup: telegram.confirmKeyboard(token) });
+    return;
+  }
+
+  if (tool === 'crear_cita') {
+    if (!assistant.validDate(args.fecha)) { await telegram.sendMessage(chatId, '¿Para qué día es la cita? (dime la fecha)'); return; }
+    if (!assistant.validTime(args.hora)) { await telegram.sendMessage(chatId, '¿A qué hora es la cita?'); return; }
+    const r = assistant.resolveClient(db, args.cliente, visible);
+    if (r.ambiguous) {
+      await telegram.sendMessage(chatId, `Hay varios clientes que coinciden con «${args.cliente}»:\n`
+        + r.ambiguous.map((c) => `• ${c.name} · +${c.phone}`).join('\n') + '\nDime cuál.');
+      return;
+    }
+    if (r.blocked) { await telegram.sendMessage(chatId, 'Ese contacto pertenece a otro usuario.'); return; }
+    if (r.none || r.phone) { await telegram.sendMessage(chatId, `No encuentro al cliente «${args.cliente}». Créalo primero en el CRM o dime un cliente existente.`); return; }
+    const action = { type: 'cita', clientId: r.client.id, date: args.fecha, time: args.hora, reason: String(args.motivo || '').trim() };
+    const token = tgStash(chatId, crmUser, action);
+    await telegram.sendMessage(chatId,
+      `📅 Voy a crear una cita con ${r.client.name} el ${args.fecha} a las ${args.hora}${action.reason ? ` · ${action.reason}` : ''}.\nSe le enviará la confirmación por WhatsApp.\n\n¿Lo confirmas?`,
+      { replyMarkup: telegram.confirmKeyboard(token) });
+    return;
+  }
+
+  if (tool === 'crear_recordatorio') {
+    const texto = String(args.texto || '').trim();
+    if (!texto) { await telegram.sendMessage(chatId, '¿Qué quieres que te recuerde?'); return; }
+    const fecha = assistant.validDate(args.fecha) ? args.fecha : null;
+    const action = { type: 'recordatorio', text: texto, date: fecha };
+    const token = tgStash(chatId, crmUser, action);
+    await telegram.sendMessage(chatId, `⏰ Recordatorio: «${texto}»${fecha ? ` para el ${fecha}` : ''}.\n\n¿Lo guardo?`,
+      { replyMarkup: telegram.confirmKeyboard(token) });
+    return;
+  }
+
+  await telegram.sendMessage(chatId, 'No he sabido cómo ayudarte con eso. Escribe /ayuda para ver qué puedo hacer.');
+}
+
+async function handleTgCallback(cq) {
+  const [kind, token] = String(cq.data || '').split(':');
+  const pending = tgPending.get(token);
+  const chatId = cq.message && cq.message.chat && cq.message.chat.id;
+  const messageId = cq.message && cq.message.message_id;
+  await telegram.answerCallbackQuery(cq.id).catch(() => null);
+  if (!chatId) return;
+  if (!pending) { await telegram.editMessageText(chatId, messageId, '⏱️ Esta acción ha caducado. Vuelve a pedírmelo.'); return; }
+  tgPending.delete(token);
+  if (kind !== 'ok') { await telegram.editMessageText(chatId, messageId, '❌ Cancelado.'); return; }
+  try {
+    const result = await executeTgAction(pending.crmUser, pending.action);
+    await telegram.editMessageText(chatId, messageId, '✅ ' + result);
+  } catch (err) {
+    await telegram.editMessageText(chatId, messageId, '⚠️ No se pudo completar: ' + err.message);
+  }
+}
+
+async function executeTgAction(crmUser, action) {
+  const db = load();
+  if (action.type === 'wa') {
+    let client = action.clientId ? db.clients.find((c) => c.id === action.clientId) : null;
+    if (!client && action.phone) {
+      client = ensureClientForPhone(db, action.phone, action.name);
+      if (isolationOn() && !client.owner) { client.owner = crmUser; client.sharedWith = []; }
+      save();
+    }
+    if (!client) throw new Error('no encuentro al cliente');
+    if (!canSeeClient(client, crmUser)) throw new Error('no tienes acceso a ese cliente');
+    const msg = await sendMessageToClient(db, client, action.message);
+    if (msg.status === 'error') throw new Error(msg.error || 'WhatsApp rechazó el envío');
+    return `Mensaje enviado a ${client.name}.${msg.status === 'demo' ? ' (Modo demo: no ha salido de verdad.)' : ''}`;
+  }
+  if (action.type === 'cita') {
+    const client = db.clients.find((c) => c.id === action.clientId);
+    if (!client) throw new Error('no encuentro al cliente');
+    if (!canSeeClient(client, crmUser)) throw new Error('no tienes acceso a ese cliente');
+    await addAppointment(db, client, { date: action.date, time: action.time, reason: action.reason });
+    return `Cita creada con ${client.name} el ${action.date} a las ${action.time}.`;
+  }
+  if (action.type === 'recordatorio') {
+    db.reminders.push({
+      id: newId('rem'), clientId: null, text: action.text, dueDate: action.date || null,
+      sendToClient: false, sentToClientAt: null, done: false, createdAt: Date.now(),
+    });
+    save();
+    return `Recordatorio guardado${action.date ? ` para el ${action.date}` : ''}.`;
+  }
+  throw new Error('acción desconocida');
+}
+
+async function telegramLoop() {
+  if (!telegram.isConfigured()) return;
+  try {
+    const updates = await telegram.getUpdates(tgOffset, 50);
+    for (const u of updates) {
+      tgOffset = u.update_id + 1;
+      try { await handleTelegramUpdate(u); } catch (err) { console.error('Asistente Telegram:', err.message); }
+    }
+    tgSweep();
+  } catch (err) {
+    // Error de red o de la API: esperar un poco antes de reintentar.
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+  setImmediate(telegramLoop);
+}
+
 ensureDefaultFichas(load());
 ensureDefaultKnowledge(load());
 
@@ -3640,5 +3915,13 @@ server.listen(PORT, () => {
   }
   if (process.env.CRM_CAPTCHA_TEST === '1') {
     console.warn('⚠️  CRM_CAPTCHA_TEST=1: el CAPTCHA revela su respuesta. Úsalo SOLO en pruebas, nunca en producción.');
+  }
+  if (telegram.isConfigured()) {
+    if (!TG_ALLOWED.size) {
+      console.warn('⚠️  Asistente de Telegram activo pero sin TELEGRAM_ALLOWED: nadie está autorizado. Añade tu ID.');
+    } else {
+      console.log(`Asistente de Telegram activo (${TG_ALLOWED.size} usuario(s) autorizado(s)${assistant.isConfigured() ? ', IA activada' : ', SIN IA: falta OPENAI_API_KEY'}).`);
+    }
+    telegramLoop();
   }
 });

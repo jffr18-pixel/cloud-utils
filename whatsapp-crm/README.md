@@ -70,6 +70,14 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   solo usuario (sin `CRM_USERS`) todo es común, como hasta ahora. Los clientes
   que llegan por WhatsApp entrantes quedan comunes hasta que se les asigna
   dueño.
+- **🤖 Asistente por Telegram**: un bot de Telegram que maneja el CRM por ti
+  sin tenerlo abierto. Le hablas por texto o **nota de voz** en lenguaje
+  natural («Manda por WhatsApp a Juan que su cita es mañana a las 10»,
+  «Ponme una cita con María el jueves a las 12», «¿Qué tengo hoy?», «¿Quién me
+  debe dinero?») y él ejecuta la acción. Solo responde a los IDs de Telegram de
+  la lista blanca, cada uno ligado a su usuario del CRM (respeta el
+  aislamiento), y **pide confirmación con botones ✅/❌ antes de enviar cualquier
+  WhatsApp o crear nada**. Ver [«Asistente por Telegram»](#asistente-por-telegram).
 - **📅 Citas**: agenda con vista por días, confirmación por WhatsApp al
   reservar y recordatorio automático el día anterior (activable en
   Automatizaciones).
@@ -322,6 +330,47 @@ Puntos clave:
 > del CRM, desactiva los mensajes de bienvenida/ausencia de la propia app
 > WhatsApp Business para no enviar respuestas duplicadas.
 
+## Asistente por Telegram
+
+Un bot de Telegram que maneja el CRM por ti, sin tenerlo abierto. Le escribes o
+le mandas una **nota de voz** en lenguaje natural y ejecuta la acción:
+
+- «Manda por WhatsApp a Juan que su cita es mañana a las 10» → localiza a Juan
+  y envía (tras tu confirmación).
+- «Ponme una cita con María el jueves a las 12 por la renovación del NIE» →
+  crea la cita y avisa al cliente por WhatsApp.
+- «Recuérdame el lunes llamar a la asesoría» → recordatorio interno.
+- «¿Qué tengo hoy?», «¿Quién me debe dinero?», «Busca a Ahmed» → consultas.
+
+**Antes de enviar cualquier WhatsApp o crear algo, el bot te pide confirmar con
+botones ✅/❌.** Nada sale sin tu visto bueno.
+
+### Puesta en marcha
+
+1. En Telegram, habla con **@BotFather**, crea un bot con `/newbot` y copia el
+   token que te da. Ponlo en `TELEGRAM_BOT_TOKEN`.
+2. Necesitas tu **ID de Telegram** (un número). La forma más fácil: arranca el
+   bot con el token puesto, escríbele cualquier cosa y te responderá «No estás
+   autorizado… tu ID es: 123456789». Copia ese número.
+3. Rellena `TELEGRAM_ALLOWED` con `tuID:tuUsuarioCRM`. Ejemplos:
+   - Un solo usuario del CRM (sin `CRM_USERS`): `TELEGRAM_ALLOWED="123456789:"`
+     (deja el usuario vacío).
+   - Con varios usuarios: `TELEGRAM_ALLOWED="123456789:jose,987654321:carmen"`.
+     Así cada persona actúa como su usuario del CRM y solo ve/toca lo suyo
+     (respeta el aislamiento). Para dar de alta a Carmen, que le escriba al bot,
+     te pase su ID y lo añades a la lista.
+4. Para que entienda lenguaje natural y notas de voz, configura `OPENAI_API_KEY`
+   (la misma clave que ya usa la transcripción de notas de voz).
+
+El bot funciona por *long polling*: no hace falta abrir puertos ni configurar
+webhooks. En cuanto el servidor arranca con el token puesto, queda a la escucha.
+
+> **Privacidad (RGPD)**: el texto de tus órdenes se envía a OpenAI para
+> interpretarlo (igual que la transcripción de voz). No se manda la base de
+> clientes: el modelo solo extrae la intención y los nombres que tú escribes; la
+> búsqueda del cliente se hace en local. Actívalo solo si el proveedor te ofrece
+> garantías adecuadas (DPA/UE).
+
 ## Variables de entorno
 
 | Variable | Descripción | Por defecto |
@@ -338,6 +387,10 @@ Puntos clave:
 | `WEBHOOK_VERIFY_TOKEN` | Token que verifica el webhook de Meta | `gestoria-crm` |
 | `WHATSAPP_GRAPH_VERSION` | Versión de la Graph API | `v20.0` |
 | `MS_TENANT_ID` / `MS_CLIENT_ID` / `MS_CLIENT_SECRET` | Credenciales de la app de Entra ID para Outlook y SharePoint (vacías → sin sincronización) | *(vacío)* |
+| `OPENAI_API_KEY` | Clave de OpenAI (o compatible). Se usa para transcribir notas de voz **y** para el asistente por Telegram | *(vacío)* |
+| `TELEGRAM_BOT_TOKEN` | Token del bot de Telegram (de @BotFather). Vacío → asistente desactivado | *(vacío)* |
+| `TELEGRAM_ALLOWED` | Lista blanca `idTelegram:usuarioCRM,idTelegram2:usuarioCRM2`. Solo esos IDs pueden usar el asistente | *(vacío)* |
+| `TELEGRAM_AGENT_MODEL` | Modelo que interpreta las órdenes del asistente | `gpt-4o-mini` |
 
 La elección de proveedor y los precios están comparados en
 [`COMPARATIVA-BSP.md`](COMPARATIVA-BSP.md).
