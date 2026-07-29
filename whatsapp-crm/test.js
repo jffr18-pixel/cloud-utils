@@ -784,6 +784,10 @@ async function main() {
     const luciaLast = luciaMsgs[luciaMsgs.length - 1];
     assert(luciaLast.auto === true && luciaLast.viaTemplate === true,
       'aviso fuera de la ventana de 24 h enviado como plantilla');
+    // Envío MANUAL fuera de la ventana con plantilla activada → también usa plantilla.
+    const luciaManual = await req('POST', '/api/messages', { clientId: lucia.clientId, text: 'Buenas, ¿todo bien?' });
+    assert(luciaManual.status === 201 && luciaManual.data.viaTemplate === true && !luciaManual.data.auto,
+      'un envío manual fuera de la ventana usa la plantilla aprobada');
     // María escribió hace un momento → ventana abierta → texto libre.
     const remMaria = await req('POST', '/api/reminders', {
       text: 'Firma pendiente', dueDate: today, clientId, sendToClient: true,

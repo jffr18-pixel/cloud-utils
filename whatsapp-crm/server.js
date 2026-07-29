@@ -686,6 +686,8 @@ async function sendMessageToClient(db, client, text, opts = {}) {
   let status = 'demo';
   let viaTemplate = false;
   const sendOpts = opts.replyToWamid ? { replyToWamid: opts.replyToWamid } : {};
+  const settings = auto.getSettings(db);
+  const windowOpen = auto.isWindowOpen(db, client.id);
   try {
     if (opts.media) {
       sendResult = await wa.sendMedia(client.phone, opts.media, sendOpts);
@@ -694,13 +696,10 @@ async function sendMessageToClient(db, client, text, opts = {}) {
       // cliente, así que la ventana de 24 h está abierta.
       sendResult = await wa.sendInteractiveList(client.phone, opts.interactiveList);
     } else {
-      // Automatizaciones fuera de la ventana de 24 h: WhatsApp rechaza el
-      // texto libre, así que se usa la plantilla aprobada si está configurada
-      // ({{1}} = nombre, {{2}} = texto del aviso).
-      const settings = auto.getSettings(db);
-      const useTemplate = opts.auto
-        && settings.template24h.enabled
-        && !auto.isWindowOpen(db, client.id);
+      // Fuera de la ventana de 24 h WhatsApp rechaza el texto libre: si hay una
+      // plantilla aprobada configurada, se usa (tanto en automatizaciones como
+      // en envíos manuales). ({{1}} = nombre, {{2}} = texto del mensaje).
+      const useTemplate = settings.template24h.enabled && !windowOpen;
       if (useTemplate) {
         viaTemplate = true;
         sendResult = await wa.sendTemplate(client.phone, settings.template24h.name,
@@ -712,7 +711,13 @@ async function sendMessageToClient(db, client, text, opts = {}) {
     status = sendResult.demo ? 'demo' : 'sent';
   } catch (err) {
     status = 'error';
-    sendResult.error = err.message;
+    // Fuera de la ventana de 24 h y sin plantilla: mensaje claro en español.
+    if (!windowOpen && !opts.media && !settings.template24h.enabled && wa.isConfigured()) {
+      sendResult.error = 'WhatsApp no permite escribir texto libre pasadas 24 h desde el último mensaje del cliente. '
+        + 'Espera a que te escriba, o configura una plantilla aprobada en Automatizaciones → «Plantilla para la ventana de 24 h».';
+    } else {
+      sendResult.error = err.message;
+    }
   }
   const msg = {
     id: newId('msg'),

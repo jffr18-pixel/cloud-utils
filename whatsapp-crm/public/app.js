@@ -564,20 +564,18 @@ function renderChatHeader(client, msgs) {
     .filter((m) => m.direction === 'in')
     .reduce((max, m) => Math.max(max, m.timestamp), 0);
   const win = $('#chat-window');
-  if (!lastIn) {
-    win.className = 'chat-window closed';
-    win.textContent = '🔒 Ventana de 24 h cerrada · solo plantillas';
+  const closedTxt = state.template24hEnabled
+    ? '🔒 Ventana de 24 h cerrada · se enviará con tu plantilla aprobada'
+    : '🔒 Ventana de 24 h cerrada · WhatsApp solo permite plantillas';
+  const leftMs = lastIn ? 24 * 3600 * 1000 - (Date.now() - lastIn) : -1;
+  if (leftMs > 0) {
+    const h = Math.floor(leftMs / 3600000);
+    const min = Math.floor((leftMs % 3600000) / 60000);
+    win.className = 'chat-window open';
+    win.textContent = `🟢 Ventana de 24 h abierta · quedan ${h > 0 ? h + ' h ' : ''}${min} min`;
   } else {
-    const leftMs = 24 * 3600 * 1000 - (Date.now() - lastIn);
-    if (leftMs > 0) {
-      const h = Math.floor(leftMs / 3600000);
-      const min = Math.floor((leftMs % 3600000) / 60000);
-      win.className = 'chat-window open';
-      win.textContent = `🟢 Ventana de 24 h abierta · quedan ${h > 0 ? h + ' h ' : ''}${min} min`;
-    } else {
-      win.className = 'chat-window closed';
-      win.textContent = '🔒 Ventana de 24 h cerrada · solo plantillas';
-    }
+    win.className = 'chat-window closed clickable';
+    win.textContent = closedTxt;
   }
   const note = $('#chat-note');
   const txt = (client.pinnedNote || '').trim();
@@ -913,6 +911,15 @@ $('#avatar-file').addEventListener('change', async () => {
     await api('clients/' + clientId + '/avatar', { method: 'POST', body: { file: { name: file.name, mime: file.type, data } } });
     await afterAvatarChange(clientId);
   } catch (err) { alert(err.message); }
+});
+
+// Explicación de la ventana de 24 h al pulsar el aviso.
+$('#chat-window').addEventListener('click', () => {
+  if (!$('#chat-window').classList.contains('closed')) return;
+  const extra = state.template24hEnabled
+    ? '\n\nComo tienes una plantilla aprobada configurada, tu mensaje se enviará usando esa plantilla.'
+    : '\n\nPara escribir ahora mismo tienes dos opciones:\n• Pídele al cliente que te mande cualquier mensaje (con eso se reabre la ventana de 24 h y podrás responder con normalidad).\n• O configura una plantilla aprobada de Meta en Automatizaciones → «Plantilla para la ventana de 24 h».';
+  alert('⏰ Ventana de 24 h de WhatsApp\n\nEsto no es un fallo del CRM: es una norma de WhatsApp. Solo permite enviar mensajes de texto libres durante las 24 h siguientes al último mensaje que te envía el cliente. Pasado ese tiempo, únicamente se pueden enviar plantillas aprobadas por Meta.' + extra);
 });
 
 // Listeners de las nuevas funciones del chat.
@@ -2978,6 +2985,8 @@ async function init() {
   }
 
   state.users = await api('users').catch(() => []);
+  // Saber si hay plantilla aprobada para la ventana de 24 h (afecta al aviso).
+  try { state.template24hEnabled = Boolean((await api('automations')).template24h?.enabled); } catch { state.template24hEnabled = false; }
 
   const status = await api('status');
   const badge = $('#connection-badge');

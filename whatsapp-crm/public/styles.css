@@ -402,6 +402,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 }
 .chat-window.open { background: #e7f7ea; color: #1f7a3d; }
 .chat-window.closed { background: #fbe9e7; color: #b13a2a; }
+.chat-window.clickable { cursor: help; }
+.chat-window.clickable::after { content: ' ⓘ'; opacity: .7; }
 .chat-note {
   flex: 1; min-width: 0; text-align: left; cursor: pointer;
   border: 1px dashed #d9c873; background: #fdf6d8; color: var(--ink, #1d1d1b);
