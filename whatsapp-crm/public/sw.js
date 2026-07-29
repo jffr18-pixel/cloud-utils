@@ -5,7 +5,7 @@
 // siempre por red; solo se guarda en caché el "esqueleto" (HTML/CSS/JS/iconos)
 // para poder abrir la app sin conexión. Así nunca se muestran datos viejos.
 
-const CACHE = 'bz-crm-v4';
+const CACHE = 'bz-crm-v5';
 const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/favicon.svg', '/icon-192.png'];
 
 self.addEventListener('install', (event) => {

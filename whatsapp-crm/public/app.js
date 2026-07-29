@@ -3379,4 +3379,14 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// Desbloqueo explícito de la orientación: si algo (o un manifiesto antiguo
+// guardado por el móvil) hubiera fijado la orientación, se libera para que la
+// app pueda girar a horizontal. Es un «por si acaso»; en navegadores que no lo
+// soportan simplemente no hace nada.
+try {
+  if (screen.orientation && typeof screen.orientation.unlock === 'function') {
+    screen.orientation.unlock();
+  }
+} catch { /* no soportado: sin efecto */ }
+
 init();
