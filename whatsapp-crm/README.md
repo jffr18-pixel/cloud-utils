@@ -365,6 +365,26 @@ botones ✅/❌.** Nada sale sin tu visto bueno.
 El bot funciona por *long polling*: no hace falta abrir puertos ni configurar
 webhooks. En cuanto el servidor arranca con el token puesto, queda a la escucha.
 
+### Seguridad del asistente
+
+Pensado para datos sensibles (extranjería). Medidas aplicadas:
+
+- **Lista blanca en todos los caminos**: tanto los mensajes como los botones de
+  confirmación comprueban que el ID de Telegram esté autorizado. Cierre por
+  defecto: sin `TELEGRAM_ALLOWED`, nadie puede usarlo.
+- **Solo en chats privados**: en grupos el bot no responde, para no exponer
+  nombres, teléfonos ni expedientes a terceros.
+- **Confirmación ligada a quien la pide**: cada acción pendiente lleva un token
+  aleatorio e impredecible y solo la puede confirmar el mismo usuario que la
+  creó (nadie puede ejecutar la acción de otro).
+- **Aislamiento respetado**: el asistente solo ve y actúa sobre los clientes,
+  chats y expedientes visibles para el usuario del CRM ligado a ese ID.
+- **Límites**: control de frecuencia por usuario, tamaño máximo de las notas de
+  voz (`TELEGRAM_MAX_FILE_MB`, 20 MB por defecto) y *timeouts* en todas las
+  llamadas de red para que nada deje el bot colgado.
+- **Sin filtraciones**: el token del bot nunca aparece en los logs y los errores
+  internos no se muestran al usuario (solo un aviso genérico).
+
 > **Privacidad (RGPD)**: el texto de tus órdenes se envía a OpenAI para
 > interpretarlo (igual que la transcripción de voz). No se manda la base de
 > clientes: el modelo solo extrae la intención y los nombres que tú escribes; la
@@ -391,6 +411,8 @@ webhooks. En cuanto el servidor arranca con el token puesto, queda a la escucha.
 | `TELEGRAM_BOT_TOKEN` | Token del bot de Telegram (de @BotFather). Vacío → asistente desactivado | *(vacío)* |
 | `TELEGRAM_ALLOWED` | Lista blanca `idTelegram:usuarioCRM,idTelegram2:usuarioCRM2`. Solo esos IDs pueden usar el asistente | *(vacío)* |
 | `TELEGRAM_AGENT_MODEL` | Modelo que interpreta las órdenes del asistente | `gpt-4o-mini` |
+| `TELEGRAM_MAX_FILE_MB` | Tamaño máximo de las notas de voz que descarga el bot | `20` |
+| `AGENT_TIMEOUT_MS` | Timeout de la llamada al modelo del asistente | `20000` |
 
 La elección de proveedor y los precios están comparados en
 [`COMPARATIVA-BSP.md`](COMPARATIVA-BSP.md).

@@ -22,24 +22,49 @@ function isConfigured() {
   return Boolean(token());
 }
 
+// Quita el token del bot de cualquier texto (la URL de la API lo contiene): así
+// nunca acaba en un log ni en un mensaje de error visible.
+function redact(str) {
+  const tk = token();
+  let s = String(str == null ? '' : str);
+  if (tk) s = s.split(tk).join('***');
+  return s;
+}
+
+// Tamaño máximo de fichero que se descarga (notas de voz, etc.).
+const MAX_FILE_BYTES = Number(process.env.TELEGRAM_MAX_FILE_MB || 20) * 1024 * 1024;
+
 // Llama a un método de la API del bot. Devuelve el campo `result` o lanza error.
-async function call(method, params = {}) {
-  const res = await fetch(`${BASE()}/bot${token()}/${method}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
+// Con timeout: una petición colgada no puede bloquear el bot (es de un hilo).
+async function call(method, params = {}, opts = {}) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs || 15000);
+  let res;
+  try {
+    res = await fetch(`${BASE()}/bot${token()}/${method}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+      signal: ctrl.signal,
+    });
+  } catch (err) {
+    throw new Error(`Telegram ${method}: ${redact(err && err.message) || 'error de red'}`);
+  } finally {
+    clearTimeout(timer);
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) {
-    throw new Error(`Telegram ${method}: ${data.description || res.status}`);
+    throw new Error(`Telegram ${method}: ${redact(data.description) || res.status}`);
   }
   return data.result;
 }
 
 // Espera pasiva (long polling) de mensajes nuevos. `timeout` en segundos: la
-// petición se queda abierta hasta que llega algo o se agota.
+// petición se queda abierta hasta que llega algo o se agota. El timeout de red
+// se da un margen por encima del long-poll para no cortarlo antes de tiempo.
 async function getUpdates(offset, timeout = 50) {
-  return call('getUpdates', { offset, timeout, allowed_updates: ['message', 'callback_query'] });
+  return call('getUpdates', { offset, timeout, allowed_updates: ['message', 'callback_query'] },
+    { timeoutMs: (timeout + 15) * 1000 });
 }
 
 function sendMessage(chatId, text, opts = {}) {
@@ -71,13 +96,27 @@ function sendChatAction(chatId, action = 'typing') {
   return call('sendChatAction', { chat_id: chatId, action }).catch(() => null);
 }
 
-// Descarga un fichero (p. ej. una nota de voz) y devuelve su Buffer.
+// Descarga un fichero (p. ej. una nota de voz) y devuelve su Buffer. Rechaza
+// ficheros demasiado grandes (protección de memoria) y aplica timeout.
 async function downloadFile(fileId) {
   const file = await call('getFile', { file_id: fileId });
+  if (file.file_size && file.file_size > MAX_FILE_BYTES) {
+    throw new Error('el fichero es demasiado grande');
+  }
   const url = `${BASE()}/file/bot${token()}/${file.file_path}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Telegram descarga de fichero: HTTP ${res.status}`);
-  return Buffer.from(await res.arrayBuffer());
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30000);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`descarga de fichero: HTTP ${res.status}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > MAX_FILE_BYTES) throw new Error('el fichero es demasiado grande');
+    return buf;
+  } catch (err) {
+    throw new Error(redact(err && err.message) || 'error de red');
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // Un teclado en línea con dos botones (confirmar / cancelar) para una acción.
@@ -91,6 +130,6 @@ function confirmKeyboard(token) {
 }
 
 module.exports = {
-  isConfigured, call, getUpdates, sendMessage, editMessageText,
+  isConfigured, redact, call, getUpdates, sendMessage, editMessageText,
   answerCallbackQuery, sendChatAction, downloadFile, confirmKeyboard,
 };

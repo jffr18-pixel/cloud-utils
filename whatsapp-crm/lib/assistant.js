@@ -211,7 +211,14 @@ async function interpret(text, opts = {}) {
     return { reply: 'El asistente inteligente no está configurado (falta OPENAI_API_KEY). Aun así puedo ejecutar órdenes directas.' };
   }
   const { url, headers, body } = buildAgentRequest(text, opts);
-  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), Number(process.env.AGENT_TIMEOUT_MS || 20000));
+  let res;
+  try {
+    res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
     throw new Error(`asistente HTTP ${res.status}${detail ? ': ' + detail.slice(0, 200) : ''}`);

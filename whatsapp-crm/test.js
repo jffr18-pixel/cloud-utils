@@ -339,6 +339,7 @@ async function testTelegramAssistant() {
   const updates = [];          // cola de updates que el bot irá recogiendo
   const sent = [];             // mensajes que el bot envía (sendMessage)
   const edited = [];           // ediciones (editMessageText)
+  const answered = [];         // answerCallbackQuery (id + texto)
   let msgSeq = 100;
   let toolReply = null;        // qué debe responder el «modelo» en la próxima llamada
 
@@ -360,7 +361,8 @@ async function testTelegramAssistant() {
     }
     if (method === 'sendMessage') { sent.push(body); return send({ ok: true, result: { message_id: (msgSeq += 1), chat: { id: body.chat_id } } }); }
     if (method === 'editMessageText') { edited.push(body); return send({ ok: true, result: { message_id: body.message_id } }); }
-    if (method === 'answerCallbackQuery' || method === 'sendChatAction') { return send({ ok: true, result: true }); }
+    if (method === 'answerCallbackQuery') { answered.push(body); return send({ ok: true, result: true }); }
+    if (method === 'sendChatAction') { return send({ ok: true, result: true }); }
     if (method === 'chat') { return send(toolReply || { choices: [{ message: { content: 'De acuerdo.' } }] }); }
     return send({ ok: false });
   });
@@ -370,7 +372,7 @@ async function testTelegramAssistant() {
     env: {
       ...process.env, PORT: String(TG_PORT), DATA_DIR: tgDataDir,
       CRM_PASSWORD: '', WHATSAPP_TOKEN: '', WHATSAPP_PHONE_NUMBER_ID: '',
-      TELEGRAM_BOT_TOKEN: '123:ABC', TELEGRAM_ALLOWED: '555:',
+      TELEGRAM_BOT_TOKEN: '123:ABC', TELEGRAM_ALLOWED: '555:,556:',
       TELEGRAM_API_BASE: `http://127.0.0.1:${MOCK_PORT}`,
       OPENAI_API_KEY: 'sk-test', AGENT_URL: `http://127.0.0.1:${MOCK_PORT}/v1/chat/completions`,
     },
@@ -389,10 +391,18 @@ async function testTelegramAssistant() {
       try { await fetch(TG_BASE + '/api/status'); break; } catch { await new Promise((r) => setTimeout(r, 100)); }
     }
 
+    const priv = (id) => ({ id, type: 'private' });
+
     // Un ID que no está en la lista blanca no puede usar el asistente.
-    updates.push({ update_id: 1, message: { message_id: 1, chat: { id: 777 }, from: { id: 777 }, text: 'hola' } });
+    updates.push({ update_id: 1, message: { message_id: 1, chat: priv(777), from: { id: 777 }, text: 'hola' } });
     const denied = await waitFor(() => sent.find((s) => String(s.chat_id) === '777' && /No estás autorizado/.test(s.text)));
     assert(denied && /777/.test(denied.text), 'un ID no autorizado es rechazado y ve su propio ID');
+
+    // Un mensaje en un grupo (no privado) se ignora: no filtra datos a terceros.
+    const sentBeforeGroup = sent.length;
+    updates.push({ update_id: 2, message: { message_id: 2, chat: { id: -100, type: 'group' }, from: { id: 555 }, text: '¿qué tengo hoy?' } });
+    await new Promise((r) => setTimeout(r, 500));
+    assert(sent.length === sentBeforeGroup, 'los mensajes de grupo se ignoran (solo chats privados)');
 
     // Seed de un cliente para poder enviarle un WhatsApp.
     const pedro = await post('/api/clients', { name: 'Pedro Ramírez', phone: '600777888' });
@@ -401,21 +411,34 @@ async function testTelegramAssistant() {
     toolReply = { choices: [{ message: { tool_calls: [{ id: 't1', type: 'function', function: {
       name: 'enviar_whatsapp', arguments: JSON.stringify({ destinatario: 'Pedro', mensaje: 'Hola Pedro, llega 10 minutos antes.' }),
     } }] } }] };
-    updates.push({ update_id: 2, message: { message_id: 2, chat: { id: 555 }, from: { id: 555 }, text: 'dile a Pedro que llegue antes' } });
+    updates.push({ update_id: 3, message: { message_id: 3, chat: priv(555), from: { id: 555 }, text: 'dile a Pedro que llegue antes' } });
 
     const confirm = await waitFor(() => sent.find((s) => String(s.chat_id) === '555' && s.reply_markup && /Pedro Ramírez/.test(s.text)));
     assert(confirm && /Hola Pedro, llega 10 minutos antes/.test(confirm.text), 'propone el envío a Pedro y pide confirmación');
     const btn = confirm.reply_markup.inline_keyboard[0][0].callback_data;
-    assert(/^ok:/.test(btn), 'el botón de confirmar lleva el token de la acción');
+    assert(/^ok:[0-9a-f]{32}$/.test(btn), 'el botón de confirmar lleva un token aleatorio no adivinable');
 
     // Antes de confirmar, no debe existir ningún mensaje saliente.
     const before = await (await fetch(TG_BASE + '/api/messages?clientId=' + pedro.id)).json();
     assert(!before.some((mm) => mm.direction === 'out'), 'sin confirmar no se envía nada');
 
-    // Confirmar → se ejecuta el envío.
-    updates.push({ update_id: 3, callback_query: { id: 'cq1', data: btn, message: { message_id: 20, chat: { id: 555 } } } });
+    // Un usuario NO autorizado que pulse el botón (con el token válido) es
+    // rechazado y no ejecuta la acción.
+    updates.push({ update_id: 4, callback_query: { id: 'cq0', from: { id: 777 }, data: btn, message: { message_id: 20, chat: priv(555) } } });
+    const rejAuth = await waitFor(() => answered.find((a) => a.callback_query_id === 'cq0' && /No autorizado/.test(a.text || '')));
+    assert(rejAuth, 'un botón pulsado por un ID no autorizado se rechaza');
+
+    // Un usuario AUTORIZADO pero que no creó la acción tampoco puede confirmarla.
+    updates.push({ update_id: 5, callback_query: { id: 'cq1', from: { id: 556 }, data: btn, message: { message_id: 20, chat: priv(556) } } });
+    const rejOwner = await waitFor(() => edited.find((e) => /no es tuya/.test(e.text || '')));
+    assert(rejOwner, 'otro usuario no puede confirmar la acción pendiente de un compañero');
+    const midway = await (await fetch(TG_BASE + '/api/messages?clientId=' + pedro.id)).json();
+    assert(!midway.some((mm) => mm.direction === 'out'), 'los intentos ajenos no ejecutan el envío');
+
+    // El creador confirma → se ejecuta el envío.
+    updates.push({ update_id: 6, callback_query: { id: 'cq2', from: { id: 555 }, data: btn, message: { message_id: 20, chat: priv(555) } } });
     const done = await waitFor(() => edited.find((e) => /✅/.test(e.text)));
-    assert(done, 'al confirmar, el bot marca la acción como hecha');
+    assert(done, 'al confirmar el creador, el bot marca la acción como hecha');
     const after = await waitFor(async () => {
       const list = await (await fetch(TG_BASE + '/api/messages?clientId=' + pedro.id)).json();
       return list.find((mm) => mm.direction === 'out' && /Hola Pedro, llega 10 minutos antes/.test(mm.text || '')) ? list : null;
@@ -423,13 +446,13 @@ async function testTelegramAssistant() {
     assert(after, 'tras confirmar, el WhatsApp queda registrado en la conversación del cliente');
 
     // Cancelar una acción no ejecuta nada.
-    toolReply = { choices: [{ message: { tool_calls: [{ id: 't2', type: 'function', function: {
+    toolReply = { choices: [{ message: { tool_calls: [{ id: 't3', type: 'function', function: {
       name: 'crear_recordatorio', arguments: JSON.stringify({ texto: 'probar cancelación' }),
     } }] } }] };
-    updates.push({ update_id: 4, message: { message_id: 4, chat: { id: 555 }, from: { id: 555 }, text: 'recuérdame probar' } });
+    updates.push({ update_id: 7, message: { message_id: 7, chat: priv(555), from: { id: 555 }, text: 'recuérdame probar' } });
     const remConfirm = await waitFor(() => sent.find((s) => /Recordatorio/.test(s.text) && s.reply_markup));
     const remBtn = remConfirm.reply_markup.inline_keyboard[0][0].callback_data.replace(/^ok:/, 'no:');
-    updates.push({ update_id: 5, callback_query: { id: 'cq2', data: remBtn, message: { message_id: 21, chat: { id: 555 } } } });
+    updates.push({ update_id: 8, callback_query: { id: 'cq3', from: { id: 555 }, data: remBtn, message: { message_id: 21, chat: priv(555) } } });
     const cancelled = await waitFor(() => edited.find((e) => /Cancelado/.test(e.text)));
     assert(cancelled, 'cancelar deja la acción sin ejecutar');
   } finally {
@@ -1632,6 +1655,13 @@ async function main() {
     assert(toolResp.tool === 'crear_cita' && toolResp.args.hora === '10:00', 'lee la herramienta y sus argumentos');
     const textResp = asst.parseAgentResponse({ choices: [{ message: { content: '¿A qué hora?' } }] });
     assert(textResp.reply === '¿A qué hora?', 'una respuesta sin herramienta se devuelve como texto');
+    // El token del bot nunca debe aparecer en textos que se registren o muestren.
+    const tgLib = require('./lib/telegram');
+    const prevTok = process.env.TELEGRAM_BOT_TOKEN;
+    process.env.TELEGRAM_BOT_TOKEN = '999:SECRETO';
+    assert(!tgLib.redact('fallo en https://api.telegram.org/bot999:SECRETO/getUpdates').includes('999:SECRETO'),
+      'redact() oculta el token del bot en los mensajes');
+    if (prevTok === undefined) delete process.env.TELEGRAM_BOT_TOKEN; else process.env.TELEGRAM_BOT_TOKEN = prevTok;
 
     await testTelegramAssistant();
 

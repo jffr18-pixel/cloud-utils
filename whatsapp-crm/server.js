@@ -1303,7 +1303,9 @@ async function handleApi(req, res, url) {
   const clientsV = visIds ? db.clients.filter((c) => visIds.has(c.id)) : db.clients;
   const casesV = db.cases.filter(caseVisible);
   const apptsV = visIds ? db.appointments.filter((a) => visIds.has(a.clientId)) : db.appointments;
-  const remindersV = visIds ? db.reminders.filter((r) => !r.clientId || visIds.has(r.clientId)) : db.reminders;
+  const remindersV = visIds
+    ? db.reminders.filter((r) => (!r.owner || r.owner === me) && (!r.clientId || visIds.has(r.clientId)))
+    : db.reminders;
   const convSummV = () => conversationSummaries(db).filter((c) => !visIds || visIds.has(c.clientId));
 
   // --- Descarga de adjuntos ------------------------------------------------
@@ -2891,6 +2893,7 @@ async function handleApi(req, res, url) {
     }
     const r = db.reminders.find((x) => x.id === id);
     if (!r) return json(res, 404, { error: 'Recordatorio no encontrado' });
+    if (isolationOn() && r.owner && r.owner !== me) return json(res, 403, { error: 'Sin acceso a este recordatorio' });
     if (r.clientId && visIds && !visIds.has(r.clientId)) return json(res, 403, { error: 'Sin acceso a este recordatorio' });
     if (req.method === 'PUT') {
       const b = await readBody(req);
@@ -3661,10 +3664,18 @@ function tgToday() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function tgStash(chatId, crmUser, action) {
-  const token = newId('tg');
-  tgPending.set(token, { chatId, crmUser, action, expires: Date.now() + 10 * 60 * 1000 });
+// Guarda una acción pendiente de confirmación. El token es aleatorio (no
+// adivinable) y la acción queda ligada al usuario de Telegram que la creó:
+// solo esa persona puede confirmarla.
+function tgStash(fromId, chatId, crmUser, action) {
+  const token = crypto.randomBytes(16).toString('hex');
+  tgPending.set(token, { fromId, chatId, crmUser, action, expires: Date.now() + 10 * 60 * 1000 });
   return token;
+}
+
+// ¿Está este ID de Telegram autorizado? (lista blanca, cierre por defecto).
+function tgAuthorized(fromId) {
+  return TG_ALLOWED.has(fromId);
 }
 
 // Limpia acciones pendientes caducadas (para no acumular memoria).
@@ -3676,14 +3687,25 @@ function tgSweep() {
 async function handleTelegramUpdate(update) {
   if (update.callback_query) return handleTgCallback(update.callback_query);
   const msg = update.message;
-  if (!msg || !msg.chat) return;
+  if (!msg || !msg.chat || !msg.from) return;
+  // Solo en chats privados: en grupos los datos del cliente (nombres, teléfonos,
+  // NIE…) quedarían a la vista de terceros. Los updates de grupo se ignoran.
+  if (msg.chat.type !== 'private') return;
   const chatId = msg.chat.id;
-  const fromId = String((msg.from && msg.from.id) || '');
+  const fromId = String(msg.from.id);
 
-  // Autorización: solo los IDs de la lista blanca.
-  if (!TG_ALLOWED.has(fromId)) {
-    await telegram.sendMessage(chatId,
-      `⛔ No estás autorizado para usar este asistente.\nTu ID de Telegram es: ${fromId}\nPídele al administrador que te dé de alta.`);
+  // Autorización: solo los IDs de la lista blanca. A los no autorizados se les
+  // responde con moderación (rate-limit) para no usar el bot como amplificador.
+  if (!tgAuthorized(fromId)) {
+    if (security.rateLimit(`tgx:${fromId}`, 2, 60_000)) {
+      await telegram.sendMessage(chatId,
+        `⛔ No estás autorizado para usar este asistente.\nTu ID de Telegram es: ${fromId}\nPídele al administrador que te dé de alta.`).catch(() => null);
+    }
+    return;
+  }
+  // Límite de uso por usuario autorizado (evita spam accidental y coste de IA).
+  if (!security.rateLimit(`tg:${fromId}`, 20, 60_000)) {
+    await telegram.sendMessage(chatId, '⏳ Vas muy rápido; espera un momento y vuelve a intentarlo.').catch(() => null);
     return;
   }
   const crmUser = TG_ALLOWED.get(fromId);
@@ -3706,7 +3728,8 @@ async function handleTelegramUpdate(update) {
       text = await transcribe.run(buf, 'nota.ogg', media.mime_type || 'audio/ogg');
       if (text) await telegram.sendMessage(chatId, `🎙️ Te he entendido: «${text}»`);
     } catch (err) {
-      await telegram.sendMessage(chatId, 'No pude transcribir la nota de voz: ' + err.message);
+      console.error('Asistente Telegram (voz):', telegram.redact(err && err.message));
+      await telegram.sendMessage(chatId, 'No pude transcribir la nota de voz. Inténtalo de nuevo.').catch(() => null);
       return;
     }
   }
@@ -3718,16 +3741,17 @@ async function handleTelegramUpdate(update) {
     await telegram.sendChatAction(chatId);
     intent = await assistant.interpret(text, { today: tgToday() });
   } catch (err) {
-    await telegram.sendMessage(chatId, 'El asistente ha tenido un problema: ' + err.message);
+    console.error('Asistente Telegram (IA):', telegram.redact(err && err.message));
+    await telegram.sendMessage(chatId, 'El asistente no está disponible ahora mismo. Inténtalo en un momento.').catch(() => null);
     return;
   }
   if (intent.reply) { await telegram.sendMessage(chatId, intent.reply); return; }
-  await routeTgTool(chatId, crmUser, intent.tool, intent.args || {});
+  await routeTgTool(fromId, chatId, crmUser, intent.tool, intent.args || {});
 }
 
 // Traduce una herramienta del modelo en una respuesta directa (consultas) o en
 // una acción que se propone y queda pendiente de confirmación (envíos/altas).
-async function routeTgTool(chatId, crmUser, tool, args) {
+async function routeTgTool(fromId, chatId, crmUser, tool, args) {
   const db = load();
   const visible = (c) => canSeeClient(c || {}, crmUser);
 
@@ -3757,7 +3781,6 @@ async function routeTgTool(chatId, crmUser, tool, args) {
   }
 
   if (tool === 'pendientes_cobro') {
-    const now = Date.now();
     const byClient = new Map();
     for (const c of db.cases) {
       const client = db.clients.find((x) => x.id === c.clientId);
@@ -3792,7 +3815,7 @@ async function routeTgTool(chatId, crmUser, tool, args) {
     const action = r.client
       ? { type: 'wa', clientId: r.client.id, message: mensaje }
       : { type: 'wa', phone: r.phone, name: `+${r.phone}`, message: mensaje };
-    const token = tgStash(chatId, crmUser, action);
+    const token = tgStash(fromId, chatId, crmUser, action);
     await telegram.sendMessage(chatId, `📲 Voy a enviar por WhatsApp a ${dest}:\n\n«${mensaje}»\n\n¿Lo confirmas?`,
       { replyMarkup: telegram.confirmKeyboard(token) });
     return;
@@ -3810,7 +3833,7 @@ async function routeTgTool(chatId, crmUser, tool, args) {
     if (r.blocked) { await telegram.sendMessage(chatId, 'Ese contacto pertenece a otro usuario.'); return; }
     if (r.none || r.phone) { await telegram.sendMessage(chatId, `No encuentro al cliente «${args.cliente}». Créalo primero en el CRM o dime un cliente existente.`); return; }
     const action = { type: 'cita', clientId: r.client.id, date: args.fecha, time: args.hora, reason: String(args.motivo || '').trim() };
-    const token = tgStash(chatId, crmUser, action);
+    const token = tgStash(fromId, chatId, crmUser, action);
     await telegram.sendMessage(chatId,
       `📅 Voy a crear una cita con ${r.client.name} el ${args.fecha} a las ${args.hora}${action.reason ? ` · ${action.reason}` : ''}.\nSe le enviará la confirmación por WhatsApp.\n\n¿Lo confirmas?`,
       { replyMarkup: telegram.confirmKeyboard(token) });
@@ -3822,7 +3845,7 @@ async function routeTgTool(chatId, crmUser, tool, args) {
     if (!texto) { await telegram.sendMessage(chatId, '¿Qué quieres que te recuerde?'); return; }
     const fecha = assistant.validDate(args.fecha) ? args.fecha : null;
     const action = { type: 'recordatorio', text: texto, date: fecha };
-    const token = tgStash(chatId, crmUser, action);
+    const token = tgStash(fromId, chatId, crmUser, action);
     await telegram.sendMessage(chatId, `⏰ Recordatorio: «${texto}»${fecha ? ` para el ${fecha}` : ''}.\n\n¿Lo guardo?`,
       { replyMarkup: telegram.confirmKeyboard(token) });
     return;
@@ -3832,20 +3855,30 @@ async function routeTgTool(chatId, crmUser, tool, args) {
 }
 
 async function handleTgCallback(cq) {
-  const [kind, token] = String(cq.data || '').split(':');
-  const pending = tgPending.get(token);
   const chatId = cq.message && cq.message.chat && cq.message.chat.id;
   const messageId = cq.message && cq.message.message_id;
+  const fromId = String((cq.from && cq.from.id) || '');
+  // Autorización también en los botones: sin esto, cualquiera podría pulsar un
+  // botón (p. ej. en un grupo) y ejecutar una acción.
+  if (!tgAuthorized(fromId)) { await telegram.answerCallbackQuery(cq.id, 'No autorizado').catch(() => null); return; }
   await telegram.answerCallbackQuery(cq.id).catch(() => null);
   if (!chatId) return;
-  if (!pending) { await telegram.editMessageText(chatId, messageId, '⏱️ Esta acción ha caducado. Vuelve a pedírmelo.'); return; }
+  const [kind, token] = String(cq.data || '').split(':');
+  const pending = token ? tgPending.get(token) : null;
+  // La acción solo la puede confirmar quien la creó (no se borra si no coincide,
+  // para que su dueño legítimo aún pueda hacerlo).
+  if (!pending || pending.fromId !== fromId) {
+    await telegram.editMessageText(chatId, messageId, '⏱️ Esta acción ha caducado o no es tuya. Vuelve a pedírmelo.').catch(() => null);
+    return;
+  }
   tgPending.delete(token);
-  if (kind !== 'ok') { await telegram.editMessageText(chatId, messageId, '❌ Cancelado.'); return; }
+  if (kind !== 'ok') { await telegram.editMessageText(chatId, messageId, '❌ Cancelado.').catch(() => null); return; }
   try {
     const result = await executeTgAction(pending.crmUser, pending.action);
-    await telegram.editMessageText(chatId, messageId, '✅ ' + result);
+    await telegram.editMessageText(chatId, messageId, '✅ ' + result).catch(() => null);
   } catch (err) {
-    await telegram.editMessageText(chatId, messageId, '⚠️ No se pudo completar: ' + err.message);
+    console.error('Asistente Telegram (ejecución):', telegram.redact(err && err.message));
+    await telegram.editMessageText(chatId, messageId, '⚠️ No se pudo completar la acción.').catch(() => null);
   }
 }
 
@@ -3874,6 +3907,8 @@ async function executeTgAction(crmUser, action) {
   if (action.type === 'recordatorio') {
     db.reminders.push({
       id: newId('rem'), clientId: null, text: action.text, dueDate: action.date || null,
+      // Con aislamiento, el recordatorio es privado de quien lo crea.
+      owner: isolationOn() ? crmUser : null,
       sendToClient: false, sentToClientAt: null, done: false, createdAt: Date.now(),
     });
     save();
@@ -3888,7 +3923,7 @@ async function telegramLoop() {
     const updates = await telegram.getUpdates(tgOffset, 50);
     for (const u of updates) {
       tgOffset = u.update_id + 1;
-      try { await handleTelegramUpdate(u); } catch (err) { console.error('Asistente Telegram:', err.message); }
+      try { await handleTelegramUpdate(u); } catch (err) { console.error('Asistente Telegram:', telegram.redact(err && err.message)); }
     }
     tgSweep();
   } catch (err) {
@@ -3921,6 +3956,15 @@ server.listen(PORT, () => {
       console.warn('⚠️  Asistente de Telegram activo pero sin TELEGRAM_ALLOWED: nadie está autorizado. Añade tu ID.');
     } else {
       console.log(`Asistente de Telegram activo (${TG_ALLOWED.size} usuario(s) autorizado(s)${assistant.isConfigured() ? ', IA activada' : ', SIN IA: falta OPENAI_API_KEY'}).`);
+      // Avisa si un ID apunta a un usuario del CRM que no existe (con
+      // aislamiento, ese usuario no vería ningún cliente).
+      if (isolationOn()) {
+        const validUsers = new Set(authUsers().keys());
+        for (const [tgId, crmUser] of TG_ALLOWED) {
+          if (!crmUser) console.warn(`⚠️  TELEGRAM_ALLOWED: el id ${tgId} no tiene usuario del CRM; con aislamiento no verá ningún cliente. Usa «${tgId}:usuario».`);
+          else if (!validUsers.has(crmUser)) console.warn(`⚠️  TELEGRAM_ALLOWED: el usuario «${crmUser}» (id ${tgId}) no existe en CRM_USERS.`);
+        }
+      }
     }
     telegramLoop();
   }
