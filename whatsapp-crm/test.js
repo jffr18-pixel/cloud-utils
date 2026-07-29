@@ -1382,6 +1382,26 @@ async function main() {
     console.log('CAPTCHA del acceso');
     await testCaptchaServer();
 
+    console.log('Cobros automáticos');
+    // Se ejecuta al final para no interferir con otros recuentos de mensajes.
+    const acClient = await req('POST', '/api/clients', { name: 'Moroso Auto', phone: '600998877' });
+    await req('POST', '/api/cases', { clientId: acClient.data.id, title: 'Trámite con saldo antiguo', type: 'otro', fee: 200, paid: false, status: 'completado' });
+    // Horario siempre abierto + cobros automáticos desde el día 0 para probar ya.
+    await req('PUT', '/api/automations', {
+      businessHours: { days: [0, 1, 2, 3, 4, 5, 6], open: '00:00', close: '23:59' },
+      autoCollect: { enabled: true, daysOverdue: 0, cooldownDays: 7, includeTax: false },
+    });
+    await req('POST', '/api/automations/run');
+    const acMsgs = (await req('GET', '/api/messages?clientId=' + acClient.data.id)).data;
+    assert(acMsgs.some((m) => m.direction === 'out' && m.auto === true && /Total pendiente: 200/.test(m.text || '')),
+      'los cobros automáticos reclaman el saldo pendiente por WhatsApp');
+    await req('POST', '/api/automations/run');
+    const acMsgs2 = (await req('GET', '/api/messages?clientId=' + acClient.data.id)).data;
+    assert(acMsgs2.filter((m) => /Total pendiente: 200/.test(m.text || '')).length === 1,
+      'no se repite el aviso dentro del periodo de espera (cooldown)');
+    await req('PUT', '/api/automations', { autoCollect: { enabled: false } });
+    await req('DELETE', '/api/clients/' + acClient.data.id);
+
     console.log('Borrado en cascada');
     await req('DELETE', `/api/clients/${clientId}`);
     const casesAfter = await req('GET', '/api/cases');

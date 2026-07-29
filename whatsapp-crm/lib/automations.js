@@ -143,6 +143,15 @@ const DEFAULTS = {
     onlyCompleted: true,   // solo trámites completados
     text: 'Hola {nombre} 👋 Te recordamos que queda pendiente el pago de {importe} € por «{tramite}». Si ya lo has abonado, ignora este mensaje. ¡Gracias! — Burocracia Zero',
   },
+  // Cobros automáticos: reclama por WhatsApp, sin intervención, a los clientes
+  // con saldo pendiente (honorarios y/o tasas) desde hace más de X días. Es la
+  // versión automática del botón «Reclamar» del panel «Por cobrar».
+  autoCollect: {
+    enabled: false,
+    daysOverdue: 15,       // reclamar a quien deba desde hace más de X días
+    cooldownDays: 7,       // no repetir el aviso al mismo cliente antes de X días
+    includeTax: false,     // incluir también las tasas pendientes en el importe
+  },
   // Transcripción de notas de voz entrantes (requiere OPENAI_API_KEY, o un
   // endpoint compatible en TRANSCRIBE_URL). Datos sensibles: actívalo solo si
   // el proveedor cumple el RGPD.
@@ -488,6 +497,47 @@ async function runScheduled(db, send, now = new Date()) {
       }));
       item.feeReminderAt = now.getTime();
       actions.push({ type: 'payment_reminder', caseId: item.id });
+    }
+  }
+
+  // Cobros automáticos: reclama el saldo pendiente (agrupado por cliente) a
+  // quien lo tenga desde hace más de X días, como el botón «Reclamar».
+  if (s.autoCollect && s.autoCollect.enabled) {
+    const days = Number.isFinite(Number(s.autoCollect.daysOverdue)) ? Number(s.autoCollect.daysOverdue) : 15;
+    const cooldownDays = Number.isFinite(Number(s.autoCollect.cooldownDays)) ? Number(s.autoCollect.cooldownDays) : 7;
+    const thresholdMs = days * 24 * 3600 * 1000;
+    const cooldownMs = cooldownDays * 24 * 3600 * 1000;
+    const includeTax = Boolean(s.autoCollect.includeTax);
+    // Agrupa los importes pendientes por cliente.
+    const byClient = new Map();
+    for (const item of db.cases) {
+      const feeDue = (Number(item.fee) || 0) > 0 && !item.paid ? Number(item.fee) : 0;
+      const taxDue = includeTax && (Number(item.taxAmount) || 0) > 0 && !item.taxPaid ? Number(item.taxAmount) : 0;
+      if (!feeDue && !taxDue) continue;
+      const e = byClient.get(item.clientId) || { total: 0, oldest: now.getTime(), items: [] };
+      e.total += feeDue + taxDue;
+      const since = item.updatedAt || item.createdAt || now.getTime();
+      if (since < e.oldest) e.oldest = since;
+      e.items.push({ title: item.title, fee: feeDue, tax: taxDue });
+      byClient.set(item.clientId, e);
+    }
+    for (const [clientId, e] of byClient) {
+      if (now.getTime() - e.oldest < thresholdMs) continue; // aún no lleva X días
+      const client = db.clients.find((c) => c.id === clientId);
+      if (!client) continue;
+      if (client.autoCollectAt && now.getTime() - client.autoCollectAt < cooldownMs) continue; // cooldown
+      const lines = [`Hola ${firstName(client)} 👋 Un recordatorio de los importes pendientes de tus trámites:`, ''];
+      for (const it of e.items) {
+        const parts = [];
+        if (it.fee) parts.push(`honorarios ${it.fee.toLocaleString('es-ES')} €`);
+        if (it.tax) parts.push(`tasa oficial ${it.tax.toLocaleString('es-ES')} €`);
+        lines.push(`• ${it.title}: ${parts.join(' + ')}`);
+      }
+      lines.push('', `Total pendiente: ${e.total.toLocaleString('es-ES')} €.`,
+        'Cuando puedas, nos dices y lo dejamos al día. ¡Gracias! 🙌');
+      await send(client, lines.join('\n'));
+      client.autoCollectAt = now.getTime();
+      actions.push({ type: 'auto_collect', clientId, total: e.total });
     }
   }
 

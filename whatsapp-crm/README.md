@@ -118,6 +118,10 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   de cuántos clientes tienen saldo. Con «Registrar cobro» marcas lo pagado
   eligiendo la **forma de cobro (efectivo, transferencia o tarjeta)**, y los
   informes desglosan cuánto has cobrado por cada forma (para cuadrar la caja).
+- **🤖 Cobros automáticos**: reclama solo, por WhatsApp, el saldo pendiente
+  (agrupado por cliente) a quien lo tenga desde hace más de X días (por defecto
+  15), sin repetir el aviso antes de N días (por defecto 7). Solo en horario
+  laboral y respetando la ventana de 24 h. Se activa en Automatizaciones.
 - **📊 Informes financieros**: además del cuadro de trámites, ingresos por mes
   (cobrado), facturado / cobrado / pendiente y tasas oficiales gestionadas,
   abonadas y pendientes, con desglose por área y exportación a CSV.

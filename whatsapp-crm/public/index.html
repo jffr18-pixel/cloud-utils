@@ -512,6 +512,16 @@
         </div>
 
         <div class="auto-card">
+          <h3><label><input type="checkbox" id="auto-collect-enabled"> 🤖 Cobros automáticos</label></h3>
+          <p class="hint">Reclama solo, por WhatsApp, el saldo pendiente (agrupado por cliente) a quien lo tenga desde hace más de X días. Es la versión automática del botón «Reclamar» de «Por cobrar». Solo envía en horario laboral y respeta la ventana de 24 h.</p>
+          <label>Reclamar a partir de … días con saldo pendiente</label>
+          <input type="number" id="auto-collect-days" min="1" max="365" style="max-width:120px">
+          <label style="margin-top:6px">No repetir el aviso antes de … días</label>
+          <input type="number" id="auto-collect-cooldown" min="1" max="90" style="max-width:120px">
+          <label style="margin-top:6px"><input type="checkbox" id="auto-collect-tax"> Incluir también las tasas oficiales pendientes en el importe</label>
+        </div>
+
+        <div class="auto-card">
           <h3><label><input type="checkbox" id="auto-tr-enabled"> 🎤 Transcripción de notas de voz</label></h3>
           <p class="hint">Convierte los audios entrantes en texto para leerlos y buscarlos. Requiere configurar <code>OPENAI_API_KEY</code> (o <code>TRANSCRIBE_URL</code>) en el servidor. ⚠️ Los audios pueden contener datos sensibles: actívalo solo si el proveedor cumple el RGPD.</p>
         </div>

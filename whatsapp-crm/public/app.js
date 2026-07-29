@@ -2851,6 +2851,11 @@ async function renderAutomations() {
   $('#auto-pay-days').value = s.payments.daysAfter;
   $('#auto-pay-completed').checked = s.payments.onlyCompleted;
   $('#auto-pay-text').value = s.payments.text;
+  const ac = s.autoCollect || {};
+  $('#auto-collect-enabled').checked = Boolean(ac.enabled);
+  $('#auto-collect-days').value = ac.daysOverdue ?? 15;
+  $('#auto-collect-cooldown').value = ac.cooldownDays ?? 7;
+  $('#auto-collect-tax').checked = Boolean(ac.includeTax);
 
   $('#auto-tr-enabled').checked = s.transcription.enabled;
   $('#auto-legal-text').value = s.legal.text;
@@ -2959,6 +2964,12 @@ $('#btn-auto-save').addEventListener('click', async () => {
           daysAfter: Number($('#auto-pay-days').value) || 7,
           onlyCompleted: $('#auto-pay-completed').checked,
           text: $('#auto-pay-text').value,
+        },
+        autoCollect: {
+          enabled: $('#auto-collect-enabled').checked,
+          daysOverdue: Number($('#auto-collect-days').value) || 15,
+          cooldownDays: Number($('#auto-collect-cooldown').value) || 7,
+          includeTax: $('#auto-collect-tax').checked,
         },
         transcription: { enabled: $('#auto-tr-enabled').checked },
         legal: { text: $('#auto-legal-text').value },
