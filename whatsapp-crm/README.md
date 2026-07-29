@@ -81,6 +81,12 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
 - **📅 Citas**: agenda con vista por días, confirmación por WhatsApp al
   reservar y recordatorio automático el día anterior (activable en
   Automatizaciones).
+- **🗓️ Reserva de cita online**: el cliente elige un hueco libre desde su
+  enlace de seguimiento y la cita se crea sola (con confirmación por WhatsApp y
+  en Outlook). Los huecos salen de tu horario, descontando las citas que ya
+  tengas y —si Outlook está activado— lo que tengas ocupado en tu calendario de
+  Outlook, para que nunca se ofrezca una hora en la que estás pillado. Se activa
+  en Automatizaciones → «Reserva de cita online».
 - **🗓️ Calendario de Outlook**: pestaña que muestra, dentro del CRM, los
   eventos del calendario compartido de Outlook (el mismo donde se crean las
   citas), incluidos los que se crean directamente en Outlook. Solo lectura,

@@ -795,37 +795,6 @@ async function sendMessageToClient(db, client, text, opts = {}) {
   return msg;
 }
 
-// Alta de una cita: crea el registro, avisa al cliente (confirmación por
-// WhatsApp) y la sincroniza con el calendario de Outlook si está activado.
-// La usan tanto la API como el asistente por Telegram.
-async function addAppointment(db, client, { date, time, reason, notes } = {}) {
-  const appt = {
-    id: newId('cit'),
-    clientId: client.id,
-    date,              // YYYY-MM-DD
-    time,              // HH:MM
-    reason: (reason || '').trim(),
-    notes: notes || '',
-    status: 'activa',  // activa | cancelada | completada
-    confirmationSentAt: null,
-    remindedAt: null,
-    createdAt: Date.now(),
-  };
-  db.appointments.push(appt);
-  save();
-  await auto.onAppointmentCreated(db, appt, client, autoSender(db));
-  const msCal = auto.getSettings(db).microsoft.calendar;
-  if (msgraph.isConfigured() && msCal.enabled && msCal.user) {
-    try {
-      appt.msEventId = await msgraph.createCalendarEvent(msCal.user, appt, client, msCal.calendarName);
-    } catch (err) {
-      console.error('No se pudo crear el evento en Outlook:', err.message);
-    }
-  }
-  save();
-  return appt;
-}
-
 // Envía un adjunto (Buffer) a un cliente por WhatsApp: lo guarda en local, lo
 // sube al proveedor si está configurado y lo registra en el chat. La usan la
 // API y el asistente por Telegram. Límite de 16 MB (tope de WhatsApp).
@@ -2392,7 +2361,7 @@ async function handleApi(req, res, url) {
       if (!client) return json(res, 404, { error: 'Cliente no encontrado' });
       if (!canSeeClient(client, me)) return json(res, 403, { error: 'No tienes acceso a este cliente' });
       if (!b.date || !b.time) return json(res, 400, { error: 'Fecha y hora son obligatorias' });
-      const appt = await addAppointment(db, client, { date: b.date, time: b.time, reason: b.reason, notes: b.notes });
+      const appt = await createAppointment(db, client, { date: b.date, time: b.time, reason: b.reason, notes: b.notes });
       return json(res, 201, appt);
     }
     const appt = db.appointments.find((a) => a.id === id);
@@ -3336,7 +3305,36 @@ function fmtDayLoc(iso, lang = 'es') {
 }
 
 // Huecos libres para reservar, según businessHours + citas ya ocupadas.
-function availableSlots(db, s, now = new Date()) {
+// Intervalos ocupados en el calendario de Outlook, por día (para no ofrecer
+// huecos cuando la gestoría ya tiene algo en Outlook). { 'YYYY-MM-DD': [[ini,fin]] }
+// en minutos. Best-effort: si Outlook no está configurado o falla, {} .
+async function outlookBusyByDate(s, fromDate, toDate) {
+  const cal = (s.microsoft && s.microsoft.calendar) || {};
+  if (!msgraph.isConfigured() || !cal.enabled || !cal.user) return {};
+  let events;
+  try {
+    events = await msgraph.listCalendarEvents({
+      calendarUser: cal.user, calendarName: cal.calendarName,
+      from: `${fromDate}T00:00:00`, to: `${toDate}T23:59:59`,
+    });
+  } catch (err) {
+    console.error('Outlook (huecos libres):', err.message);
+    return {};
+  }
+  const byDate = {};
+  for (const e of events) {
+    if (String(e.showAs || '').toLowerCase() === 'free') continue; // «libre» no bloquea
+    if (e.isAllDay && e.start) { const d = e.start.slice(0, 10); (byDate[d] = byDate[d] || []).push([0, 24 * 60]); continue; }
+    if (!e.start || !e.end) continue;
+    const sd = e.start.slice(0, 10);
+    const sm = toMin(e.start.slice(11, 16));
+    const em = e.end.slice(0, 10) === sd ? toMin(e.end.slice(11, 16)) : 24 * 60;
+    (byDate[sd] = byDate[sd] || []).push([sm, em]);
+  }
+  return byDate;
+}
+
+async function availableSlots(db, s, now = new Date()) {
   const bh = s.businessHours || { days: [1, 2, 3, 4, 5], open: '09:00', close: '18:00' };
   const bk = s.booking || {};
   const slotMin = Math.max(10, Number(bk.slotMinutes) || 30);
@@ -3349,9 +3347,13 @@ function availableSlots(db, s, now = new Date()) {
     (taken[a.date] = taken[a.date] || new Set()).add(a.time);
     countByDay[a.date] = (countByDay[a.date] || 0) + 1;
   }
-  const days = [];
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const today = isoDay(now);
+  const horizonEnd = new Date(now); horizonEnd.setDate(horizonEnd.getDate() + horizon);
+  // Ocupación en Outlook (si está activado) para no ofrecer huecos en conflicto.
+  const busy = await outlookBusyByDate(s, today, isoDay(horizonEnd));
+  const overlapsBusy = (date, m) => (busy[date] || []).some(([bi, bf]) => m < bf && m + slotMin > bi);
+  const days = [];
   for (let i = 0; i < horizon; i += 1) {
     const d = new Date(now); d.setDate(d.getDate() + i);
     if (!bh.days.includes(d.getDay())) continue;
@@ -3363,6 +3365,7 @@ function availableSlots(db, s, now = new Date()) {
       const time = `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
       if (taken[date] && taken[date].has(time)) continue;
       if (date === today && m <= nowMin + 30) continue; // 30 min de margen
+      if (overlapsBusy(date, m)) continue; // ocupado en Outlook
       slots.push(time);
       dayCount += 1;
     }
@@ -3371,11 +3374,12 @@ function availableSlots(db, s, now = new Date()) {
   return days;
 }
 
-// Crea una cita (reutilizada por la API y por la reserva online).
-async function createAppointment(db, client, { date, time, reason }) {
+// Crea una cita (reutilizada por la API, la reserva online y el asistente):
+// avisa al cliente por WhatsApp y la sincroniza con Outlook si está activado.
+async function createAppointment(db, client, { date, time, reason, notes } = {}) {
   const appt = {
     id: newId('cit'), clientId: client.id, date, time,
-    reason: String(reason || '').trim(), notes: '', status: 'activa',
+    reason: String(reason || '').trim(), notes: notes || '', status: 'activa',
     confirmationSentAt: null, remindedAt: null, createdAt: Date.now(),
   };
   db.appointments.push(appt);
@@ -3390,9 +3394,9 @@ async function createAppointment(db, client, { date, time, reason }) {
   return appt;
 }
 
-function renderBookingPage(db, client, lang, s, note) {
+async function renderBookingPage(db, client, lang, s, note) {
   const p = pT(lang);
-  const days = availableSlots(db, auto.getSettings(db));
+  const days = await availableSlots(db, auto.getSettings(db));
   const first = escHtml((client.name || '').split(' ')[0] || client.name);
   const head = `<h1>${p.bookTitle.replace('{name}', first)}</h1><p class="lead">${escHtml(p.bookLead)}</p>`
     + (note ? `<div class="book-note">${escHtml(note)}</div>` : '');
@@ -3611,17 +3615,18 @@ const server = http.createServer(async (req, res) => {
         const raw = await readRawBody(req, 100_000);
         const slot = new URLSearchParams(raw).get('slot') || '';
         const [date, time] = slot.split('T');
-        const free = availableSlots(db, s).some((d) => d.date === date && d.slots.includes(time));
+        const slots = await availableSlots(db, s);
+        const free = slots.some((d) => d.date === date && d.slots.includes(time));
         if (!date || !time || !free) {
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-          return res.end(renderBookingPage(db, client, lang, s, pT(lang).bookTaken));
+          return res.end(await renderBookingPage(db, client, lang, s, pT(lang).bookTaken));
         }
         await createAppointment(db, client, { date, time, reason: s.booking.reason });
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(renderBookingConfirmed(client, lang, date, time));
       }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end(renderBookingPage(db, client, lang, s));
+      return res.end(await renderBookingPage(db, client, lang, s));
     }
 
     // Firma digital de un documento (enlace privado por solicitud).
@@ -4077,7 +4082,7 @@ async function executeTgAction(crmUser, action) {
     const client = db.clients.find((c) => c.id === action.clientId);
     if (!client) throw new Error('no encuentro al cliente');
     if (!canSeeClient(client, crmUser)) throw new Error('no tienes acceso a ese cliente');
-    await addAppointment(db, client, { date: action.date, time: action.time, reason: action.reason });
+    await createAppointment(db, client, { date: action.date, time: action.time, reason: action.reason });
     return `Cita creada con ${client.name} el ${action.date} a las ${action.time}.`;
   }
   if (action.type === 'recordatorio') {
