@@ -1225,6 +1225,9 @@ async function handleWebhookPayload(db, body) {
     await auto.maybeWelcome(db, item.client, autoSender(db));
     await auto.maybeAutoReply(db, item.client, autoSender(db));
   }
+  // Aviso por Telegram de los WhatsApp nuevos (sin bloquear la respuesta).
+  notifyTelegramInbound(db, freshIncoming)
+    .catch((err) => console.error('Aviso Telegram:', telegram.redact(err && err.message)));
 }
 
 // ---------------------------------------------------------------------------
@@ -3635,6 +3638,8 @@ setInterval(() => {
   auto.runScheduled(db, autoSender(db))
     .then((actions) => { if (actions.length) save(); })
     .catch((err) => console.error('Error en automatizaciones:', err.message));
+  // Resumen diario por Telegram (una vez al día, a partir de la hora fijada).
+  maybeTelegramDigest(db).catch((err) => console.error('Resumen Telegram:', telegram.redact(err && err.message)));
   try {
     const created = backup.ensureDaily();
     if (created) {
@@ -4111,6 +4116,96 @@ async function telegramLoop() {
     await new Promise((r) => setTimeout(r, 3000));
   }
   setImmediate(telegramLoop);
+}
+
+// --- Avisos proactivos por Telegram ---------------------------------------
+// El bot te avisa sin que tengas que preguntar: WhatsApp nuevo de un cliente
+// y un resumen cada mañana. Solo a los usuarios que puedan ver ese cliente.
+
+const TG_ALERTS_ON = () => String(process.env.TELEGRAM_ALERTS || 'on').toLowerCase() !== 'off';
+const TG_ALERT_DEBOUNCE_MS = Number(process.env.TELEGRAM_ALERT_DEBOUNCE_MIN || 10) * 60 * 1000;
+
+// Hora del resumen diario (0-23). '' u 'off' lo desactiva.
+function tgDigestHour() {
+  const v = String(process.env.TELEGRAM_DIGEST_HOUR == null ? '8' : process.env.TELEGRAM_DIGEST_HOUR).trim().toLowerCase();
+  if (v === '' || v === 'off') return null;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 && n <= 23 ? n : 8;
+}
+
+// Envía un aviso a cada usuario de Telegram cuyo usuario del CRM cumpla el
+// filtro (respeta el aislamiento). No lanza: registra los errores.
+async function notifyTelegramUsers(canSeeForUser, text) {
+  if (!telegram.isConfigured() || !TG_ALLOWED.size) return;
+  for (const [tgId, crmUser] of TG_ALLOWED) {
+    if (!canSeeForUser(crmUser)) continue;
+    try { await telegram.sendMessage(Number(tgId), text); }
+    catch (err) { console.error('Aviso Telegram:', telegram.redact(err && err.message)); }
+  }
+}
+
+// Avisa de los WhatsApp entrantes nuevos, con antirrebote por cliente para no
+// mandar un aviso por cada mensaje de una ráfaga.
+async function notifyTelegramInbound(db, items) {
+  if (!telegram.isConfigured() || !TG_ALLOWED.size || !TG_ALERTS_ON()) return;
+  const now = Date.now();
+  const seen = new Set();
+  let changed = false;
+  for (const { client, text } of items) {
+    if (!client || seen.has(client.id)) continue;
+    seen.add(client.id);
+    if (now - (client.tgAlertAt || 0) < TG_ALERT_DEBOUNCE_MS) continue;
+    client.tgAlertAt = now;
+    changed = true;
+    const preview = String(text || '').slice(0, 200) || '📎 (adjunto)';
+    await notifyTelegramUsers((u) => canSeeClient(client, u),
+      `💬 Nuevo WhatsApp de ${client.name} (+${client.phone}):\n«${preview}»`);
+  }
+  if (changed) save();
+}
+
+// Resumen de la mañana: citas del día, conversaciones sin responder e importes
+// pendientes de cobro. Una vez al día a partir de la hora configurada.
+function buildTelegramDigest(db, crmUser, today) {
+  const canSee = (c) => canSeeClient(c || {}, crmUser);
+  const nameOf = (id) => (db.clients.find((c) => c.id === id) || {}).name || '(cliente)';
+  const citas = db.appointments
+    .filter((a) => a.date === today && a.status !== 'cancelada' && canSee(db.clients.find((c) => c.id === a.clientId)))
+    .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+  const sinResponder = conversationSummaries(db)
+    .filter((c) => c.unread > 0 && canSee(db.clients.find((x) => x.id === c.clientId))).length;
+  let pendiente = 0;
+  for (const c of db.cases) {
+    if (!canSee(db.clients.find((x) => x.id === c.clientId))) continue;
+    if ((Number(c.fee) || 0) > 0 && !c.paid) pendiente += Number(c.fee) || 0;
+  }
+  const lines = ['🌅 Buenos días. Resumen de hoy:', ''];
+  if (citas.length) {
+    lines.push(`📅 ${citas.length} cita(s):`);
+    for (const a of citas.slice(0, 10)) lines.push(`  • ${a.time} — ${nameOf(a.clientId)}${a.reason ? ` (${a.reason})` : ''}`);
+  } else {
+    lines.push('📅 Sin citas para hoy.');
+  }
+  lines.push(sinResponder ? `💬 ${sinResponder} conversación(es) sin responder.` : '💬 Sin conversaciones pendientes.');
+  if (pendiente) lines.push(`💶 Pendiente de cobro: ${pendiente.toLocaleString('es-ES')} €.`);
+  return lines.join('\n');
+}
+
+async function maybeTelegramDigest(db) {
+  if (!telegram.isConfigured() || !TG_ALLOWED.size) return;
+  const hour = tgDigestHour();
+  if (hour === null) return;
+  const now = new Date();
+  if (now.getHours() < hour) return;
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  if (!db.settings || typeof db.settings !== 'object') db.settings = {};
+  if (db.settings.tgDigestDate === today) return; // ya enviado hoy
+  db.settings.tgDigestDate = today;
+  save();
+  for (const [tgId, crmUser] of TG_ALLOWED) {
+    try { await telegram.sendMessage(Number(tgId), buildTelegramDigest(db, crmUser, today)); }
+    catch (err) { console.error('Resumen Telegram:', telegram.redact(err && err.message)); }
+  }
 }
 
 ensureDefaultFichas(load());

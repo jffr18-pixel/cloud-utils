@@ -371,6 +371,20 @@ botones ✅/❌.** Nada sale sin tu visto bueno.
 El bot funciona por *long polling*: no hace falta abrir puertos ni configurar
 webhooks. En cuanto el servidor arranca con el token puesto, queda a la escucha.
 
+### Avisos proactivos
+
+El bot no solo responde: también te avisa él, sin preguntar.
+
+- **WhatsApp nuevo de un cliente**: en cuanto un cliente escribe, te llega un
+  aviso por Telegram con su nombre y el mensaje. Con antirrebote por cliente
+  (`TELEGRAM_ALERT_DEBOUNCE_MIN`, 10 min por defecto) para no saturarte en una
+  ráfaga. Solo avisa a los usuarios que pueden ver a ese cliente. Se desactiva
+  con `TELEGRAM_ALERTS=off`.
+- **Resumen cada mañana**: a la hora que fijes (`TELEGRAM_DIGEST_HOUR`, 8 por
+  defecto; `off` para desactivar) recibes un resumen del día: citas,
+  conversaciones sin responder e importes pendientes de cobro (cada uno el
+  suyo, respetando el aislamiento).
+
 ### Seguridad del asistente
 
 Pensado para datos sensibles (extranjería). Medidas aplicadas:
@@ -419,6 +433,9 @@ Pensado para datos sensibles (extranjería). Medidas aplicadas:
 | `TELEGRAM_AGENT_MODEL` | Modelo que interpreta las órdenes del asistente | `gpt-4o-mini` |
 | `TELEGRAM_MAX_FILE_MB` | Tamaño máximo de las notas de voz que descarga el bot | `20` |
 | `AGENT_TIMEOUT_MS` | Timeout de la llamada al modelo del asistente | `20000` |
+| `TELEGRAM_ALERTS` | Avisos de WhatsApp entrante por Telegram (`off` para desactivar) | `on` |
+| `TELEGRAM_ALERT_DEBOUNCE_MIN` | Minutos mínimos entre avisos del mismo cliente | `10` |
+| `TELEGRAM_DIGEST_HOUR` | Hora (0-23) del resumen diario por Telegram (`off` para desactivar) | `8` |
 
 La elección de proveedor y los precios están comparados en
 [`COMPARATIVA-BSP.md`](COMPARATIVA-BSP.md).

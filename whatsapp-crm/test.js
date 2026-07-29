@@ -512,6 +512,20 @@ async function testTelegramAssistant() {
       return list.find((mm) => mm.direction === 'out' && mm.media && mm.media.filename === 'justificante.pdf') || null;
     });
     assert(docMsg && docMsg.media.kind === 'document', 'el documento se envía al cliente por WhatsApp');
+
+    // Aviso proactivo: un WhatsApp entrante nuevo avisa por Telegram.
+    await fetch(TG_BASE + '/webhook', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: 'evt_tg', type: 'whatsapp.inbound_message.received', apiVersion: 'v2',
+        whatsappInboundMessage: {
+          id: 'yc_tg_1', wamid: 'wamid.TG1', from: '+34600999000', to: '+34911222333',
+          sendTime: new Date().toISOString(), type: 'text', text: { body: 'Hola, ¿alguna novedad de mi expediente?' },
+        },
+      }),
+    });
+    const alert = await waitFor(() => sent.find((s) => String(s.chat_id) === '555' && /Nuevo WhatsApp/.test(s.text || '')));
+    assert(alert && /alguna novedad/.test(alert.text), 'un WhatsApp entrante avisa por Telegram al usuario');
   } finally {
     server.kill();
     mock.close();
