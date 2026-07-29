@@ -607,6 +607,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .tax-badge.due { background: #eef0fb; color: #4a4f8a; }
 .tax-badge.paid { background: #e4f5e8; color: var(--ok); }
 .sub-badge { display: inline-block; border-radius: 6px; padding: 1px 7px; font-weight: 600; font-size: 11.5px; white-space: nowrap; background: #e4f5e8; color: var(--ok); }
+.reg-badge { display: inline-block; border-radius: 6px; padding: 1px 7px; font-weight: 600; font-size: 11.5px; white-space: nowrap; background: var(--accent-light); color: var(--accent-dark); }
 
 /* Panel de tareas (kanban) */
 .task-filters { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 16px; }
