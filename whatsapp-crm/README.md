@@ -30,7 +30,9 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   la gestoría.
 - **📁 Expedientes**: trámites por cliente (fiscal, laboral, contabilidad,
   extranjería, vehículos…), con estado (pendiente, en curso, esperando
-  documentación, completado) y fecha límite con aviso de vencidos.
+  documentación, completado), fecha límite con aviso de vencidos y **fecha de
+  presentación ante la administración** (que el cliente ve en su página de
+  seguimiento, en su idioma).
 - **📝 Plantillas**: respuestas frecuentes reutilizables desde el chat, con la
   variable `{nombre}` que se sustituye por el nombre del cliente.
 - **⏰ Recordatorios**: seguimientos con fecha, opcionalmente ligados a un

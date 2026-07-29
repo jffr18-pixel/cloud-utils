@@ -926,6 +926,17 @@ async function main() {
       'la página muestra los trámites del cliente');
     assert(!pageHtml.includes('250') && !/honorario/i.test(pageHtml),
       'la página pública no filtra honorarios ni datos internos');
+    // Fecha de presentación en la administración: se guarda y se ve en la web.
+    const subCase = await req('POST', '/api/cases', {
+      clientId, title: 'Solicitud arraigo presentada', type: 'extranjeria', status: 'en_curso', submittedDate: '2026-07-20',
+    });
+    assert(subCase.status === 201 && subCase.data.submittedDate === '2026-07-20', 'el expediente guarda la fecha de presentación');
+    const subEdit = await req('PUT', `/api/cases/${subCase.data.id}`, { submittedDate: '' });
+    assert(subEdit.data.submittedDate === null, 'la fecha de presentación se puede vaciar');
+    await req('PUT', `/api/cases/${subCase.data.id}`, { submittedDate: '2026-07-20', status: 'completado' });
+    const subPage = await (await fetch(`${BASE}/estado/${token}`)).text();
+    assert(/Presentado en la administración el/.test(subPage) && /20 de julio de 2026/i.test(subPage),
+      'la web de seguimiento muestra la fecha de presentación');
     const badPage = await fetch(`${BASE}/estado/token-inexistente-1234567890`);
     assert(badPage.status === 404, 'token inválido → 404 en la página de estado');
 

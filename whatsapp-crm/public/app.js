@@ -1510,6 +1510,7 @@ function caseFields(item = {}, clients = [], fichas = []) {
       options: Object.entries(STATUS_LABEL),
     },
     { name: 'dueDate', label: 'Fecha límite', type: 'date', value: item.dueDate },
+    { name: 'submittedDate', label: 'Fecha de presentación en la administración (la ve el cliente en su seguimiento)', type: 'date', value: item.submittedDate },
     { name: 'expiryDate', label: 'Fecha de caducidad (TIE, NIE, ITV… avisa antes de vencer)', type: 'date', value: item.expiryDate },
     { name: 'fee', label: 'Honorario de la gestoría (€)', type: 'number', value: item.fee || '' },
     {
@@ -1625,6 +1626,8 @@ async function renderCases() {
     const taxAmt = Number(c.taxAmount) || 0;
     const taxBadge = (taxAmt || c.taxModel)
       ? `<span class="tax-badge ${c.taxPaid ? 'paid' : 'due'}" title="Tasa oficial${c.taxModel ? ' (' + esc(c.taxModel) + ')' : ''}: ${c.taxPaid ? 'abonada' : 'pendiente de pago'}">🏛️ ${taxAmt ? taxAmt.toLocaleString('es-ES') + ' € ' : ''}${c.taxPaid ? '✓' : '•'}</span>` : '';
+    const subBadge = c.submittedDate
+      ? `<span class="sub-badge" title="Presentado en la administración el ${fmtDate(c.submittedDate)} (visible para el cliente)">📨 ${fmtDate(c.submittedDate)}</span>` : '';
     let expBadge = '';
     if (c.expiryDate) {
       const days = Math.ceil((new Date(c.expiryDate + 'T00:00') - new Date()) / 86400000);
@@ -1636,7 +1639,7 @@ async function renderCases() {
     <div class="row case-row" data-id="${esc(c.id)}">
       <div class="grow">
         <div class="title">${esc(c.title)}</div>
-        <div class="sub">${esc(nameOf(c.clientId))} · <span class="area-badge">${esc(TYPE_LABEL[c.type] || c.type)}</span> ${chkBadge} ${feeBadge} ${taxBadge} ${expBadge}</div>
+        <div class="sub">${esc(nameOf(c.clientId))} · <span class="area-badge">${esc(TYPE_LABEL[c.type] || c.type)}</span> ${chkBadge} ${feeBadge} ${taxBadge} ${subBadge} ${expBadge}</div>
       </div>
       <div class="meta">
         <span class="status ${esc(c.status)}">${esc(STATUS_LABEL[c.status] || c.status)}</span>
