@@ -1429,15 +1429,58 @@ async function openClientDetail(id) {
   openDialog(`Ficha de ${client.name}`, [
     ...clientFields(client),
     { name: '_cases', label: 'Expedientes (solo lectura, gestión en la pestaña Expedientes)', type: 'textarea', value: casesTxt },
+    ...(state.isolation ? [shareField(client)] : []),
     estadoLinkField(client),
     dossierField(client),
   ], async (v) => {
     delete v._cases;
     delete v._estado;
     delete v._dossier;
+    delete v._share;
     await api('clients/' + id, { method: 'PUT', body: parseClientValues(v) });
     await refreshView();
   });
+}
+
+// Campo personalizado: reparto y compartición del cliente entre usuarios.
+// Solo se muestra con aislamiento activo (varios usuarios). El dueño puede
+// compartir su cliente (y sus chats/expedientes) con otros compañeros.
+function shareField(client) {
+  const owner = client.owner || null;
+  const amOwner = !owner || owner === state.me;
+  const others = state.users.filter((u) => u !== owner);
+  const shared = Array.isArray(client.sharedWith) ? client.sharedWith : [];
+  return {
+    name: '_share',
+    label: 'Reparto y compartir',
+    type: 'custom',
+    mount(el) {
+      if (!owner) {
+        el.innerHTML = `<p class="hint" style="margin:0 0 8px">Cliente <strong>común</strong>: visible para todo el equipo.</p>`;
+        return;
+      }
+      if (!amOwner) {
+        el.innerHTML = `<p class="hint" style="margin:0">Este cliente es de <strong>${esc(owner)}</strong> y lo ha compartido contigo. Solo ${esc(owner)} puede cambiar con quién se comparte.</p>`;
+        return;
+      }
+      el.innerHTML = `
+        <p class="hint" style="margin:0 0 8px">Dueño: <strong>${esc(owner)}</strong> (tú). Marca los compañeros con los que quieras compartir este cliente, sus chats y sus expedientes:</p>
+        <div class="share-users">${others.map((u) => `
+          <label class="share-user"><input type="checkbox" value="${esc(u)}" ${shared.includes(u) ? 'checked' : ''}> ${esc(u)}</label>`).join('') || '<span class="hint">No hay otros usuarios.</span>'}</div>
+        <p class="hint share-status" style="margin:8px 0 0"></p>`;
+      const status = el.querySelector('.share-status');
+      el.querySelectorAll('.share-user input').forEach((chk) => {
+        chk.addEventListener('change', async () => {
+          const list = [...el.querySelectorAll('.share-user input:checked')].map((c) => c.value);
+          try {
+            await api('clients/' + client.id, { method: 'PUT', body: { sharedWith: list } });
+            status.textContent = list.length ? `Compartido con: ${list.join(', ')}.` : 'Ya no se comparte con nadie.';
+          } catch (e) { status.textContent = e.message; }
+        });
+      });
+    },
+    getValue() { return undefined; },
+  };
 }
 
 // Campo personalizado: dossier del cliente en PDF (datos, expedientes, firmas).
@@ -1561,7 +1604,45 @@ function caseFields(item = {}, clients = [], fichas = []) {
     checklistField(item, fichas),
     { name: 'docs', label: 'Documentación necesaria (una línea por documento; se usa en la automatización)', type: 'textarea', value: item.docs },
     { name: 'notes', label: 'Notas', type: 'textarea', value: item.notes },
+    ...(state.isolation && item.id ? [caseShareField(item, clients)] : []),
   ];
+}
+
+// Campo personalizado: compartir un expediente en concreto con otro usuario,
+// sin necesidad de compartir toda la ficha del cliente. Solo con aislamiento.
+function caseShareField(item, clients = []) {
+  const client = clients.find((c) => c.id === item.clientId) || {};
+  const owner = client.owner || null;
+  const amOwner = !owner || owner === state.me;
+  const others = state.users.filter((u) => u !== owner);
+  const shared = Array.isArray(item.sharedWith) ? item.sharedWith : [];
+  return {
+    name: '_caseshare',
+    label: 'Compartir solo este expediente',
+    type: 'custom',
+    mount(el) {
+      if (!amOwner) {
+        el.innerHTML = `<p class="hint" style="margin:0">Solo el dueño del cliente (${esc(owner)}) puede cambiar con quién se comparte este expediente.</p>`;
+        return;
+      }
+      el.innerHTML = `
+        <p class="hint" style="margin:0 0 8px">Da acceso a este expediente (y sus adjuntos) a un compañero, sin compartir el resto de la ficha del cliente:</p>
+        <div class="share-users">${others.map((u) => `
+          <label class="share-user"><input type="checkbox" value="${esc(u)}" ${shared.includes(u) ? 'checked' : ''}> ${esc(u)}</label>`).join('') || '<span class="hint">No hay otros usuarios.</span>'}</div>
+        <p class="hint share-status" style="margin:8px 0 0"></p>`;
+      const status = el.querySelector('.share-status');
+      el.querySelectorAll('.share-user input').forEach((chk) => {
+        chk.addEventListener('change', async () => {
+          const list = [...el.querySelectorAll('.share-user input:checked')].map((c) => c.value);
+          try {
+            await api('cases/' + item.id, { method: 'PUT', body: { sharedWith: list } });
+            status.textContent = list.length ? `Compartido con: ${list.join(', ')}.` : 'Ya no se comparte con nadie.';
+          } catch (e) { status.textContent = e.message; }
+        });
+      });
+    },
+    getValue() { return undefined; },
+  };
 }
 
 // Campo personalizado: checklist de documentación recibida.
@@ -3039,6 +3120,9 @@ async function init() {
   }
 
   state.users = await api('users').catch(() => []);
+  // Aislamiento por usuario: activo cuando hay varios usuarios con acceso.
+  state.me = authState.user || null;
+  state.isolation = Boolean(authState.required && state.users.length > 1);
   // Saber si hay plantilla aprobada para la ventana de 24 h (afecta al aviso).
   try { state.template24hEnabled = Boolean((await api('automations')).template24h?.enabled); } catch { state.template24hEnabled = false; }
 

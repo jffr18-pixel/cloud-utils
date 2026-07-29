@@ -734,6 +734,16 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .est-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .est-actions .btn { text-decoration: none; }
 
+/* Reparto y compartir clientes/expedientes entre usuarios */
+.share-users { display: flex; flex-wrap: wrap; gap: 8px; }
+.share-user {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  padding: 6px 10px; border: 1px solid var(--border); border-radius: 999px;
+  font-size: 13px; background: var(--card);
+}
+.share-user:hover { background: var(--accent-light); }
+.share-user input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent-dark); cursor: pointer; }
+
 /* Agenda de vencimientos */
 .agenda-group { margin-bottom: 22px; }
 .agenda-head {

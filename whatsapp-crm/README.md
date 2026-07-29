@@ -58,6 +58,18 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   para Excel (separador `;` y codificación con BOM).
 - **👥 Varios usuarios**: `CRM_USERS="carmen:clave1,juan:clave2"` permite un
   acceso por persona; la sesión muestra quién está conectado.
+- **🔒 Expedientes independientes por usuario**: con dos o más usuarios, cada
+  uno solo ve sus propios clientes, chats y expedientes; los de un compañero
+  quedan ocultos (no aparecen en listas, buscador, informes ni por enlace
+  directo, que devuelve *403*). Cada cliente que creas queda «a tu nombre».
+  Hay dos formas de compartir cuando hace falta: **compartir un cliente**
+  completo (su ficha, sus chats y todos sus expedientes) desde la ficha del
+  cliente → *Reparto y compartir*, o **compartir un expediente en concreto**
+  sin abrir el resto de la ficha, desde el propio expediente → *Compartir solo
+  este expediente*. Solo el dueño puede cambiar con quién se comparte. Con un
+  solo usuario (sin `CRM_USERS`) todo es común, como hasta ahora. Los clientes
+  que llegan por WhatsApp entrantes quedan comunes hasta que se les asigna
+  dueño.
 - **📅 Citas**: agenda con vista por días, confirmación por WhatsApp al
   reservar y recordatorio automático el día anterior (activable en
   Automatizaciones).

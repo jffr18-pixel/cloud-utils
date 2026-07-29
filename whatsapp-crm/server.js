@@ -463,6 +463,35 @@ function isAuthenticated(req) {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Aislamiento por usuario: cada usuario ve solo sus clientes (y sus chats y
+// expedientes), salvo los que se compartan. Solo se aplica si hay varios
+// usuarios configurados (CRM_USERS); sin login, todo es común (compatibilidad).
+// Un cliente/expediente «sin dueño» (owner null) es común (visible para todos):
+// así los datos antiguos y los entrantes por WhatsApp no desaparecen.
+// ---------------------------------------------------------------------------
+function isolationOn() {
+  return authRequired() && authUsers().size > 1;
+}
+function canSeeClient(client, user) {
+  if (!isolationOn()) return true;
+  if (!client) return false;
+  if (!client.owner) return true;
+  if (client.owner === user) return true;
+  return Array.isArray(client.sharedWith) && client.sharedWith.includes(user);
+}
+function canSeeCase(kase, user, db) {
+  if (!isolationOn()) return true;
+  if (!kase) return false;
+  if (Array.isArray(kase.sharedWith) && kase.sharedWith.includes(user)) return true;
+  return canSeeClient(db.clients.find((c) => c.id === kase.clientId), user);
+}
+// Conjunto de ids de clientes visibles para el usuario (para filtrar agregados).
+function visibleClientIdSet(db, user) {
+  if (!isolationOn()) return null; // null = sin filtro (todo visible)
+  return new Set(db.clients.filter((c) => canSeeClient(c, user)).map((c) => c.id));
+}
+
 // Analiza un fichero vCard (.vcf exportado del móvil) → [{ name, phones[] }].
 function parseVCards(text) {
   const out = [];
@@ -1230,10 +1259,25 @@ async function handleApi(req, res, url) {
     return json(res, 401, { error: 'No autenticado' });
   }
 
+  // Usuario de la sesión (para el aislamiento por usuario). Con isolationOn()
+  // desactivado, `me` es null y no se filtra nada.
+  const me = sessionUser(req);
+  const visIds = visibleClientIdSet(db, me); // Set de clientIds visibles, o null
+  // Colecciones ya filtradas por visibilidad (para los agregados del servidor).
+  // Un expediente compartido individualmente (sharedWith) también es visible.
+  const caseVisible = (c) => !visIds || visIds.has(c.clientId)
+    || (Array.isArray(c.sharedWith) && c.sharedWith.includes(me));
+  const clientsV = visIds ? db.clients.filter((c) => visIds.has(c.id)) : db.clients;
+  const casesV = db.cases.filter(caseVisible);
+  const apptsV = visIds ? db.appointments.filter((a) => visIds.has(a.clientId)) : db.appointments;
+  const remindersV = visIds ? db.reminders.filter((r) => !r.clientId || visIds.has(r.clientId)) : db.reminders;
+  const convSummV = () => conversationSummaries(db).filter((c) => !visIds || visIds.has(c.clientId));
+
   // --- Descarga de adjuntos ------------------------------------------------
   if (req.method === 'GET' && resource === 'media' && id) {
     const msg = db.messages.find((m) => m.id === id);
     if (!msg || !msg.media) return json(res, 404, { error: 'Adjunto no encontrado' });
+    if (visIds && !visIds.has(msg.clientId)) return json(res, 403, { error: 'Sin acceso' });
     const media = msg.media;
     const filename = media.filename || `adjunto.${(media.mime || '').split('/')[1] || 'bin'}`;
     // Los tipos que pueden ejecutar código (SVG, HTML…) se sirven como
@@ -1334,26 +1378,26 @@ async function handleApi(req, res, url) {
     const soon = new Date(now); soon.setDate(soon.getDate() + 30);
     const soonIso = `${soon.getFullYear()}-${pad(soon.getMonth() + 1)}-${pad(soon.getDate())}`;
     const nameOf = (cid) => (db.clients.find((c) => c.id === cid) || {}).name || '';
-    const citas = db.appointments
+    const citas = apptsV
       .filter((a) => a.status === 'activa' && a.date === today)
       .sort((a, b) => String(a.time).localeCompare(String(b.time)))
       .map((a) => ({ clientId: a.clientId, who: nameOf(a.clientId), time: a.time, reason: a.reason || 'Consulta' }));
-    const recordatorios = db.reminders
+    const recordatorios = remindersV
       .filter((r) => !r.done && r.dueDate && r.dueDate <= today)
       .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)))
       .map((r) => ({ id: r.id, text: r.text, who: nameOf(r.clientId), dueDate: r.dueDate, overdue: r.dueDate < today }));
-    const vencimientos = db.cases
+    const vencimientos = casesV
       .filter((c) => c.status !== 'completado' && c.dueDate && c.dueDate <= today)
       .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)))
       .map((c) => ({ id: c.id, title: c.title, who: nameOf(c.clientId), dueDate: c.dueDate, overdue: c.dueDate < today }));
-    const docs = db.cases
+    const docs = casesV
       .filter((c) => c.status === 'esperando_documentacion')
       .map((c) => ({ id: c.id, title: c.title, who: nameOf(c.clientId) }));
-    const caducidades = db.cases
+    const caducidades = casesV
       .filter((c) => c.expiryDate && c.expiryDate <= soonIso)
       .sort((a, b) => String(a.expiryDate).localeCompare(String(b.expiryDate)))
       .map((c) => ({ id: c.id, title: c.title, who: nameOf(c.clientId), expiryDate: c.expiryDate, expired: c.expiryDate < today }));
-    const sinResponder = conversationSummaries(db)
+    const sinResponder = convSummV()
       .filter((c) => c.lastDirection === 'in')
       .map((c) => ({ clientId: c.clientId, who: c.clientName, lastMessage: c.lastMessage, unread: c.unread }));
     return json(res, 200, { date: today, citas, recordatorios, vencimientos, docs, caducidades, sinResponder });
@@ -1362,24 +1406,25 @@ async function handleApi(req, res, url) {
     const now = Date.now();
     const endOfToday = new Date();
     endOfToday.setHours(23, 59, 59, 999);
-    const openCases = db.cases.filter((c) => c.status !== 'completado');
+    const openCases = casesV.filter((c) => c.status !== 'completado');
     // Expedientes que caducan en los próximos 45 días (avisos de renovación).
     const soon = now + 45 * 24 * 3600 * 1000;
-    const expiringSoon = db.cases.filter((c) => {
+    const expiringSoon = casesV.filter((c) => {
       if (!c.expiryDate) return false;
       const t = new Date(c.expiryDate + 'T00:00').getTime();
       return !Number.isNaN(t) && t <= soon;
     }).length;
     return json(res, 200, {
-      totalClients: db.clients.length,
-      unreadMessages: db.messages.filter((m) => m.direction === 'in' && !m.read).length,
+      totalClients: clientsV.length,
+      unreadMessages: db.messages.filter((m) => m.direction === 'in' && !m.read
+        && (!visIds || visIds.has(m.clientId))).length,
       openCases: openCases.length,
       casesAwaitingDocs: openCases.filter((c) => c.status === 'esperando_documentacion').length,
       overdueCases: openCases.filter((c) => c.dueDate && new Date(c.dueDate).getTime() < now).length,
       expiringSoon,
-      remindersToday: db.reminders.filter((r) => !r.done && r.dueDate
+      remindersToday: remindersV.filter((r) => !r.done && r.dueDate
         && new Date(r.dueDate).getTime() <= endOfToday.getTime()).length,
-      recentConversations: conversationSummaries(db).slice(0, 5),
+      recentConversations: convSummV().slice(0, 5),
     });
   }
 
@@ -1387,7 +1432,7 @@ async function handleApi(req, res, url) {
   if (resource === 'clients') {
     if (req.method === 'GET' && !id) {
       const q = (url.searchParams.get('q') || '').toLowerCase();
-      let list = db.clients;
+      let list = clientsV; // solo los clientes visibles para el usuario
       if (q) {
         list = list.filter((c) =>
           [c.name, c.phone, c.nif, c.email, (c.tags || []).join(' ')]
@@ -1413,6 +1458,9 @@ async function handleApi(req, res, url) {
         sharepointFolder: b.sharepointFolder && b.sharepointFolder.path
           ? { path: String(b.sharepointFolder.path), webUrl: b.sharepointFolder.webUrl || null } : null,
         notes: b.notes || '',
+        // Aislamiento: el cliente lo crea (y por tanto es dueño) quien lo da de alta.
+        owner: isolationOn() ? (me || null) : null,
+        sharedWith: [],
         createdAt: Date.now(),
       };
       db.clients.push(client);
@@ -1421,6 +1469,8 @@ async function handleApi(req, res, url) {
     }
     const client = db.clients.find((c) => c.id === id);
     if (!client) return json(res, 404, { error: 'Cliente no encontrado' });
+    // Aislamiento: no se puede acceder a un cliente que no es tuyo ni compartido.
+    if (!canSeeClient(client, me)) return json(res, 403, { error: 'No tienes acceso a este cliente' });
     // Enlace privado de «Estado del trámite» para compartir con el cliente.
     if (req.method === 'POST' && parts[3] === 'estado-link') {
       if (!client.statusToken) { client.statusToken = crypto.randomBytes(20).toString('hex'); save(); }
@@ -1527,6 +1577,19 @@ async function handleApi(req, res, url) {
       if (b.assignedTo !== undefined) client.assignedTo = b.assignedTo || null;
       if (b.pinned !== undefined) client.pinned = Boolean(b.pinned);
       if (b.pinnedNote !== undefined) client.pinnedNote = String(b.pinnedNote).slice(0, 500);
+      // Aislamiento: dueño y con quién se comparte el cliente (chat + expedientes).
+      // Solo el dueño (o un cliente aún sin dueño) puede reasignar/compartir.
+      if (isolationOn() && (b.owner !== undefined || b.sharedWith !== undefined)) {
+        if (client.owner && client.owner !== me) {
+          return json(res, 403, { error: 'Solo el dueño puede cambiar el reparto o compartir' });
+        }
+        const valid = new Set(authUsers().keys());
+        if (b.owner !== undefined) client.owner = valid.has(b.owner) ? b.owner : (me || null);
+        if (b.sharedWith !== undefined) {
+          client.sharedWith = (Array.isArray(b.sharedWith) ? b.sharedWith : [])
+            .filter((u) => valid.has(u) && u !== client.owner);
+        }
+      }
       save();
       return json(res, 200, client);
     }
@@ -1572,13 +1635,14 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === 'GET' && resource === 'conversations') {
-    return json(res, 200, conversationSummaries(db));
+    return json(res, 200, convSummV());
   }
 
   if (resource === 'messages') {
     if (req.method === 'GET') {
       const clientId = url.searchParams.get('clientId');
       if (!clientId) return json(res, 400, { error: 'Falta clientId' });
+      if (visIds && !visIds.has(clientId)) return json(res, 403, { error: 'Sin acceso a esta conversación' });
       const msgs = db.messages
         .filter((m) => m.clientId === clientId)
         .sort((a, b) => a.timestamp - b.timestamp);
@@ -1586,6 +1650,7 @@ async function handleApi(req, res, url) {
     }
     if (req.method === 'POST' && id === 'read') {
       const b = await readBody(req);
+      if (visIds && !visIds.has(b.clientId)) return json(res, 403, { error: 'Sin acceso a esta conversación' });
       const toMark = db.messages.filter((m) => m.clientId === b.clientId && m.direction === 'in' && !m.read);
       for (const m of toMark) {
         m.read = true;
@@ -1599,9 +1664,13 @@ async function handleApi(req, res, url) {
       const b = await readBody(req);
       const msg = db.messages.find((m) => m.id === id);
       if (!msg) return json(res, 404, { error: 'Mensaje no encontrado' });
+      if (visIds && !visIds.has(msg.clientId)) return json(res, 403, { error: 'Sin acceso a este mensaje' });
       if (b.caseId !== undefined) {
         if (b.caseId && !db.cases.some((c) => c.id === b.caseId)) {
           return json(res, 404, { error: 'Expediente no encontrado' });
+        }
+        if (b.caseId && !canSeeCase(db.cases.find((c) => c.id === b.caseId), me, db)) {
+          return json(res, 403, { error: 'Sin acceso a este expediente' });
         }
         msg.caseId = b.caseId || null;
         const msSp = auto.getSettings(db).microsoft.sharepoint;
@@ -1641,6 +1710,7 @@ async function handleApi(req, res, url) {
       const b = await readBody(req, 25_000_000);
       const client = db.clients.find((c) => c.id === b.clientId);
       if (!client) return json(res, 404, { error: 'Cliente no encontrado' });
+      if (!canSeeClient(client, me)) return json(res, 403, { error: 'No tienes acceso a este cliente' });
 
       // Responder citando un mensaje: se localiza el mensaje citado (del mismo
       // cliente) para enlazar la respuesta y mostrar la cita en el chat.
@@ -2017,6 +2087,8 @@ async function handleApi(req, res, url) {
   if (resource === 'cases') {
     // Documentos vinculados a un expediente.
     if (req.method === 'GET' && id && parts[3] === 'files') {
+      const kase = db.cases.find((c) => c.id === id);
+      if (kase && !canSeeCase(kase, me, db)) return json(res, 403, { error: 'Sin acceso a este expediente' });
       const files = db.messages
         .filter((m) => m.caseId === id && m.media)
         .map((m) => ({
@@ -2030,13 +2102,15 @@ async function handleApi(req, res, url) {
     }
     if (req.method === 'GET' && !id) {
       const clientId = url.searchParams.get('clientId');
-      let list = db.cases;
+      let list = casesV;
       if (clientId) list = list.filter((c) => c.clientId === clientId);
       return json(res, 200, list);
     }
     if (req.method === 'POST' && !id) {
       const b = await readBody(req);
       if (!b.clientId || !b.title) return json(res, 400, { error: 'Cliente y título son obligatorios' });
+      // No se puede crear un expediente sobre un cliente que no es visible.
+      if (visIds && !visIds.has(b.clientId)) return json(res, 403, { error: 'No tienes acceso a este cliente' });
       const item = {
         id: newId('exp'),
         clientId: b.clientId,
@@ -2067,6 +2141,9 @@ async function handleApi(req, res, url) {
         checklist: Array.isArray(b.checklist)
           ? b.checklist.map((c) => ({ item: String(c.item || '').trim(), done: Boolean(c.done) })).filter((c) => c.item)
           : [],
+        // Usuarios con los que se comparte este expediente en concreto (además
+        // del reparto que herede del cliente). Solo aplica con aislamiento.
+        sharedWith: [],
         notes: b.notes || '',
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -2082,6 +2159,8 @@ async function handleApi(req, res, url) {
     }
     const item = db.cases.find((c) => c.id === id);
     if (!item) return json(res, 404, { error: 'Expediente no encontrado' });
+    if (!canSeeCase(item, me, db)) return json(res, 403, { error: 'Sin acceso a este expediente' });
+    if (req.method === 'GET') return json(res, 200, item);
     if (req.method === 'PUT') {
       const b = await readBody(req);
       const oldStatus = item.status;
@@ -2107,6 +2186,17 @@ async function handleApi(req, res, url) {
         item.checklist = b.checklist
           .map((c) => ({ item: String(c.item || '').trim(), done: Boolean(c.done) }))
           .filter((c) => c.item);
+      }
+      // Compartir el expediente en concreto. Solo el dueño del cliente (o si el
+      // cliente no tiene dueño) puede cambiar el reparto del expediente.
+      if (isolationOn() && b.sharedWith !== undefined) {
+        const owner = (db.clients.find((c) => c.id === item.clientId) || {}).owner || null;
+        if (owner && owner !== me) {
+          return json(res, 403, { error: 'Solo el dueño puede compartir este expediente' });
+        }
+        const valid = new Set(authUsers().keys());
+        item.sharedWith = (Array.isArray(b.sharedWith) ? b.sharedWith : [])
+          .filter((u) => valid.has(u) && u !== owner);
       }
       item.updatedAt = Date.now();
       save();
@@ -2188,7 +2278,7 @@ async function handleApi(req, res, url) {
   if (resource === 'appointments') {
     if (req.method === 'GET' && !id) {
       const clientId = url.searchParams.get('clientId');
-      let list = db.appointments;
+      let list = apptsV;
       if (clientId) list = list.filter((a) => a.clientId === clientId);
       list = list.slice().sort((a, b) =>
         `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
@@ -2198,6 +2288,7 @@ async function handleApi(req, res, url) {
       const b = await readBody(req);
       const client = db.clients.find((c) => c.id === b.clientId);
       if (!client) return json(res, 404, { error: 'Cliente no encontrado' });
+      if (!canSeeClient(client, me)) return json(res, 403, { error: 'No tienes acceso a este cliente' });
       if (!b.date || !b.time) return json(res, 400, { error: 'Fecha y hora son obligatorias' });
       const appt = {
         id: newId('cit'),
@@ -2228,6 +2319,7 @@ async function handleApi(req, res, url) {
     }
     const appt = db.appointments.find((a) => a.id === id);
     if (!appt) return json(res, 404, { error: 'Cita no encontrada' });
+    if (visIds && !visIds.has(appt.clientId)) return json(res, 403, { error: 'Sin acceso a esta cita' });
     if (req.method === 'PUT') {
       const b = await readBody(req);
       for (const key of ['date', 'time', 'reason', 'notes']) {
@@ -2354,7 +2446,7 @@ async function handleApi(req, res, url) {
     const toTs = to ? new Date(to + 'T23:59:59').getTime() : Infinity;
     const segOf = (cid) => db.clients.find((c) => c.id === cid)?.segment || 'particular';
 
-    const cases = db.cases.filter((c) => c.createdAt >= fromTs && c.createdAt <= toTs);
+    const cases = casesV.filter((c) => c.createdAt >= fromTs && c.createdAt <= toTs);
     const byArea = {};
     const byStatus = {};
     const bySegment = {};
@@ -2428,7 +2520,7 @@ async function handleApi(req, res, url) {
     const buildPending = () => {
       const now = Date.now();
       const byClient = new Map();
-      for (const c of db.cases) {
+      for (const c of casesV) {
         const feeDue = (Number(c.fee) || 0) > 0 && !c.paid ? Number(c.fee) : 0;
         const taxDue = (Number(c.taxAmount) || 0) > 0 && !c.taxPaid ? Number(c.taxAmount) : 0;
         if (!feeDue && !taxDue) continue;
@@ -2489,6 +2581,7 @@ async function handleApi(req, res, url) {
       if (!method) return json(res, 400, { error: 'Indica la forma de cobro (caja o banco)' });
       const client = db.clients.find((c) => c.id === b.clientId);
       if (!client) return json(res, 404, { error: 'Cliente no encontrado' });
+      if (!canSeeClient(client, me)) return json(res, 403, { error: 'No tienes acceso a este cliente' });
       let honorarios = 0;
       let tasas = 0;
       for (const c of db.cases) {
@@ -2523,8 +2616,9 @@ async function handleApi(req, res, url) {
     for (let i = 13; i >= 0; i -= 1) {
       days.push(dayKey(now.getTime() - i * DAY));
     }
+    const statMsgs = visIds ? db.messages.filter((m) => visIds.has(m.clientId)) : db.messages;
     const byDay = Object.fromEntries(days.map((d) => [d, { in: 0, out: 0 }]));
-    for (const m of db.messages) {
+    for (const m of statMsgs) {
       if (m.direction !== 'in' && m.direction !== 'out') continue;
       const k = dayKey(m.timestamp);
       if (byDay[k]) byDay[k][m.direction] += 1;
@@ -2532,7 +2626,7 @@ async function handleApi(req, res, url) {
 
     const casesByStatus = {};
     const casesByType = {};
-    for (const c of db.cases) {
+    for (const c of casesV) {
       casesByStatus[c.status] = (casesByStatus[c.status] || 0) + 1;
       casesByType[c.type] = (casesByType[c.type] || 0) + 1;
     }
@@ -2540,7 +2634,7 @@ async function handleApi(req, res, url) {
     // Tiempo medio de primera respuesta (transición entrante→saliente, 30 días).
     const cutoff = now.getTime() - 30 * DAY;
     const byClient = new Map();
-    for (const m of db.messages) {
+    for (const m of statMsgs) {
       if (m.direction !== 'in' && m.direction !== 'out') continue;
       const list = byClient.get(m.clientId) || [];
       list.push(m);
@@ -2569,7 +2663,7 @@ async function handleApi(req, res, url) {
       casesByStatus,
       casesByType,
       avgResponseMinutes,
-      messagesThisWeek: db.messages.filter((m) =>
+      messagesThisWeek: statMsgs.filter((m) =>
         (m.direction === 'in' || m.direction === 'out') && m.timestamp >= weekAgo).length,
     });
   }
@@ -2611,6 +2705,7 @@ async function handleApi(req, res, url) {
       const m = db.messages[i];
       const hay = `${m.text || ''} ${m.media?.filename || ''}`.toLowerCase();
       if (!hay.includes(q)) continue;
+      if (visIds && !visIds.has(m.clientId)) continue;
       const client = db.clients.find((c) => c.id === m.clientId);
       if (!client) continue;
       results.push({
@@ -2629,11 +2724,11 @@ async function handleApi(req, res, url) {
     const q = (url.searchParams.get('q') || '').toLowerCase().trim();
     if (q.length < 2) return json(res, 200, { clients: [], cases: [], messages: [] });
     const nameOf = (cid) => (db.clients.find((c) => c.id === cid) || {}).name || '';
-    const clients = db.clients
+    const clients = clientsV
       .filter((c) => [c.name, c.phone, c.nif, c.email, (c.tags || []).join(' ')].join(' ').toLowerCase().includes(q))
       .slice(0, 8)
       .map((c) => ({ id: c.id, name: c.name, phone: c.phone, segment: c.segment || 'particular' }));
-    const cases = db.cases
+    const cases = casesV
       .filter((c) => (c.title || '').toLowerCase().includes(q))
       .slice(0, 8)
       .map((c) => ({ id: c.id, title: c.title, type: c.type, status: c.status, clientId: c.clientId, clientName: nameOf(c.clientId) }));
@@ -2641,6 +2736,7 @@ async function handleApi(req, res, url) {
     for (let i = db.messages.length - 1; i >= 0 && messages.length < 6; i -= 1) {
       const m = db.messages[i];
       if (!`${m.text || ''} ${m.media?.filename || ''}`.toLowerCase().includes(q)) continue;
+      if (visIds && !visIds.has(m.clientId)) continue;
       if (!db.clients.some((c) => c.id === m.clientId)) continue;
       messages.push({ clientId: m.clientId, clientName: nameOf(m.clientId), text: m.text, timestamp: m.timestamp });
     }
@@ -2660,7 +2756,7 @@ async function handleApi(req, res, url) {
       name = 'clientes';
       csv = toCsv(
         ['Nombre', 'Teléfono', 'NIF', 'Email', 'Etiquetas', 'Notas', 'Alta'],
-        db.clients.map((c) => [c.name, '+' + c.phone, c.nif, c.email,
+        clientsV.map((c) => [c.name, '+' + c.phone, c.nif, c.email,
           (c.tags || []).join(', '), c.notes, fmtDate(c.createdAt)]),
       );
     }
@@ -2670,7 +2766,7 @@ async function handleApi(req, res, url) {
       const STATUS = { pendiente: 'Pendiente', en_curso: 'En curso', esperando_documentacion: 'Esperando documentación', completado: 'Completado' };
       csv = toCsv(
         ['Cliente', 'Título', 'Tipo', 'Estado', 'Fecha límite', 'Documentación', 'Notas', 'Creado'],
-        db.cases.map((c) => [clientName(c.clientId), c.title, c.type,
+        casesV.map((c) => [clientName(c.clientId), c.title, c.type,
           STATUS[c.status] || c.status, c.dueDate || '', c.docs || '', c.notes, fmtDate(c.createdAt)]),
       );
     }
@@ -2681,7 +2777,7 @@ async function handleApi(req, res, url) {
       const to = url.searchParams.get('to');
       const fromTs = from ? new Date(from + 'T00:00:00').getTime() : -Infinity;
       const toTs = to ? new Date(to + 'T23:59:59').getTime() : Infinity;
-      const inRange = db.cases.filter((c) => c.createdAt >= fromTs && c.createdAt <= toTs);
+      const inRange = casesV.filter((c) => c.createdAt >= fromTs && c.createdAt <= toTs);
       const agg = {};
       for (const c of inRange) {
         const key = `${c.type}||${c.title.trim()}`;
@@ -2713,7 +2809,7 @@ async function handleApi(req, res, url) {
       const tag = String(b.tag || '').trim();
       const text = String(b.text || '').trim();
       if (!tag || !text) return json(res, 400, { error: 'Etiqueta y mensaje son obligatorios' });
-      const recipients = db.clients.filter((c) => (c.tags || []).includes(tag));
+      const recipients = clientsV.filter((c) => (c.tags || []).includes(tag));
       if (!recipients.length) return json(res, 400, { error: 'Ningún cliente tiene esa etiqueta' });
       let ok = 0;
       let errors = 0;
@@ -2763,12 +2859,13 @@ async function handleApi(req, res, url) {
   // --- Recordatorios --------------------------------------------------------
   if (resource === 'reminders') {
     if (req.method === 'GET') {
-      return json(res, 200, db.reminders.slice().sort((a, b) =>
+      return json(res, 200, remindersV.slice().sort((a, b) =>
         String(a.dueDate || '').localeCompare(String(b.dueDate || ''))));
     }
     if (req.method === 'POST' && !id) {
       const b = await readBody(req);
       if (!b.text) return json(res, 400, { error: 'El texto es obligatorio' });
+      if (b.clientId && visIds && !visIds.has(b.clientId)) return json(res, 403, { error: 'No tienes acceso a este cliente' });
       const r = {
         id: newId('rem'),
         clientId: b.clientId || null,
@@ -2785,6 +2882,7 @@ async function handleApi(req, res, url) {
     }
     const r = db.reminders.find((x) => x.id === id);
     if (!r) return json(res, 404, { error: 'Recordatorio no encontrado' });
+    if (r.clientId && visIds && !visIds.has(r.clientId)) return json(res, 403, { error: 'Sin acceso a este recordatorio' });
     if (req.method === 'PUT') {
       const b = await readBody(req);
       if (b.text !== undefined) r.text = String(b.text);

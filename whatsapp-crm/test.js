@@ -224,6 +224,107 @@ async function testCaptchaServer() {
   }
 }
 
+// Aislamiento por usuario: con CRM_USERS (varios usuarios) cada uno solo ve
+// sus clientes, chats y expedientes; hay opción de compartir cliente o
+// expediente en concreto. Sin aislamiento (un solo usuario) todo es común.
+async function testIsolationServer() {
+  const ISO_PORT = 3782;
+  const ISO_BASE = `http://127.0.0.1:${ISO_PORT}`;
+  const isoDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crm-iso-'));
+  const server = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
+    env: {
+      ...process.env, PORT: String(ISO_PORT), DATA_DIR: isoDataDir,
+      CRM_USERS: 'carmen:clave1,juan:clave2', CRM_PASSWORD: '', CRM_CAPTCHA: 'off',
+      WHATSAPP_TOKEN: '', WHATSAPP_PHONE_NUMBER_ID: '',
+    },
+    stdio: 'ignore',
+  });
+  const login = async (user, password) => {
+    const r = await fetch(ISO_BASE + '/api/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user, password }),
+    });
+    return (r.headers.get('set-cookie') || '').split(';')[0];
+  };
+  const as = async (cookie, method, pathName, body) => {
+    const r = await fetch(ISO_BASE + pathName, {
+      method, headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return { status: r.status, data: await r.json().catch(() => ({})) };
+  };
+  try {
+    for (let i = 0; i < 50; i += 1) {
+      try { await fetch(ISO_BASE + '/api/auth'); break; } catch { await new Promise((r) => setTimeout(r, 100)); }
+    }
+    const carmen = await login('carmen', 'clave1');
+    const juan = await login('juan', 'clave2');
+
+    // Cada uno crea un cliente: queda como dueño.
+    const cCarmen = (await as(carmen, 'POST', '/api/clients', { name: 'Cliente de Carmen', phone: '600000001' })).data;
+    const cJuan = (await as(juan, 'POST', '/api/clients', { name: 'Cliente de Juan', phone: '600000002' })).data;
+    assert(cCarmen.owner === 'carmen', 'el cliente creado por Carmen queda a su nombre');
+    assert(cJuan.owner === 'juan', 'el cliente creado por Juan queda a su nombre');
+
+    // La lista de cada uno solo incluye lo suyo.
+    const listCarmen = (await as(carmen, 'GET', '/api/clients')).data;
+    const listJuan = (await as(juan, 'GET', '/api/clients')).data;
+    assert(listCarmen.some((c) => c.id === cCarmen.id) && !listCarmen.some((c) => c.id === cJuan.id),
+      'Carmen ve su cliente pero no el de Juan');
+    assert(listJuan.some((c) => c.id === cJuan.id) && !listJuan.some((c) => c.id === cCarmen.id),
+      'Juan ve su cliente pero no el de Carmen');
+
+    // No se puede abrir el cliente del otro por id.
+    assert((await as(juan, 'GET', '/api/clients/' + cCarmen.id)).status === 403,
+      'Juan no puede abrir el cliente de Carmen (403)');
+
+    // No se puede crear un expediente sobre el cliente del otro.
+    assert((await as(juan, 'POST', '/api/cases', { clientId: cCarmen.id, title: 'Intruso' })).status === 403,
+      'Juan no puede crear un expediente en el cliente de Carmen (403)');
+
+    // Expediente propio de Carmen: Juan no lo ve en la lista global.
+    const expCarmen = (await as(carmen, 'POST', '/api/cases', { clientId: cCarmen.id, title: 'Expediente privado' })).data;
+    assert(!(await as(juan, 'GET', '/api/cases')).data.some((c) => c.id === expCarmen.id),
+      'Juan no ve el expediente privado de Carmen en la lista');
+    assert((await as(juan, 'GET', '/api/cases/' + expCarmen.id)).status === 403,
+      'Juan no puede abrir el expediente privado de Carmen (403)');
+
+    // Un no-dueño no puede cambiar el reparto ni compartir.
+    assert((await as(juan, 'PUT', '/api/clients/' + cCarmen.id, { sharedWith: ['juan'] })).status === 403,
+      'Juan no puede compartirse a sí mismo el cliente de Carmen (403)');
+
+    // Carmen comparte su cliente con Juan: ahora Juan sí lo ve (y sus expedientes).
+    await as(carmen, 'PUT', '/api/clients/' + cCarmen.id, { sharedWith: ['juan'] });
+    assert((await as(juan, 'GET', '/api/clients/' + cCarmen.id)).status === 200,
+      'tras compartir, Juan puede abrir el cliente de Carmen');
+    assert((await as(juan, 'GET', '/api/cases')).data.some((c) => c.id === expCarmen.id),
+      'tras compartir el cliente, Juan ve sus expedientes');
+
+    // Compartir un expediente en concreto sin compartir el cliente.
+    const cPriv = (await as(carmen, 'POST', '/api/clients', { name: 'Cliente reservado', phone: '600000003' })).data;
+    const expShared = (await as(carmen, 'POST', '/api/cases', { clientId: cPriv.id, title: 'Solo este expediente' })).data;
+    assert((await as(juan, 'GET', '/api/clients/' + cPriv.id)).status === 403,
+      'Juan sigue sin ver el cliente reservado de Carmen');
+    await as(carmen, 'PUT', '/api/cases/' + expShared.id, { sharedWith: ['juan'] });
+    assert((await as(juan, 'GET', '/api/cases/' + expShared.id)).status === 200,
+      'Juan puede abrir el expediente compartido en concreto');
+    assert((await as(juan, 'GET', '/api/clients/' + cPriv.id)).status === 403,
+      'compartir solo el expediente no da acceso a la ficha del cliente');
+
+    // Los chats también están aislados: Juan no ve los mensajes del cliente de Carmen.
+    assert((await as(juan, 'GET', '/api/messages?clientId=' + cPriv.id)).status === 403,
+      'Juan no puede leer el chat del cliente reservado de Carmen (403)');
+
+    // La búsqueda global respeta el aislamiento.
+    const searchJuan = (await as(juan, 'GET', '/api/search?q=reservado')).data;
+    assert(Array.isArray(searchJuan.clients) && !searchJuan.clients.some((c) => c.id === cPriv.id),
+      'la búsqueda de Juan no filtra clientes de Carmen');
+  } finally {
+    server.kill();
+    fs.rmSync(isoDataDir, { recursive: true, force: true });
+  }
+}
+
 async function main() {
   const server = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
     env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, WHATSAPP_TOKEN: '', WHATSAPP_PHONE_NUMBER_ID: '' },
@@ -1381,6 +1482,9 @@ async function main() {
 
     console.log('CAPTCHA del acceso');
     await testCaptchaServer();
+
+    console.log('Aislamiento por usuario');
+    await testIsolationServer();
 
     console.log('Cobros automáticos');
     // Se ejecuta al final para no interferir con otros recuentos de mensajes.
