@@ -350,10 +350,13 @@ async function testTelegramAssistant() {
   });
 
   const mock = http.createServer(async (req, res) => {
+    // Descarga de un fichero (nota de voz / documento): devuelve bytes.
+    if (req.url.startsWith('/file/bot')) { res.writeHead(200); return res.end(Buffer.from('BINARIO-DE-PRUEBA')); }
     const send = (obj) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
     const body = await readJson(req);
     const m = req.url.match(/\/bot[^/]+\/(\w+)$/);
     const method = m ? m[1] : (req.url.includes('/chat/completions') ? 'chat' : '');
+    if (method === 'getFile') { return send({ ok: true, result: { file_id: body.file_id, file_path: 'files/x', file_size: 1234 } }); }
     if (method === 'getUpdates') {
       if (updates.length) { const drained = updates.splice(0); return send({ ok: true, result: drained }); }
       // Emula el long-polling: espera un poco antes de responder vacío.
@@ -382,7 +385,7 @@ async function testTelegramAssistant() {
   const post = (p, b) => fetch(TG_BASE + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).then((r) => r.json());
   const waitFor = async (fn, ms = 5000) => {
     const until = Date.now() + ms;
-    while (Date.now() < until) { const v = fn(); if (v) return v; await new Promise((r) => setTimeout(r, 80)); }
+    while (Date.now() < until) { const v = await fn(); if (v) return v; await new Promise((r) => setTimeout(r, 80)); }
     return null;
   };
 
@@ -455,6 +458,60 @@ async function testTelegramAssistant() {
     updates.push({ update_id: 8, callback_query: { id: 'cq3', from: { id: 555 }, data: remBtn, message: { message_id: 21, chat: priv(555) } } });
     const cancelled = await waitFor(() => edited.find((e) => /Cancelado/.test(e.text)));
     assert(cancelled, 'cancelar deja la acción sin ejecutar');
+
+    let uid = 100; // ids de update crecientes para el resto de casos
+    const runTool = async (text, reply, confirmRe) => {
+      const before2 = edited.length;
+      toolReply = reply;
+      const mid = uid;
+      updates.push({ update_id: uid, message: { message_id: uid, chat: priv(555), from: { id: 555 }, text } });
+      uid += 1;
+      const conf = await waitFor(() => sent.find((s) => s.reply_markup && confirmRe.test(s.text || '')));
+      if (!conf) return null;
+      const tk = conf.reply_markup.inline_keyboard[0][0].callback_data;
+      updates.push({ update_id: uid, callback_query: { id: 'c' + uid, from: { id: 555 }, data: tk, message: { message_id: mid, chat: priv(555) } } });
+      uid += 1;
+      await waitFor(() => edited.length > before2 && edited[edited.length - 1] && /✅/.test(edited[edited.length - 1].text || ''));
+      return conf;
+    };
+
+    // Registrar un cobro: marca los honorarios pendientes como cobrados.
+    const cobExp = await post('/api/cases', { clientId: pedro.id, title: 'Renovación NIE', type: 'extranjeria', fee: 150, paid: false });
+    const cobConf = await runTool('cóbrale a Pedro en efectivo',
+      { choices: [{ message: { tool_calls: [{ id: 'c1', type: 'function', function: { name: 'registrar_cobro', arguments: JSON.stringify({ cliente: 'Pedro', forma_pago: 'efectivo' }) } }] } }] },
+      /registrar el cobro/i);
+    assert(cobConf && /150/.test(cobConf.text), 'propone el cobro con el importe pendiente');
+    const cobCase = (await (await fetch(TG_BASE + '/api/cases?clientId=' + pedro.id)).json()).find((c) => c.id === cobExp.id);
+    assert(cobCase && cobCase.paid === true && cobCase.payMethod === 'efectivo', 'tras confirmar, el honorario queda cobrado en efectivo');
+
+    // Cambiar el estado de un expediente.
+    await runTool('marca el expediente de Pedro como completado',
+      { choices: [{ message: { tool_calls: [{ id: 'c2', type: 'function', function: { name: 'cambiar_estado_expediente', arguments: JSON.stringify({ cliente: 'Pedro', estado: 'completado' }) } }] } }] },
+      /marcar/i);
+    const stCase = (await (await fetch(TG_BASE + '/api/cases?clientId=' + pedro.id)).json()).find((c) => c.id === cobExp.id);
+    assert(stCase && stCase.status === 'completado', 'el expediente queda marcado como completado');
+
+    // Dar de alta un cliente.
+    await runTool('da de alta a Ana López, 600112233',
+      { choices: [{ message: { tool_calls: [{ id: 'c3', type: 'function', function: { name: 'crear_cliente', arguments: JSON.stringify({ nombre: 'Ana López', telefono: '600112233' }) } }] } }] },
+      /dar de alta/i);
+    const ana = (await (await fetch(TG_BASE + '/api/clients')).json()).find((c) => c.phone === '34600112233');
+    assert(ana && ana.name === 'Ana López', 'el cliente nuevo queda dado de alta');
+
+    // Enviar un documento por WhatsApp poniendo el nombre del cliente en el pie.
+    updates.push({ update_id: uid, message: { message_id: uid, chat: priv(555), from: { id: 555 },
+      caption: 'Pedro Ramírez', document: { file_id: 'FID1', file_name: 'justificante.pdf', mime_type: 'application/pdf' } } });
+    uid += 1;
+    const docConf = await waitFor(() => sent.find((s) => s.reply_markup && /justificante\.pdf/.test(s.text || '')));
+    assert(docConf, 'propone enviar el documento al cliente indicado en el pie');
+    const docBtn = docConf.reply_markup.inline_keyboard[0][0].callback_data;
+    updates.push({ update_id: uid, callback_query: { id: 'cdoc', from: { id: 555 }, data: docBtn, message: { message_id: uid, chat: priv(555) } } });
+    uid += 1;
+    const docMsg = await waitFor(async () => {
+      const list = await (await fetch(TG_BASE + '/api/messages?clientId=' + pedro.id)).json();
+      return list.find((mm) => mm.direction === 'out' && mm.media && mm.media.filename === 'justificante.pdf') || null;
+    });
+    assert(docMsg && docMsg.media.kind === 'document', 'el documento se envía al cliente por WhatsApp');
   } finally {
     server.kill();
     mock.close();

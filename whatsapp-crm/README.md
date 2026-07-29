@@ -340,6 +340,12 @@ le mandas una **nota de voz** en lenguaje natural y ejecuta la acción:
 - «Ponme una cita con María el jueves a las 12 por la renovación del NIE» →
   crea la cita y avisa al cliente por WhatsApp.
 - «Recuérdame el lunes llamar a la asesoría» → recordatorio interno.
+- «Cóbrale a Pedro en efectivo» → marca sus honorarios pendientes como cobrados.
+- «Marca el expediente de María como completado» → cambia el estado (y avisa al
+  cliente si procede).
+- «Da de alta a Ana López, 600112233» → crea el cliente.
+- Envía una **foto o un PDF** con el nombre del cliente en el pie y el bot se lo
+  manda a ese cliente por WhatsApp.
 - «¿Qué tengo hoy?», «¿Quién me debe dinero?», «Busca a Ahmed» → consultas.
 
 **Antes de enviar cualquier WhatsApp o crear algo, el bot te pide confirmar con

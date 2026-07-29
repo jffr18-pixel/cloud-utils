@@ -129,6 +129,53 @@ const TOOLS = [
       parameters: { type: 'object', properties: {} },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'registrar_cobro',
+      description: 'Registrar que un cliente ha pagado sus honorarios pendientes, indicando la forma de cobro.',
+      parameters: {
+        type: 'object',
+        properties: {
+          cliente: { type: 'string', description: 'Nombre del cliente o número de teléfono.' },
+          forma_pago: { type: 'string', enum: ['efectivo', 'transferencia', 'tarjeta'], description: 'Cómo ha pagado.' },
+          incluir_tasas: { type: 'boolean', description: 'Marcar también como pagadas las tasas oficiales pendientes.' },
+        },
+        required: ['cliente', 'forma_pago'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'cambiar_estado_expediente',
+      description: 'Cambiar el estado de un expediente de un cliente.',
+      parameters: {
+        type: 'object',
+        properties: {
+          cliente: { type: 'string', description: 'Nombre del cliente o número de teléfono.' },
+          estado: { type: 'string', enum: ['pendiente', 'en_curso', 'esperando_documentacion', 'completado'], description: 'Nuevo estado.' },
+          expediente: { type: 'string', description: 'Título del expediente si el cliente tiene varios (opcional).' },
+        },
+        required: ['cliente', 'estado'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'crear_cliente',
+      description: 'Dar de alta un cliente nuevo con su nombre y teléfono.',
+      parameters: {
+        type: 'object',
+        properties: {
+          nombre: { type: 'string', description: 'Nombre completo del cliente.' },
+          telefono: { type: 'string', description: 'Número de teléfono.' },
+        },
+        required: ['nombre', 'telefono'],
+      },
+    },
+  },
 ];
 
 // Construye la petición al modelo (chat completions con herramientas).
@@ -137,7 +184,8 @@ function buildAgentRequest(text, opts = {}) {
   const system = [
     'Eres el asistente de una gestoría española («Burocracia Zero»). Ayudas al gestor a manejar su CRM por Telegram.',
     `La fecha de hoy es ${today}. Convierte expresiones como «mañana», «el jueves» o «la semana que viene» a fechas concretas en formato YYYY-MM-DD a partir de hoy.`,
-    'Cuando la persona pida una acción (mandar un WhatsApp, crear una cita, un recordatorio o hacer una consulta), llama a la herramienta adecuada.',
+    'Cuando la persona pida una acción (mandar un WhatsApp, crear una cita o un recordatorio, registrar un cobro, cambiar el estado de un expediente, dar de alta un cliente, o hacer una consulta), llama a la herramienta adecuada.',
+    'Estados de expediente posibles: «pendiente», «en_curso», «esperando_documentacion» y «completado». Mapea lo que diga la persona (p. ej. «en trámite» → en_curso, «presentado» o «terminado» → completado, «le faltan papeles» → esperando_documentacion).',
     'No inventes nombres de clientes, teléfonos ni datos: usa exactamente lo que diga la persona. Si falta algún dato imprescindible (por ejemplo la hora de una cita), pídelo en un mensaje breve en español en lugar de llamar a una herramienta.',
     'Responde siempre en español, de forma breve y cercana.',
   ].join(' ');
