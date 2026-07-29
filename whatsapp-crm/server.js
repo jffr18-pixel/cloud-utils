@@ -17,7 +17,9 @@ const transcribe = require('./lib/transcribe');
 const pdfsign = require('./lib/pdfsign');
 
 const PORT = Number(process.env.PORT || 3000);
-const PAY_METHODS = ['caja', 'banco']; // formas de cobro del honorario
+// Formas de cobro del honorario. «banco» se mantiene por compatibilidad con
+// cobros antiguos; las opciones nuevas son efectivo/transferencia/tarjeta.
+const PAY_METHODS = ['caja', 'transferencia', 'tarjeta', 'banco'];
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const UPLOADS_DIR = path.join(path.dirname(DB_FILE), 'uploads');
 const STICKERS_DIR = path.join(PUBLIC_DIR, 'stickers');
@@ -2271,8 +2273,8 @@ async function handleApi(req, res, url) {
     const incomeByMonth = {}; // { 'YYYY-MM': { facturado, cobrado } }
     let facturado = 0;
     let cobrado = 0;
-    let cobradoCaja = 0; // honorarios cobrados en efectivo (caja)
-    let cobradoBanco = 0; // honorarios cobrados por banco (transferencia/tarjeta)
+    // Cobrado por forma de pago (efectivo/transferencia/tarjeta/banco + sin especificar).
+    const cobradoByMethod = { caja: 0, transferencia: 0, tarjeta: 0, banco: 0, sin: 0 };
     let taxFacturado = 0; // tasas oficiales gestionadas
     let taxCobrado = 0; // tasas oficiales ya abonadas
     for (const c of cases) {
@@ -2286,8 +2288,8 @@ async function handleApi(req, res, url) {
       facturado += fee;
       if (c.paid) {
         cobrado += fee;
-        if (c.payMethod === 'caja') cobradoCaja += fee;
-        else if (c.payMethod === 'banco') cobradoBanco += fee;
+        const key = Object.prototype.hasOwnProperty.call(cobradoByMethod, c.payMethod) ? c.payMethod : 'sin';
+        cobradoByMethod[key] += fee;
       }
       incomeByArea[c.type] = incomeByArea[c.type] || { facturado: 0, cobrado: 0 };
       incomeByArea[c.type].facturado += fee;
@@ -2316,9 +2318,11 @@ async function handleApi(req, res, url) {
       byMonth,
       facturado,
       cobrado,
-      cobradoCaja,
-      cobradoBanco,
-      cobradoSinMetodo: cobrado - cobradoCaja - cobradoBanco,
+      cobradoByMethod,
+      // Compatibilidad: se mantienen los campos antiguos.
+      cobradoCaja: cobradoByMethod.caja,
+      cobradoBanco: cobradoByMethod.banco,
+      cobradoSinMetodo: cobradoByMethod.sin,
       pendiente: facturado - cobrado,
       taxFacturado,
       taxCobrado,

@@ -50,6 +50,20 @@ const STATUS_LABEL = {
   esperando_documentacion: 'Esperando documentación',
   completado: 'Completado',
 };
+
+// Formas de pago del honorario (icono + etiqueta). «banco» se conserva para
+// cobros antiguos; las opciones nuevas son efectivo, transferencia y tarjeta.
+const PAY_METHOD_META = {
+  caja: { icon: '💵', label: 'Efectivo (caja)' },
+  transferencia: { icon: '🏦', label: 'Transferencia' },
+  tarjeta: { icon: '💳', label: 'Tarjeta' },
+  banco: { icon: '🏦', label: 'Banco' },
+};
+const PAY_METHOD_OPTIONS = [
+  ['caja', '💵 Efectivo (caja)'],
+  ['transferencia', '🏦 Transferencia'],
+  ['tarjeta', '💳 Tarjeta'],
+];
 const TYPE_LABEL = {
   extranjeria: 'Extranjería',
   vehiculos: 'Tráfico / Vehículos',
@@ -1519,7 +1533,8 @@ function caseFields(item = {}, clients = [], fichas = []) {
     },
     {
       name: 'payMethod', label: 'Forma de cobro (si está cobrado)', type: 'select', value: item.payMethod || '',
-      options: [['', '— Sin especificar —'], ['caja', '💵 Caja (efectivo)'], ['banco', '🏦 Banco (transferencia/tarjeta)']],
+      options: [['', '— Sin especificar —'], ...PAY_METHOD_OPTIONS,
+        ...(item.payMethod === 'banco' ? [['banco', '🏦 Banco']] : [])],
     },
     { name: 'taxModel', label: 'Tasa oficial · modelo (ej. «790 cód. 012», «Tasa 052»)', value: item.taxModel || '' },
     { name: 'taxAmount', label: 'Tasa oficial · importe (€)', type: 'number', value: item.taxAmount || '' },
@@ -1619,8 +1634,9 @@ async function renderCases() {
     const chkBadge = chk.length
       ? `<span class="chk-badge ${done === chk.length ? 'ok' : ''}" title="Documentación recibida">📎 ${done}/${chk.length}</span>` : '';
     const fee = Number(c.fee) || 0;
-    const payIcon = c.paid ? (c.payMethod === 'caja' ? ' 💵' : c.payMethod === 'banco' ? ' 🏦' : '') : '';
-    const payTitle = c.payMethod === 'caja' ? ' (caja)' : c.payMethod === 'banco' ? ' (banco)' : '';
+    const payMeta = c.paid && PAY_METHOD_META[c.payMethod] ? PAY_METHOD_META[c.payMethod] : null;
+    const payIcon = payMeta ? ' ' + payMeta.icon : '';
+    const payTitle = payMeta ? ' (' + payMeta.label.toLowerCase() + ')' : '';
     const feeBadge = fee
       ? `<span class="fee-badge ${c.paid ? 'paid' : 'due'}" title="${c.paid ? 'Honorario cobrado' + payTitle : 'Honorario pendiente de cobro'}">${fee.toLocaleString('es-ES')} € ${c.paid ? '✓' : '•'}${payIcon}</span>` : '';
     const taxAmt = Number(c.taxAmount) || 0;
@@ -1934,13 +1950,18 @@ async function renderReports() {
 
   // Ingresos: facturado / cobrado / pendiente + facturación por área.
   const eur = (n) => (Number(n) || 0).toLocaleString('es-ES') + ' €';
+  // Desglose de lo cobrado por forma de pago (solo las que tengan importe).
+  const bm = r.cobradoByMethod || { caja: r.cobradoCaja || 0, banco: r.cobradoBanco || 0, sin: r.cobradoSinMetodo || 0 };
+  const methodCards = ['caja', 'transferencia', 'tarjeta', 'banco']
+    .filter((k) => bm[k])
+    .map((k) => `<div class="card"><div class="num">${PAY_METHOD_META[k].icon} ${eur(bm[k])}</div><div class="lbl">Cobrado · ${esc(PAY_METHOD_META[k].label)}</div></div>`)
+    .join('')
+    + (bm.sin ? `<div class="card"><div class="num">${eur(bm.sin)}</div><div class="lbl">Cobrado sin forma indicada</div></div>` : '');
   $('#rep-income-cards').innerHTML = `
     <div class="card"><div class="num">${eur(r.facturado)}</div><div class="lbl">Facturado</div></div>
     <div class="card ${r.cobrado ? 'ok' : ''}"><div class="num">${eur(r.cobrado)}</div><div class="lbl">Cobrado</div></div>
     <div class="card ${r.pendiente ? 'warn' : ''}"><div class="num">${eur(r.pendiente)}</div><div class="lbl">Pendiente de cobro</div></div>
-    <div class="card"><div class="num">💵 ${eur(r.cobradoCaja)}</div><div class="lbl">Cobrado en caja</div></div>
-    <div class="card"><div class="num">🏦 ${eur(r.cobradoBanco)}</div><div class="lbl">Cobrado en banco</div></div>${
-    r.cobradoSinMetodo ? `<div class="card"><div class="num">${eur(r.cobradoSinMetodo)}</div><div class="lbl">Cobrado sin forma indicada</div></div>` : ''}`;
+    ${methodCards}`;
   const incEntries = Object.entries(r.incomeByArea || {})
     .map(([k, v]) => [k, v.facturado])
     .filter(([, v]) => v > 0)
@@ -2027,7 +2048,7 @@ async function renderReceivables() {
       const e = r.clients.find((x) => x.clientId === btn.dataset.id);
       const fields = [{
         name: 'payMethod', label: 'Forma de cobro', type: 'select', value: 'caja',
-        options: [['caja', '💵 Caja (efectivo)'], ['banco', '🏦 Banco (transferencia/tarjeta)']],
+        options: PAY_METHOD_OPTIONS,
       }];
       if (e.tasas > 0) fields.push({
         name: 'includeTax', label: `¿Incluir también las tasas pendientes (${eur(e.tasas)})?`, type: 'select', value: 'no',
@@ -2040,7 +2061,8 @@ async function renderReceivables() {
         });
         await renderReceivables();
         if (state.view === 'cases') await renderCases();
-        alert(`Cobro registrado: ${eur(rr.honorarios)} en ${v.payMethod === 'caja' ? 'caja' : 'banco'}${rr.tasas ? ' + ' + eur(rr.tasas) + ' en tasas' : ''} ✅`);
+        const mName = (PAY_METHOD_META[v.payMethod] || { label: v.payMethod }).label.toLowerCase();
+        alert(`Cobro registrado: ${eur(rr.honorarios)} en ${mName}${rr.tasas ? ' + ' + eur(rr.tasas) + ' en tasas' : ''} ✅`);
       });
     });
   });

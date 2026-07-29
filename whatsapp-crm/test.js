@@ -890,19 +890,19 @@ async function main() {
     const remindMsgs = (await req('GET', '/api/messages?clientId=' + cobrClient.data.id)).data;
     assert(remindMsgs.some((m) => /Total pendiente: 130/.test(m.text || '')), 'el recordatorio detalla el total pendiente');
 
-    // Registrar cobro con forma de cobro (caja/banco).
-    const collectBad = await req('POST', '/api/receivables/collect', { clientId: cobrClient.data.id, payMethod: 'tarjeta' });
+    // Registrar cobro con forma de cobro (efectivo/transferencia/tarjeta).
+    const collectBad = await req('POST', '/api/receivables/collect', { clientId: cobrClient.data.id, payMethod: 'bizum' });
     assert(collectBad.status === 400, 'forma de cobro inválida rechazada');
-    const collect = await req('POST', '/api/receivables/collect', { clientId: cobrClient.data.id, payMethod: 'caja', includeTax: true });
+    const collect = await req('POST', '/api/receivables/collect', { clientId: cobrClient.data.id, payMethod: 'tarjeta', includeTax: true });
     assert(collect.status === 200 && collect.data.honorarios === 100 && collect.data.tasas === 30,
       'registrar cobro marca honorarios y tasas pagados');
     const deudorCase = (await req('GET', '/api/cases?clientId=' + cobrClient.data.id)).data[0];
-    assert(deudorCase.paid === true && deudorCase.payMethod === 'caja' && deudorCase.taxPaid === true,
-      'el expediente guarda la forma de cobro (caja)');
-    // El informe desglosa lo cobrado por caja y banco.
+    assert(deudorCase.paid === true && deudorCase.payMethod === 'tarjeta' && deudorCase.taxPaid === true,
+      'el expediente guarda la forma de cobro (tarjeta)');
+    // El informe desglosa lo cobrado por forma de pago.
     const finReport = await req('GET', '/api/reports');
-    assert(finReport.data.cobradoCaja >= 100 && typeof finReport.data.cobradoBanco === 'number',
-      'el informe desglosa lo cobrado por caja y banco');
+    assert(finReport.data.cobradoByMethod.tarjeta >= 100 && typeof finReport.data.cobradoByMethod.transferencia === 'number',
+      'el informe desglosa lo cobrado por forma de pago');
     // Al cobrarlo todo, el cliente desaparece de «por cobrar».
     const receivables2 = await req('GET', '/api/receivables');
     assert(!receivables2.data.clients.some((e) => e.clientId === cobrClient.data.id),
