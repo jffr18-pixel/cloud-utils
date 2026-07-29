@@ -1553,7 +1553,7 @@ function checklistField(item = {}, fichas = []) {
         <button type="button" class="btn small chk-add-btn">Añadir</button>
       </div>
       ${fichas.length ? `<div class="chk-load">
-        <select class="chk-ficha"><option value="">Cargar de una ficha…</option>${fichaOpts}</select>
+        <select class="chk-ficha"><option value="">Cargar de una lista guardada…</option>${fichaOpts}</select>
       </div>` : ''}`;
     box.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
       cb.addEventListener('change', () => { items[Number(cb.dataset.i)].done = cb.checked; render(); });
@@ -2180,13 +2180,13 @@ async function renderFichas() {
           </div>
           <button class="btn small danger ficha-del" data-id="${esc(f.id)}">Eliminar</button>
         </div>`).join('')}</div>
-    </div>`).join('') || '<p class="hint">No hay fichas todavía. Crea la primera con «＋ Nueva ficha».</p>';
+    </div>`).join('') || '<p class="hint">No hay listas todavía. Crea la primera con «＋ Nueva lista».</p>';
 
   $('#ficha-list').querySelectorAll('.ficha-row').forEach((row) => {
     row.addEventListener('click', (e) => {
       if (e.target.closest('.ficha-del')) return;
       const f = fichas.find((x) => x.id === row.dataset.id);
-      openDialog('Editar ficha de trámite', fichaFields(f), async (v) => {
+      openDialog('Editar lista de documentos', fichaFields(f), async (v) => {
         await api('fichas/' + f.id, { method: 'PUT', body: v });
         await renderFichas();
       });
@@ -2202,7 +2202,7 @@ async function renderFichas() {
 }
 
 $('#btn-new-ficha').addEventListener('click', () => {
-  openDialog('Nueva ficha de trámite', fichaFields(), async (v) => {
+  openDialog('Nueva lista de documentos a pedir', fichaFields(), async (v) => {
     await api('fichas', { method: 'POST', body: v });
     await renderFichas();
   });
@@ -2251,13 +2251,13 @@ async function renderKnowledge() {
       <div class="list">${byArea[area].map(kbCardHtml).join('')}</div>
     </div>`).join('')
     || (q ? '<p class="hint">Ningún trámite coincide con la búsqueda.</p>'
-          : '<p class="hint">No hay trámites todavía. Crea el primero con «＋ Nuevo trámite».</p>');
+          : '<p class="hint">No hay tarifas todavía. Crea la primera con «＋ Nueva tarifa».</p>');
 
   $('#kb-list').querySelectorAll('.kb-row').forEach((row) => {
     row.addEventListener('click', (e) => {
       if (e.target.closest('.kb-del')) return;
       const k = items.find((x) => x.id === row.dataset.id);
-      openDialog('Editar trámite', kbFields(k), async (v) => {
+      openDialog('Editar tarifa', kbFields(k), async (v) => {
         await api('knowledge/' + k.id, { method: 'PUT', body: v });
         await renderKnowledge();
       });
@@ -2289,7 +2289,7 @@ function kbCardHtml(k) {
 
 $('#kb-search').addEventListener('input', () => { if (state.view === 'knowledge') renderKnowledge(); });
 $('#btn-new-kb').addEventListener('click', () => {
-  openDialog('Nuevo trámite', kbFields(), async (v) => {
+  openDialog('Nueva tarifa', kbFields(), async (v) => {
     await api('knowledge', { method: 'POST', body: v });
     await renderKnowledge();
   });
@@ -2444,7 +2444,7 @@ $('#btn-ficha-send').addEventListener('click', async (e) => {
     `<button type="button" class="ficha-pick" data-id="${esc(f.id)}">
        <b>${esc(f.title)}</b><span>${esc(TYPE_LABEL[f.area] || f.area)} · ${esc((f.docs || '').split('\n').filter(Boolean).length)} docs</span>
      </button>`).join('')
-    : '<p class="hint">No hay fichas. Créalas en «Fichas de trámite».</p>';
+    : '<p class="hint">No hay listas de documentos. Créalas en «Documentos a pedir».</p>';
   p.querySelectorAll('.ficha-pick').forEach((btn) => {
     btn.addEventListener('click', () => sendFicha(btn.dataset.id));
   });
@@ -3217,14 +3217,17 @@ async function pickQuickReply(id) {
 // --- Paleta de comandos / buscador global ---
 const NAV_LABELS = {
   dashboard: 'Panel', inbox: 'WhatsApp', clients: 'Clientes', cases: 'Expedientes',
-  appointments: 'Citas', agenda: 'Agenda', templates: 'Plantillas', fichas: 'Fichas de trámite',
-  reports: 'Informes', reminders: 'Recordatorios', campaigns: 'Campañas', automations: 'Automatizaciones',
+  appointments: 'Citas', calendar: 'Calendario', agenda: 'Agenda', templates: 'Plantillas',
+  fichas: 'Documentos a pedir', knowledge: 'Precios y tasas',
+  reports: 'Informes', receivables: 'Por cobrar', reminders: 'Recordatorios',
+  campaigns: 'Campañas', automations: 'Automatizaciones',
 };
 const PALETTE_ACTIONS = [
   { title: '＋ Nuevo expediente', ico: '📁', run: () => { showView('cases'); setTimeout(() => $('#btn-new-case').click(), 60); } },
   { title: '＋ Nueva cita', ico: '📅', run: () => { showView('appointments'); setTimeout(() => $('#btn-new-appt').click(), 60); } },
   { title: '＋ Nuevo recordatorio', ico: '⏰', run: () => { showView('reminders'); setTimeout(() => $('#btn-new-reminder').click(), 60); } },
-  { title: '＋ Nueva ficha de trámite', ico: '📋', run: () => { showView('fichas'); setTimeout(() => $('#btn-new-ficha').click(), 60); } },
+  { title: '＋ Nueva lista de documentos a pedir', ico: '📋', run: () => { showView('fichas'); setTimeout(() => $('#btn-new-ficha').click(), 60); } },
+  { title: '＋ Nueva tarifa (precio/tasas)', ico: '💶', run: () => { showView('knowledge'); setTimeout(() => $('#btn-new-kb').click(), 60); } },
   { title: '＋ Nuevo cliente', ico: '👤', run: () => { showView('clients'); setTimeout(() => $('#btn-new-client').click(), 60); } },
   ...Object.entries(NAV_LABELS).map(([v, l]) => ({ title: 'Ir a: ' + l, ico: '➜', run: () => showView(v) })),
 ];

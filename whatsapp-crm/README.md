@@ -105,7 +105,7 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   orientativas y documentos por trámite (extranjería, tráfico…). Desde el chat,
   el botón 📖 busca un trámite (tolerante a acentos) e inserta la respuesta
   lista para enviar, con el nombre del cliente ya puesto. Editable en la pestaña
-  «Tarifas y trámites»; viene sembrada con los precios de la gestoría.
+  «Precios y tasas»; viene sembrada con los precios de la gestoría.
 - **💶 Por cobrar**: honorarios y tasas oficiales pendientes de cobro, agrupados
   por cliente y ordenados por importe, con el total y un botón para reclamar por
   WhatsApp en un clic (con el desglose de lo pendiente). La barra lateral avisa

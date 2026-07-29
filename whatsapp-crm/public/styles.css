@@ -56,7 +56,9 @@ body {
 *::-webkit-scrollbar-thumb { background: #cfcbc2; border-radius: 8px; }
 *::-webkit-scrollbar-track { background: transparent; }
 
-.app { display: flex; height: 100vh; }
+/* dvh = alto real visible en el móvil (descuenta la barra del navegador y el
+   teclado); con reserva en vh para navegadores antiguos. */
+.app { display: flex; height: 100vh; height: 100dvh; }
 
 /* ---------------------------------------------------------------------------
    Barra lateral
@@ -357,7 +359,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
    Bandeja de WhatsApp
 --------------------------------------------------------------------------- */
 .inbox {
-  display: flex; gap: 0; height: calc(100vh - 56px);
+  display: flex; gap: 0; height: calc(100vh - 56px); height: calc(100dvh - 56px);
   background: var(--panel); border: 1px solid var(--border);
   border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--shadow-2);
 }
@@ -874,20 +876,37 @@ dialog h2 { font-family: var(--font-brand); font-size: 19px; font-weight: 700; m
   .cards { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 9px; }
 
   /* Bandeja: lista o chat a pantalla completa, con botón de volver */
-  .inbox { height: calc(100vh - 34px); }
+  .main { padding: 12px 10px 16px; }
+  .inbox { height: calc(100vh - 30px); height: calc(100dvh - 30px); }
   .conv-list-panel { width: 100%; min-width: 0; border-right: none; }
   .inbox .chat-panel { display: none; }
   .inbox.mobile-chat .conv-list-panel { display: none; }
-  .inbox.mobile-chat .chat-panel { display: flex; }
+  .inbox.mobile-chat .chat-panel { display: flex; min-width: 0; }
   #btn-back-conv { display: inline-block; }
-  .chat-head { padding: 10px 12px; flex-wrap: wrap; }
+  .chat-head { padding: 9px 10px; flex-wrap: wrap; gap: 6px; }
+  .chat-tools { gap: 5px; }
   .chat-tools select { font-size: 11.5px; padding: 5px 6px; }
-  .chat-messages { padding: 14px 12px; }
-  .msg { max-width: 82%; }
-  .chat-compose { flex-wrap: wrap; }
-  .chat-compose textarea { flex: 1 1 100%; order: -1; }
-  .chat-compose select { max-width: 110px; }
-  .chat-compose .btn.primary { margin-left: auto; }
+  .chat-messages { padding: 12px 10px; }
+  .msg { max-width: 86%; }
+  /* Compose: cuadro de texto arriba (una fila) y las herramientas en una tira
+     que se desliza en horizontal, para que no se amontonen en el móvil. */
+  .chat-compose { flex-wrap: wrap; padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); gap: 6px; align-items: center; }
+  .chat-compose textarea { flex: 1 1 100%; order: -2; min-width: 0; }
+  .chat-compose .btn.primary { order: -1; flex: 0 0 auto; }
+  .chat-compose > .btn.btn-icon,
+  .chat-compose > #tpl-select { flex: 0 0 auto; }
+  .chat-compose select { max-width: 120px; }
+  .chat-compose .btn.btn-icon { padding: 7px 9px; font-size: 15px; }
+  /* Los paneles emergentes (emoji, stickers, respuestas…) no deben desbordar. */
+  .pop-panel { max-width: calc(100vw - 28px); }
+}
+/* En horizontal (móvil apaisado, con ancho suficiente) se recupera la vista de
+   dos columnas: lista de chats + conversación a la vez. */
+@media (min-width: 640px) and (max-width: 900px) and (orientation: landscape) {
+  .inbox .chat-panel { display: flex !important; }
+  .inbox .conv-list-panel { width: 40%; min-width: 220px; max-width: 320px; border-right: 1px solid var(--border); display: flex !important; }
+  .inbox.mobile-chat .conv-list-panel { display: flex !important; }
+  #btn-back-conv { display: none; }
 }
 
 @media (min-width: 761px) {

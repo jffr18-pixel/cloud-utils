@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Burocracia Zero · CRM WhatsApp</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -63,8 +63,8 @@
       <button class="nav-btn" data-view="calendar"><svg class="nav-ico"><use href="#ico-cal"/></svg> <span class="nav-label">Calendario</span></button>
       <button class="nav-btn" data-view="agenda"><svg class="nav-ico"><use href="#ico-agenda"/></svg> <span class="nav-label">Agenda</span> <span class="badge hidden" id="nav-agenda"></span></button>
       <button class="nav-btn" data-view="templates"><svg class="nav-ico"><use href="#ico-templates"/></svg> <span class="nav-label">Plantillas</span></button>
-      <button class="nav-btn" data-view="fichas"><svg class="nav-ico"><use href="#ico-fichas"/></svg> <span class="nav-label">Fichas de trámite</span></button>
-      <button class="nav-btn" data-view="knowledge"><svg class="nav-ico"><use href="#ico-kb"/></svg> <span class="nav-label">Tarifas y trámites</span></button>
+      <button class="nav-btn" data-view="fichas"><svg class="nav-ico"><use href="#ico-fichas"/></svg> <span class="nav-label">Documentos a pedir</span></button>
+      <button class="nav-btn" data-view="knowledge"><svg class="nav-ico"><use href="#ico-kb"/></svg> <span class="nav-label">Precios y tasas</span></button>
       <button class="nav-btn" data-view="forms"><svg class="nav-ico"><use href="#ico-forms"/></svg> <span class="nav-label">Formularios</span></button>
       <button class="nav-btn" data-view="receivables"><svg class="nav-ico"><use href="#ico-cobros"/></svg> <span class="nav-label">Por cobrar</span> <span class="badge hidden" id="nav-cobros"></span></button>
       <button class="nav-btn" data-view="reports"><svg class="nav-ico"><use href="#ico-reports"/></svg> <span class="nav-label">Informes</span></button>
@@ -185,7 +185,7 @@
                 <select id="tpl-select" title="Insertar plantilla">
                   <option value="">📝 Plantilla…</option>
                 </select>
-                <button class="btn btn-icon" id="btn-ficha-send" title="Enviar ficha de trámite (documentación)"><svg class="ui-ico"><use href="#ico-fichas"/></svg></button>
+                <button class="btn btn-icon" id="btn-ficha-send" title="Enviar al cliente la lista de documentos a pedir"><svg class="ui-ico"><use href="#ico-fichas"/></svg></button>
                 <div id="ficha-panel" class="pop-panel hidden"></div>
                 <button class="btn btn-icon" id="btn-emoji" title="Emojis">😀</button>
                 <button class="btn btn-icon" id="btn-sticker" title="Stickers de la gestoría"><svg class="ui-ico"><use href="#ico-sticker"/></svg></button>
@@ -317,23 +317,23 @@
         <div id="agenda-list"></div>
       </section>
 
-      <!-- Fichas de trámite -->
+      <!-- Documentos a pedir (antes «Fichas de trámite») -->
       <section id="view-fichas" class="view hidden">
         <div class="panel-head">
-          <h1>Fichas de trámite</h1>
-          <button class="btn primary" id="btn-new-ficha">＋ Nueva ficha</button>
+          <h1>Documentos a pedir</h1>
+          <button class="btn primary" id="btn-new-ficha">＋ Nueva lista</button>
         </div>
-        <p class="hint">Crea una ficha por trámite con la documentación necesaria. Desde el chat podrás enviarla al cliente con un clic (botón 📋). Variables: <code>{nombre}</code> y <code>{tramite}</code>.</p>
+        <p class="hint">Crea, por trámite, la lista de <b>documentos que hay que pedirle al cliente</b>. Desde el chat se la envías con un clic (botón 📋). Variables: <code>{nombre}</code> y <code>{tramite}</code>.</p>
         <div id="ficha-list"></div>
       </section>
 
-      <!-- Tarifas y trámites (base de conocimiento) -->
+      <!-- Precios y tasas (antes «Tarifas y trámites») -->
       <section id="view-knowledge" class="view hidden">
         <div class="panel-head">
-          <h1>Tarifas y trámites</h1>
-          <button class="btn primary" id="btn-new-kb">＋ Nuevo trámite</button>
+          <h1>Precios y tasas</h1>
+          <button class="btn primary" id="btn-new-kb">＋ Nueva tarifa</button>
         </div>
-        <p class="hint">Consulta rápida de honorarios, tasas orientativas y documentos por trámite. Desde el chat, el botón 📖 busca un trámite e inserta la respuesta lista para enviar.</p>
+        <p class="hint">Consulta rápida de <b>honorarios y tasas orientativas</b> por trámite. Desde el chat, el botón 📖 busca un trámite e inserta el presupuesto listo para enviar.</p>
         <input type="search" id="kb-search" class="kb-search" placeholder="🔎 Buscar trámite (arraigo, nacionalidad, transferencia…)">
         <div id="kb-list"></div>
       </section>
