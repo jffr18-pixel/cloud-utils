@@ -962,6 +962,22 @@ async function main() {
       'la web de seguimiento muestra la fecha de presentación');
     assert(/Nº de registro/.test(subPage) && /REG-2026\/12345/.test(subPage),
       'la web de seguimiento muestra el nº de registro de la administración');
+    // URL de seguimiento en la administración: solo http(s), y se ve un botón.
+    const urlBad = await req('PUT', `/api/cases/${subCase.data.id}`, { trackingUrl: 'javascript:alert(1)' });
+    assert(urlBad.data.trackingUrl === '', 'una URL no http(s) se rechaza');
+    const urlOk = await req('PUT', `/api/cases/${subCase.data.id}`, { trackingUrl: 'https://sede.administracion.gob.es/exp/123' });
+    assert(urlOk.data.trackingUrl === 'https://sede.administracion.gob.es/exp/123', 'se guarda la URL de seguimiento');
+    const subPage2 = await (await fetch(`${BASE}/estado/${token}`)).text();
+    assert(/track-cta/.test(subPage2) && /sede\.administracion\.gob\.es/.test(subPage2),
+      'la web de seguimiento muestra el botón de seguimiento en la administración');
+
+    console.log('Dossier del cliente (PDF)');
+    const dossier = await fetch(`${BASE}/api/clients/${clientId}/dossier`);
+    const dossierBuf = Buffer.from(await dossier.arrayBuffer());
+    assert(dossier.status === 200 && (dossier.headers.get('content-type') || '').includes('application/pdf'),
+      'el dossier se sirve como application/pdf');
+    assert(dossierBuf.slice(0, 5).toString() === '%PDF-' && dossierBuf.includes(Buffer.from('%%EOF')),
+      'el dossier es un PDF válido');
     const badPage = await fetch(`${BASE}/estado/token-inexistente-1234567890`);
     assert(badPage.status === 404, 'token inválido → 404 en la página de estado');
 

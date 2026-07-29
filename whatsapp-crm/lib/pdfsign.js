@@ -217,4 +217,91 @@ function buildSignedPdf(opts) {
   return Buffer.concat(chunks);
 }
 
-module.exports = { buildSignedPdf, jpegSize, layoutParagraphs };
+// ---------------------------------------------------------------------------
+// PDF de texto con varias páginas (para el dossier del cliente).
+//   opts = { title, lines }
+//   lines = array de { t, bold?, size?, gap?, color? } o cadenas simples.
+// Pagina automáticamente cuando el texto no cabe en la página.
+// ---------------------------------------------------------------------------
+function buildTextPdf(opts) {
+  const title = opts.title || 'Documento';
+  const items = (opts.lines || []).map((l) => (typeof l === 'string' ? { t: l } : l));
+  const maxWidth = PAGE_W - 2 * MARGIN;
+
+  // Reparte el contenido en páginas (cada una es un array de operadores PDF).
+  const pages = [];
+  let ops = [];
+  let y = PAGE_H - MARGIN;
+  const newPage = () => { pages.push(ops); ops = []; y = PAGE_H - MARGIN; };
+
+  const drawLine = (text, { bold = false, size = FONT_SIZE, color = null } = {}) => {
+    const font = bold ? '/F2' : '/F1';
+    const rgb = color ? `${color[0]} ${color[1]} ${color[2]} rg ` : '0 0 0 rg ';
+    ops.push('BT ' + rgb + font + ' ' + size + ' Tf ' + MARGIN + ' ' + y.toFixed(1)
+      + ' Td (' + escapePdfText(toWinAnsi(text)) + ') Tj ET');
+  };
+
+  // Título en la primera página.
+  drawLine(title, { bold: true, size: TITLE_SIZE });
+  y -= TITLE_SIZE + 12;
+
+  for (const it of items) {
+    const size = it.size || FONT_SIZE;
+    const leading = size * 1.45;
+    if (it.gap) y -= it.gap;
+    const wrapped = it.t === '' ? [''] : wrapLine(String(it.t), maxWidth, size * (it.bold ? 1.05 : 1));
+    for (const sub of wrapped) {
+      if (y < MARGIN + leading) newPage();
+      if (sub !== '') drawLine(sub, { bold: it.bold, size, color: it.color });
+      y -= leading;
+    }
+  }
+  pages.push(ops);
+
+  // Ensamblado de objetos.
+  const chunks = [];
+  let offset = 0;
+  const offsets = [];
+  const push = (buf) => {
+    const b = Buffer.isBuffer(buf) ? buf : Buffer.from(buf, 'latin1');
+    chunks.push(b);
+    offset += b.length;
+  };
+  const startObj = () => { offsets.push(offset); };
+
+  push('%PDF-1.4\n%\xe2\xe3\xcf\xd3\n');
+  // 1: Catalog, 2: Pages, 3: F1, 4: F2, luego pares página/contenido.
+  const pageObjNums = pages.map((_, i) => 5 + i * 2);
+  startObj();
+  push('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
+  startObj();
+  push('2 0 obj\n<< /Type /Pages /Kids [' + pageObjNums.map((n) => n + ' 0 R').join(' ')
+    + '] /Count ' + pages.length + ' >>\nendobj\n');
+  startObj();
+  push('3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n');
+  startObj();
+  push('4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj\n');
+  pages.forEach((pageOps, i) => {
+    const pageNum = 5 + i * 2;
+    const contentNum = 6 + i * 2;
+    startObj();
+    push(pageNum + ' 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + PAGE_W + ' ' + PAGE_H + ']'
+      + ' /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ' + contentNum + ' 0 R >>\nendobj\n');
+    startObj();
+    const content = Buffer.from(pageOps.join('\n'), 'latin1');
+    push(contentNum + ' 0 obj\n<< /Length ' + content.length + ' >>\nstream\n');
+    push(content);
+    push('\nendstream\nendobj\n');
+  });
+
+  const xrefStart = offset;
+  const count = offsets.length + 1;
+  let xref = 'xref\n0 ' + count + '\n0000000000 65535 f \n';
+  for (const off of offsets) xref += String(off).padStart(10, '0') + ' 00000 n \n';
+  push(xref);
+  push('trailer\n<< /Size ' + count + ' /Root 1 0 R >>\nstartxref\n' + xrefStart + '\n%%EOF');
+
+  return Buffer.concat(chunks);
+}
+
+module.exports = { buildSignedPdf, buildTextPdf, jpegSize, layoutParagraphs };

@@ -914,6 +914,75 @@ function publicSignature(sig) {
   };
 }
 
+// Construye las líneas del dossier del cliente para el PDF.
+function buildDossierLines(db, client) {
+  const eur = (n) => (Number(n) || 0).toLocaleString('es-ES') + ' €';
+  const d = (iso) => (iso ? fmtDateLoc(iso, 'es') : '—');
+  const dt = (ts) => (ts ? new Date(ts).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' }) : '—');
+  const AREA = { extranjeria: 'Extranjería', vehiculos: 'Tráfico / Vehículos', fiscal: 'Fiscal / Impuestos', laboral: 'Laboral / Nóminas', contabilidad: 'Contabilidad', pensiones: 'Pensiones / Prestaciones', social: 'Servicios sociales', otro: 'Otros trámites' };
+  const EST = { pendiente: 'Pendiente', en_curso: 'En curso', esperando_documentacion: 'Esperando documentación', completado: 'Completado' };
+  const PAY = { caja: 'efectivo', transferencia: 'transferencia', tarjeta: 'tarjeta', banco: 'banco' };
+  const lines = [];
+  lines.push({ t: `Generado el ${dt(Date.now())} · Burocracia Zero`, size: 9, color: [0.45, 0.45, 0.45] });
+
+  // Datos del cliente.
+  lines.push({ t: 'DATOS DEL CLIENTE', bold: true, size: 12.5, gap: 10 });
+  lines.push({ t: `Nombre: ${client.name || '—'}` });
+  lines.push({ t: `NIF/NIE: ${client.nif || '—'}` });
+  lines.push({ t: `Teléfono: +${client.phone || '—'}` });
+  lines.push({ t: `Email: ${client.email || '—'}` });
+  lines.push({ t: `Tipo: ${({ particular: 'Particular', autonomo: 'Autónomo', empresa: 'Empresa' })[client.segment] || 'Particular'}` });
+  if ((client.tags || []).length) lines.push({ t: `Etiquetas: ${client.tags.join(', ')}` });
+  lines.push({ t: `Alta en el CRM: ${dt(client.createdAt)}` });
+
+  // Expedientes.
+  const cases = db.cases.filter((c) => c.clientId === client.id)
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  lines.push({ t: `EXPEDIENTES (${cases.length})`, bold: true, size: 12.5, gap: 16 });
+  if (!cases.length) lines.push({ t: 'Sin expedientes registrados.' });
+  for (const c of cases) {
+    lines.push({ t: `• ${c.title}`, bold: true, size: 11, gap: 8 });
+    lines.push({ t: `Área: ${AREA[c.type] || c.type} · Estado: ${EST[c.status] || c.status}` });
+    if (c.submittedDate) lines.push({ t: `Presentado en la administración: ${d(c.submittedDate)}` });
+    if (c.registryNumber) lines.push({ t: `Nº de registro: ${c.registryNumber}` });
+    if (c.dueDate) lines.push({ t: `Fecha límite: ${d(c.dueDate)}` });
+    if (c.expiryDate) lines.push({ t: `Caducidad / renovación: ${d(c.expiryDate)}` });
+    const fee = Number(c.fee) || 0;
+    if (fee) {
+      const via = c.paid && PAY[c.payMethod] ? ` (${PAY[c.payMethod]})` : '';
+      lines.push({ t: `Honorarios: ${eur(fee)} — ${c.paid ? 'cobrado' + via : 'PENDIENTE de cobro'}` });
+    }
+    const tax = Number(c.taxAmount) || 0;
+    if (tax || c.taxModel) {
+      lines.push({ t: `Tasa oficial${c.taxModel ? ' (' + c.taxModel + ')' : ''}: ${tax ? eur(tax) : ''} — ${c.taxPaid ? 'abonada' : 'pendiente'}` });
+    }
+    const chk = Array.isArray(c.checklist) ? c.checklist : [];
+    if (chk.length) lines.push({ t: `Documentación recibida: ${chk.filter((x) => x.done).length}/${chk.length}` });
+  }
+
+  // Documentos firmados.
+  const signed = db.signatures.filter((s) => s.clientId === client.id && s.status === 'firmado')
+    .sort((a, b) => (b.signedAt || 0) - (a.signedAt || 0));
+  lines.push({ t: `DOCUMENTOS FIRMADOS (${signed.length})`, bold: true, size: 12.5, gap: 16 });
+  if (!signed.length) lines.push({ t: 'Ningún documento firmado.' });
+  for (const s of signed) {
+    lines.push({ t: `• ${s.title}`, gap: 6 });
+    lines.push({ t: `Firmado por ${s.signerName || '—'} el ${dt(s.signedAt)}` });
+  }
+
+  // Resumen de actividad.
+  const msgs = db.messages.filter((m) => m.clientId === client.id);
+  const last = msgs.reduce((mx, m) => Math.max(mx, m.timestamp || 0), 0);
+  const appts = db.appointments.filter((a) => a.clientId === client.id).length;
+  lines.push({ t: 'RESUMEN DE ACTIVIDAD', bold: true, size: 12.5, gap: 16 });
+  lines.push({ t: `Mensajes intercambiados: ${msgs.length}` });
+  lines.push({ t: `Última interacción: ${last ? dt(last) : '—'}` });
+  lines.push({ t: `Citas registradas: ${appts}` });
+
+  lines.push({ t: 'Documento interno de Burocracia Zero. Contiene datos personales: trátese conforme al RGPD.', size: 9, color: [0.45, 0.45, 0.45], gap: 20 });
+  return lines;
+}
+
 // Envía los mensajes programados cuya hora ya ha llegado. A diferencia de las
 // automatizaciones, se envían a cualquier hora (la gestoría eligió el momento).
 async function dispatchScheduledMessages(db, now = Date.now()) {
@@ -1421,6 +1490,20 @@ async function handleApi(req, res, url) {
         }
         return json(res, 200, { ok: true });
       }
+    }
+    // Dossier del cliente en PDF (datos + expedientes + firmas + actividad).
+    if (parts[3] === 'dossier' && req.method === 'GET') {
+      const pdf = pdfsign.buildTextPdf({
+        title: `Dossier del cliente — ${client.name}`,
+        lines: buildDossierLines(db, client),
+      });
+      const safe = (client.name || 'cliente').replace(/[^\w.\-]+/g, '_').slice(0, 40);
+      security.audit('dossier_generado', { clientId: client.id, user: sessionUser(req) });
+      res.writeHead(200, {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="Dossier_${safe}.pdf"`,
+      });
+      return res.end(pdf);
     }
     if (req.method === 'GET') return json(res, 200, client);
     if (req.method === 'PUT') {
@@ -1967,6 +2050,8 @@ async function handleApi(req, res, url) {
         // Nº de registro / expediente que asigna la administración (lo ve el
         // cliente en su página de seguimiento).
         registryNumber: b.registryNumber ? String(b.registryNumber).trim().slice(0, 80) : '',
+        // Enlace de seguimiento en la sede de la administración (si lo permite).
+        trackingUrl: safeHttpUrl(b.trackingUrl),
         // Fecha de caducidad del documento resultante (TIE, NIE, ITV…): dispara
         // el aviso de renovación antes de que venza.
         expiryDate: b.expiryDate || null,
@@ -2006,6 +2091,7 @@ async function handleApi(req, res, url) {
       }
       if (b.submittedDate !== undefined) item.submittedDate = b.submittedDate || null;
       if (b.registryNumber !== undefined) item.registryNumber = String(b.registryNumber || '').trim().slice(0, 80);
+      if (b.trackingUrl !== undefined) item.trackingUrl = safeHttpUrl(b.trackingUrl);
       // Si se cambia la fecha de caducidad, se rearma el aviso de renovación.
       if (b.expiryDate !== undefined && b.expiryDate !== oldExpiry) {
         item.expiryNotifiedAt = null;
@@ -2731,7 +2817,7 @@ const I18N = {
   es: {
     dir: 'ltr', tagline: 'Seguimiento de tus trámites',
     greet: 'Hola, {name} 👋', lead: 'Aquí puedes ver el estado de tus trámites en tiempo real.',
-    due: 'Fecha límite', overdue: 'pendiente', docs: 'Documentación', submitted: 'Presentado en la administración el', registry: 'Nº de registro',
+    due: 'Fecha límite', overdue: 'pendiente', docs: 'Documentación', submitted: 'Presentado en la administración el', registry: 'Nº de registro', trackingCta: 'Ver seguimiento en la administración',
     upload: 'Subir', uploading: 'Subiendo…', uploadHint: 'Foto o PDF', uploadErr: 'No se pudo subir el archivo. Inténtalo de nuevo.',
     footer: 'Esta página es privada y solo para ti. Para cualquier duda, escríbenos por WhatsApp.',
     empty: 'Todavía no hay trámites registrados a tu nombre.',
@@ -2743,7 +2829,7 @@ const I18N = {
   en: {
     dir: 'ltr', tagline: 'Track your paperwork',
     greet: 'Hi, {name} 👋', lead: 'Here you can follow the status of your cases in real time.',
-    due: 'Deadline', overdue: 'pending', docs: 'Documents', submitted: 'Submitted to the authorities on', registry: 'Reference number',
+    due: 'Deadline', overdue: 'pending', docs: 'Documents', submitted: 'Submitted to the authorities on', registry: 'Reference number', trackingCta: 'Track it on the authority’s website',
     upload: 'Upload', uploading: 'Uploading…', uploadHint: 'Photo or PDF', uploadErr: 'The file could not be uploaded. Please try again.',
     footer: 'This page is private and just for you. For any questions, message us on WhatsApp.',
     empty: 'There are no cases registered under your name yet.',
@@ -2755,7 +2841,7 @@ const I18N = {
   fr: {
     dir: 'ltr', tagline: 'Suivi de vos démarches',
     greet: 'Bonjour, {name} 👋', lead: 'Ici, vous pouvez suivre l’état de vos démarches en temps réel.',
-    due: 'Date limite', overdue: 'en attente', docs: 'Documents', submitted: 'Déposé auprès de l’administration le', registry: 'Nº de dossier',
+    due: 'Date limite', overdue: 'en attente', docs: 'Documents', submitted: 'Déposé auprès de l’administration le', registry: 'Nº de dossier', trackingCta: 'Suivre sur le site de l’administration',
     upload: 'Envoyer', uploading: 'Envoi…', uploadHint: 'Photo ou PDF', uploadErr: 'Le fichier n’a pas pu être envoyé. Réessayez.',
     footer: 'Cette page est privée et réservée à vous. Pour toute question, écrivez-nous sur WhatsApp.',
     empty: 'Aucune démarche enregistrée à votre nom pour le moment.',
@@ -2767,7 +2853,7 @@ const I18N = {
   ar: {
     dir: 'rtl', tagline: 'متابعة معاملاتك',
     greet: 'مرحباً {name} 👋', lead: 'هنا يمكنك متابعة حالة معاملاتك في الوقت الفعلي.',
-    due: 'آخر موعد', overdue: 'قيد الانتظار', docs: 'المستندات', submitted: 'قُدّم إلى الإدارة بتاريخ', registry: 'رقم التسجيل',
+    due: 'آخر موعد', overdue: 'قيد الانتظار', docs: 'المستندات', submitted: 'قُدّم إلى الإدارة بتاريخ', registry: 'رقم التسجيل', trackingCta: 'تابع الطلب على موقع الإدارة',
     upload: 'إرسال', uploading: 'جارٍ الإرسال…', uploadHint: 'صورة أو PDF', uploadErr: 'تعذّر رفع الملف. حاول مرة أخرى.',
     footer: 'هذه الصفحة خاصة بك وحدك. لأي استفسار، راسلنا على واتساب.',
     empty: 'لا توجد معاملات مسجلة باسمك حتى الآن.',
@@ -2779,7 +2865,7 @@ const I18N = {
   ro: {
     dir: 'ltr', tagline: 'Urmărește-ți dosarele',
     greet: 'Bună, {name} 👋', lead: 'Aici poți urmări starea dosarelor tale în timp real.',
-    due: 'Termen limită', overdue: 'în așteptare', docs: 'Documente', submitted: 'Depus la administrație pe', registry: 'Nr. de înregistrare',
+    due: 'Termen limită', overdue: 'în așteptare', docs: 'Documente', submitted: 'Depus la administrație pe', registry: 'Nr. de înregistrare', trackingCta: 'Urmărește pe site-ul administrației',
     upload: 'Încarcă', uploading: 'Se încarcă…', uploadHint: 'Foto sau PDF', uploadErr: 'Fișierul nu a putut fi încărcat. Încearcă din nou.',
     footer: 'Această pagină este privată și doar pentru tine. Pentru orice întrebare, scrie-ne pe WhatsApp.',
     empty: 'Momentan nu există dosare înregistrate pe numele tău.',
@@ -2805,6 +2891,19 @@ function pickLang(url, req) {
 function escHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Devuelve la URL solo si es http(s) válida; si no, cadena vacía (evita
+// enlaces peligrosos tipo javascript: en la página pública del cliente).
+function safeHttpUrl(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  try {
+    const u = new URL(s);
+    return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href.slice(0, 500) : '';
+  } catch {
+    return '';
+  }
 }
 
 const DATE_LOCALE = { es: 'es-ES', ar: 'ar', fr: 'fr-FR', en: 'en-GB', ro: 'ro-RO' };
@@ -2870,6 +2969,8 @@ function statusPageShell(title, bodyHtml, lang = 'es', token = '', prefix = '/es
   .registry { display:flex; align-items:center; gap:7px; color:var(--muted); font-size:13px; margin-top:8px; }
   .registry .ic { width:16px; height:16px; color:var(--lilac-dark); }
   .registry b { color:var(--charcoal); }
+  .track-cta { display:inline-flex; align-items:center; gap:6px; margin-top:12px; padding:9px 14px; border-radius:10px; background:var(--lilac); color:#fff; text-decoration:none; font-weight:700; font-size:13px; }
+  .track-cta:hover { background:var(--lilac-dark); }
   .chk { margin-top:12px; border-top:1px dashed #e6e3db; padding-top:10px; }
   .chk-h { font-size:12.5px; color:var(--muted); font-weight:600; margin-bottom:6px; }
   .chk ul { list-style:none; margin:0; padding:0; }
@@ -2971,6 +3072,7 @@ function renderStatusPage(db, client, lang = 'es') {
       </div>
       ${c.submittedDate ? `<div class="submitted">${SVG_ICON.check} ${escHtml(t.submitted)} ${fmtDateLoc(c.submittedDate, lang)}</div>` : ''}
       ${c.registryNumber ? `<div class="registry">${SVG_ICON.dot} ${escHtml(t.registry)}: <b>${escHtml(c.registryNumber)}</b></div>` : ''}
+      ${c.trackingUrl ? `<a class="track-cta" href="${escHtml(c.trackingUrl)}" target="_blank" rel="noopener noreferrer">🔗 ${escHtml(t.trackingCta)}</a>` : ''}
       ${c.dueDate ? `<div class="due ${overdue ? 'over' : ''}">${SVG_ICON.cal} ${escHtml(t.due)}: ${fmtDateLoc(c.dueDate, lang)}${overdue ? ` · ${escHtml(t.overdue)}` : ''}</div>` : ''}
       ${chkHtml}
     </div>`;

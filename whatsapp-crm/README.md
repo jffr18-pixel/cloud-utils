@@ -36,8 +36,14 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
 - **📁 Expedientes**: trámites por cliente (fiscal, laboral, contabilidad,
   extranjería, vehículos…), con estado (pendiente, en curso, esperando
   documentación, completado), fecha límite con aviso de vencidos, **fecha de
-  presentación ante la administración** y **nº de registro/expediente** oficial
-  (ambos los ve el cliente en su página de seguimiento, en su idioma).
+  presentación ante la administración**, **nº de registro/expediente** oficial y
+  **enlace de seguimiento** en la sede de la administración (todo esto lo ve el
+  cliente en su página de seguimiento, en su idioma; el enlace solo si es
+  http/https).
+- **📄 Dossier del cliente en PDF**: desde la ficha del cliente, genera un PDF
+  con sus datos, todos sus expedientes (estado, fechas, nº de registro,
+  honorarios y tasas), los documentos que ha firmado y un resumen de actividad.
+  Para archivo, traspaso o inspección. Sin dependencias (motor de PDF propio).
 - **📝 Plantillas**: respuestas frecuentes reutilizables desde el chat, con la
   variable `{nombre}` que se sustituye por el nombre del cliente.
 - **⏰ Recordatorios**: seguimientos con fecha, opcionalmente ligados a un

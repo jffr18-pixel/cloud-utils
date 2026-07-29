@@ -1430,12 +1430,26 @@ async function openClientDetail(id) {
     ...clientFields(client),
     { name: '_cases', label: 'Expedientes (solo lectura, gestión en la pestaña Expedientes)', type: 'textarea', value: casesTxt },
     estadoLinkField(client),
+    dossierField(client),
   ], async (v) => {
     delete v._cases;
     delete v._estado;
+    delete v._dossier;
     await api('clients/' + id, { method: 'PUT', body: parseClientValues(v) });
     await refreshView();
   });
+}
+
+// Campo personalizado: dossier del cliente en PDF (datos, expedientes, firmas).
+function dossierField(client) {
+  return {
+    name: '_dossier', label: 'Dossier del cliente', type: 'custom',
+    mount(el) {
+      el.innerHTML = `<a class="btn small" href="/api/clients/${esc(client.id)}/dossier" target="_blank" rel="noopener">📄 Abrir dossier (PDF)</a>
+        <p class="hint" style="margin:6px 0 0">Un PDF con sus datos, expedientes (estado, importes, nº de registro), documentos firmados y resumen de actividad. Para archivo, traspaso o inspección.</p>`;
+    },
+    getValue() { return undefined; },
+  };
 }
 
 // Campo personalizado: enlace privado «Estado del trámite» del cliente.
@@ -1526,6 +1540,7 @@ function caseFields(item = {}, clients = [], fichas = []) {
     { name: 'dueDate', label: 'Fecha límite', type: 'date', value: item.dueDate },
     { name: 'submittedDate', label: 'Fecha de presentación en la administración (la ve el cliente en su seguimiento)', type: 'date', value: item.submittedDate },
     { name: 'registryNumber', label: 'Nº de registro / expediente de la administración (lo ve el cliente)', value: item.registryNumber || '' },
+    { name: 'trackingUrl', label: 'URL de seguimiento en la administración (opcional; el cliente verá un botón para consultarlo)', type: 'url', value: item.trackingUrl || '' },
     { name: 'expiryDate', label: 'Fecha de caducidad (TIE, NIE, ITV… avisa antes de vencer)', type: 'date', value: item.expiryDate },
     { name: 'fee', label: 'Honorario de la gestoría (€)', type: 'number', value: item.fee || '' },
     {
