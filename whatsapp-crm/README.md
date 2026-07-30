@@ -412,10 +412,17 @@ El bot no solo responde: también te avisa él, sin preguntar.
   (`TELEGRAM_ALERT_DEBOUNCE_MIN`, 10 min por defecto) para no saturarte en una
   ráfaga. Solo avisa a los usuarios que pueden ver a ese cliente. Se desactiva
   con `TELEGRAM_ALERTS=off`.
-- **Resumen cada mañana**: a la hora que fijes (`TELEGRAM_DIGEST_HOUR`, 8 por
-  defecto; `off` para desactivar) recibes un resumen del día: citas,
-  conversaciones sin responder e importes pendientes de cobro (cada uno el
-  suyo, respetando el aislamiento).
+- **Resumen periódico (cada N horas)**: si prefieres no recibir un aviso por
+  cada WhatsApp, pon `TELEGRAM_DIGEST_EVERY_HOURS=4` (o las horas que quieras) y
+  el bot te manda, cada 4 h, un **resumen** con los WhatsApp recibidos en ese
+  rato (agrupados por cliente), las citas que quedan hoy y lo pendiente de
+  cobro. Al activarlo, **los avisos por cada mensaje se silencian solos** (el
+  resumen los sustituye; si aun así los quieres, añade `TELEGRAM_ALERTS=on`).
+  Si en un tramo no hay nada nuevo, no envía nada (no molesta de madrugada).
+- **Resumen cada mañana**: si no usas el resumen periódico, a la hora que fijes
+  (`TELEGRAM_DIGEST_HOUR`, 8 por defecto; `off` para desactivar) recibes un
+  resumen del día: citas, conversaciones sin responder e importes pendientes de
+  cobro (cada uno el suyo, respetando el aislamiento).
 
 ### Seguridad del asistente
 
@@ -471,6 +478,7 @@ Pensado para datos sensibles (extranjería). Medidas aplicadas:
 | `TELEGRAM_ALERTS` | Avisos de WhatsApp entrante por Telegram (`off` para desactivar) | `on` |
 | `TELEGRAM_ALERT_DEBOUNCE_MIN` | Minutos mínimos entre avisos del mismo cliente | `10` |
 | `TELEGRAM_DIGEST_HOUR` | Hora (0-23) del resumen diario por Telegram (`off` para desactivar) | `8` |
+| `TELEGRAM_DIGEST_EVERY_HOURS` | Resumen periódico cada N horas en vez de avisar por cada WhatsApp (silencia los avisos por mensaje). Vacío/`off` = desactivado | *(vacío)* |
 
 La elección de proveedor y los precios están comparados en
 [`COMPARATIVA-BSP.md`](COMPARATIVA-BSP.md).

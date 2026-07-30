@@ -559,6 +559,68 @@ async function testTelegramAssistant() {
   }
 }
 
+// Resumen periódico: con TELEGRAM_DIGEST_EVERY_HOURS activo, los avisos por
+// cada WhatsApp entrante quedan silenciados (los sustituye el resumen). Se
+// comprueba que un WhatsApp entrante NO dispara un aviso «Nuevo WhatsApp».
+async function testTelegramDigestInterval() {
+  const http = require('http');
+  const MOCK_PORT = 3795;
+  const TG_PORT = 3796;
+  const TG_BASE = `http://127.0.0.1:${TG_PORT}`;
+  const tgDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crm-tgd-'));
+  const sent = [];
+  const readJson = (req) => new Promise((resolve) => {
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    req.on('end', () => { try { resolve(JSON.parse(body || '{}')); } catch { resolve({}); } });
+  });
+  const mock = http.createServer(async (req, res) => {
+    const send = (obj) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+    const body = await readJson(req);
+    const m = req.url.match(/\/bot[^/]+\/(\w+)$/);
+    const method = m ? m[1] : '';
+    if (method === 'getUpdates') return setTimeout(() => send({ ok: true, result: [] }), 120);
+    if (method === 'sendMessage') { sent.push(body); return send({ ok: true, result: { message_id: 1, chat: { id: body.chat_id } } }); }
+    return send({ ok: true, result: true });
+  });
+  await new Promise((r) => mock.listen(MOCK_PORT, r));
+  const server = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
+    env: {
+      ...process.env, PORT: String(TG_PORT), DATA_DIR: tgDataDir,
+      CRM_PASSWORD: '', WHATSAPP_TOKEN: '', WHATSAPP_PHONE_NUMBER_ID: '',
+      TELEGRAM_BOT_TOKEN: '123:ABC', TELEGRAM_ALLOWED: '555:',
+      TELEGRAM_API_BASE: `http://127.0.0.1:${MOCK_PORT}`,
+      TELEGRAM_DIGEST_EVERY_HOURS: '4', // ← activa el resumen periódico
+      TELEGRAM_ALERTS: '', ANTHROPIC_API_KEY: '', OPENAI_API_KEY: '',
+    },
+    stdio: 'ignore',
+  });
+  try {
+    for (let i = 0; i < 50; i += 1) {
+      try { await fetch(TG_BASE + '/api/auth'); break; } catch { await new Promise((r) => setTimeout(r, 100)); }
+    }
+    // Llega un WhatsApp entrante nuevo.
+    await fetch(TG_BASE + '/webhook', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: 'evt_d', type: 'whatsapp.inbound_message.received', apiVersion: 'v2',
+        whatsappInboundMessage: {
+          id: 'yc_d_1', wamid: 'wamid.D1', from: '+34600888777', to: '+34911222333',
+          sendTime: new Date().toISOString(), type: 'text', text: { body: 'Hola, una consulta' },
+        },
+      }),
+    });
+    // Se da margen a que (no) llegue el aviso.
+    await new Promise((r) => setTimeout(r, 900));
+    assert(!sent.some((s) => /Nuevo WhatsApp/.test(s.text || '')),
+      'con resumen periódico activo, un WhatsApp entrante NO dispara aviso por mensaje');
+  } finally {
+    server.kill();
+    mock.close();
+    fs.rmSync(tgDataDir, { recursive: true, force: true });
+  }
+}
+
 // Proveedor Claude de extremo a extremo: un servidor «mock» emula la API de
 // Mensajes de Anthropic y se comprueba que interpret()/chat() construyen bien
 // la petición y leen bien la respuesta por HTTP real.
@@ -1889,6 +1951,7 @@ async function main() {
     if (prevTok === undefined) delete process.env.TELEGRAM_BOT_TOKEN; else process.env.TELEGRAM_BOT_TOKEN = prevTok;
 
     await testTelegramAssistant();
+    await testTelegramDigestInterval();
 
     // Sugerir respuesta sin IA configurada → error claro (este servidor no tiene OPENAI_API_KEY).
     const sugNoAI = await req('POST', '/api/suggest-reply', { clientId });

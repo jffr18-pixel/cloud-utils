@@ -4287,7 +4287,24 @@ async function telegramLoop() {
 // El bot te avisa sin que tengas que preguntar: WhatsApp nuevo de un cliente
 // y un resumen cada mañana. Solo a los usuarios que puedan ver ese cliente.
 
-const TG_ALERTS_ON = () => String(process.env.TELEGRAM_ALERTS || 'on').toLowerCase() !== 'off';
+// Resumen periódico cada N horas (p. ej. 4). '' / 0 / off lo desactiva y se usa
+// el resumen diario a hora fija. Sustituye a los avisos por cada WhatsApp.
+function tgDigestEveryHours() {
+  const v = String(process.env.TELEGRAM_DIGEST_EVERY_HOURS || '').trim().toLowerCase();
+  if (v === '' || v === 'off' || v === '0') return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+// ¿Se avisa por cada WhatsApp entrante? Por defecto sí; pero si está activo el
+// resumen periódico (cada N horas), los avisos por mensaje se silencian solos
+// (el resumen los sustituye), salvo que se ponga TELEGRAM_ALERTS=on a la fuerza.
+const TG_ALERTS_ON = () => {
+  const v = String(process.env.TELEGRAM_ALERTS || '').toLowerCase().trim();
+  if (v === 'off') return false;
+  if (v === 'on') return true;
+  return !tgDigestEveryHours();
+};
 const TG_ALERT_DEBOUNCE_MS = Number(process.env.TELEGRAM_ALERT_DEBOUNCE_MIN || 10) * 60 * 1000;
 
 // Hora del resumen diario (0-23). '' u 'off' lo desactiva.
@@ -4329,21 +4346,72 @@ async function notifyTelegramInbound(db, items) {
   if (changed) save();
 }
 
-// Resumen de la mañana: citas del día, conversaciones sin responder e importes
-// pendientes de cobro. Una vez al día a partir de la hora configurada.
-function buildTelegramDigest(db, crmUser, today) {
+// Resumen por Telegram. Dos modos:
+//   - Diario (opts.periodic = false): «buenos días» con las citas del día,
+//     conversaciones sin responder e importes pendientes.
+//   - Periódico (opts.periodic = true): resumen de las últimas N horas con los
+//     WhatsApp recibidos en la ventana (agrupados por cliente), las citas que
+//     quedan hoy y lo pendiente de cobro. Devuelve null si no hay nada que
+//     contar (para no molestar de madrugada).
+function buildTelegramDigest(db, crmUser, opts = {}) {
+  const now = opts.now ? new Date(opts.now) : new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const canSee = (c) => canSeeClient(c || {}, crmUser);
-  const nameOf = (id) => (db.clients.find((c) => c.id === id) || {}).name || '(cliente)';
-  const citas = db.appointments
-    .filter((a) => a.date === today && a.status !== 'cancelada' && canSee(db.clients.find((c) => c.id === a.clientId)))
-    .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
-  const sinResponder = conversationSummaries(db)
-    .filter((c) => c.unread > 0 && canSee(db.clients.find((x) => x.id === c.clientId))).length;
+  const clientById = (id) => db.clients.find((c) => c.id === id);
+  const nameOf = (id) => (clientById(id) || {}).name || '(cliente)';
+  const eur = (n) => (Number(n) || 0).toLocaleString('es-ES') + ' €';
+
   let pendiente = 0;
   for (const c of db.cases) {
-    if (!canSee(db.clients.find((x) => x.id === c.clientId))) continue;
+    if (!canSee(clientById(c.clientId))) continue;
     if ((Number(c.fee) || 0) > 0 && !c.paid) pendiente += Number(c.fee) || 0;
   }
+
+  if (opts.periodic) {
+    const sinceTs = Number(opts.sinceTs || 0);
+    const nowHM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    // WhatsApp entrantes en la ventana, agrupados por cliente.
+    const counts = new Map();
+    for (const m of db.messages) {
+      if (m.direction !== 'in' || (m.timestamp || 0) < sinceTs) continue;
+      const cl = clientById(m.clientId);
+      if (!cl || !canSee(cl)) continue;
+      const e = counts.get(cl.id) || { name: cl.name, phone: cl.phone, n: 0, last: '' };
+      e.n += 1;
+      e.last = String(m.text || '').slice(0, 80) || '📎 (adjunto)';
+      counts.set(cl.id, e);
+    }
+    const convs = [...counts.values()].sort((a, b) => b.n - a.n);
+    const totalMsgs = convs.reduce((s, e) => s + e.n, 0);
+    // Citas que quedan hoy (de ahora en adelante).
+    const citas = db.appointments
+      .filter((a) => a.date === today && a.status !== 'cancelada' && String(a.time || '') >= nowHM
+        && canSee(clientById(a.clientId)))
+      .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+    if (!convs.length && !citas.length) return null; // nada que contar
+    const h = opts.hours ? Math.round(opts.hours) : 4;
+    const lines = [`🕐 Resumen (últimas ${h} h):`, ''];
+    if (convs.length) {
+      lines.push(`💬 ${totalMsgs} WhatsApp de ${convs.length} cliente(s):`);
+      for (const e of convs.slice(0, 12)) lines.push(`  • ${e.name}: «${e.last}»${e.n > 1 ? ` (${e.n} mensajes)` : ''}`);
+      if (convs.length > 12) lines.push(`  … y ${convs.length - 12} cliente(s) más.`);
+    } else {
+      lines.push('💬 Sin WhatsApp nuevos en este periodo.');
+    }
+    if (citas.length) {
+      lines.push('', `📅 Citas que quedan hoy: ${citas.length}`);
+      for (const a of citas.slice(0, 10)) lines.push(`  • ${a.time} — ${nameOf(a.clientId)}${a.reason ? ` (${a.reason})` : ''}`);
+    }
+    if (pendiente) lines.push('', `💶 Pendiente de cobro: ${eur(pendiente)}.`);
+    return lines.join('\n');
+  }
+
+  // Modo diario: «buenos días».
+  const citas = db.appointments
+    .filter((a) => a.date === today && a.status !== 'cancelada' && canSee(clientById(a.clientId)))
+    .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+  const sinResponder = conversationSummaries(db)
+    .filter((c) => c.unread > 0 && canSee(clientById(c.clientId))).length;
   const lines = ['🌅 Buenos días. Resumen de hoy:', ''];
   if (citas.length) {
     lines.push(`📅 ${citas.length} cita(s):`);
@@ -4352,23 +4420,44 @@ function buildTelegramDigest(db, crmUser, today) {
     lines.push('📅 Sin citas para hoy.');
   }
   lines.push(sinResponder ? `💬 ${sinResponder} conversación(es) sin responder.` : '💬 Sin conversaciones pendientes.');
-  if (pendiente) lines.push(`💶 Pendiente de cobro: ${pendiente.toLocaleString('es-ES')} €.`);
+  if (pendiente) lines.push(`💶 Pendiente de cobro: ${eur(pendiente)}.`);
   return lines.join('\n');
 }
 
 async function maybeTelegramDigest(db) {
   if (!telegram.isConfigured() || !TG_ALLOWED.size) return;
+  if (!db.settings || typeof db.settings !== 'object') db.settings = {};
+
+  // Modo periódico (cada N horas): sustituye al aviso por cada WhatsApp.
+  const everyH = tgDigestEveryHours();
+  if (everyH) {
+    const nowMs = Date.now();
+    const intervalMs = everyH * 3600 * 1000;
+    const last = Number(db.settings.tgDigestAt || 0);
+    if (last && nowMs - last < intervalMs) return; // aún no toca
+    const sinceTs = last || (nowMs - intervalMs); // primera vez: última ventana
+    db.settings.tgDigestAt = nowMs; // se marca antes de enviar (no duplicar)
+    save();
+    for (const [tgId, crmUser] of TG_ALLOWED) {
+      const text = buildTelegramDigest(db, crmUser, { periodic: true, sinceTs, hours: everyH, now: nowMs });
+      if (!text) continue; // nada que contar para este usuario → no molestar
+      try { await telegram.sendMessage(Number(tgId), text); }
+      catch (err) { console.error('Resumen Telegram:', telegram.redact(err && err.message)); }
+    }
+    return;
+  }
+
+  // Modo diario (hora fija).
   const hour = tgDigestHour();
   if (hour === null) return;
   const now = new Date();
   if (now.getHours() < hour) return;
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  if (!db.settings || typeof db.settings !== 'object') db.settings = {};
   if (db.settings.tgDigestDate === today) return; // ya enviado hoy
   db.settings.tgDigestDate = today;
   save();
   for (const [tgId, crmUser] of TG_ALLOWED) {
-    try { await telegram.sendMessage(Number(tgId), buildTelegramDigest(db, crmUser, today)); }
+    try { await telegram.sendMessage(Number(tgId), buildTelegramDigest(db, crmUser, { now: now.getTime() })); }
     catch (err) { console.error('Resumen Telegram:', telegram.redact(err && err.message)); }
   }
 }
