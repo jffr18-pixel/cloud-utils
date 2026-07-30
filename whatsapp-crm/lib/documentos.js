@@ -151,4 +151,47 @@ function buildDocumento(tipo, ctx) {
   return { title, filename, lines };
 }
 
-module.exports = { buildDocumento, TIPOS, longDate, objetoTramite };
+// Importe con dos decimales (formato español) seguido de «euros». Se evita el
+// símbolo «€» porque el motor de PDF (WinAnsi) no lo representa.
+function eur(n) {
+  const v = Math.round((Number(n) || 0) * 100) / 100;
+  const dec = Number.isInteger(v) ? 0 : 2;
+  return v.toLocaleString('es-ES', { minimumFractionDigits: dec, maximumFractionDigits: 2 }) + ' euros';
+}
+
+// Forma de pago (misma nomenclatura que el CRM) → texto para el recibo.
+const PAGO = {
+  caja: 'en efectivo', transferencia: 'por transferencia', tarjeta: 'con tarjeta',
+  banco: 'por transferencia bancaria',
+};
+
+// Recibo/justificante de pago de honorarios. Documento puro para buildTextPdf.
+//   ctx = { client, concepto, amount, method, number, tasa, tasaPaid, now }
+function buildRecibo(ctx) {
+  const client = (ctx && ctx.client) || {};
+  const now = (ctx && ctx.now) ? new Date(ctx.now) : new Date();
+  const dateStr = longDate(now);
+  const amount = Math.round((Number(ctx && ctx.amount) || 0) * 100) / 100;
+  const via = PAGO[ctx && ctx.method] || '';
+  const concepto = (ctx && ctx.concepto ? String(ctx.concepto) : '').trim() || 'servicios de gestoría';
+  const number = (ctx && ctx.number) ? String(ctx.number) : '';
+
+  const lines = [];
+  lines.push({ t: `Recibo nº ${number || '—'} · ${dateStr} · ${FIRM.nombre}`, size: 9, color: [0.45, 0.45, 0.45] });
+  lines.push({ t: `He recibido de D./Dª ${orBlank(client.name)}, con NIF/NIE ${orBlank(client.nif)}, la cantidad de:`, gap: 16 });
+  lines.push({ t: `${eur(amount)}`, bold: true, size: 15, gap: 8 });
+  lines.push({ t: `en concepto de honorarios profesionales por: ${concepto}.`, gap: 8 });
+  if (via) lines.push({ t: `Forma de pago: ${via}.`, gap: 4 });
+  if (ctx && ctx.tasa && ctx.tasaPaid) {
+    lines.push({ t: `Nota: además se ha abonado la tasa oficial correspondiente (${eur(ctx.tasa)}), que se ingresa en la Administración y no forma parte de estos honorarios.`, size: 9, color: [0.45, 0.45, 0.45], gap: 10 });
+  }
+  lines.push({ t: `Y para que conste, se expide el presente recibo en ${FIRM.ciudad}, a ${dateStr}.`, gap: 18 });
+  lines.push({ t: 'Firma y sello de la gestoría:', gap: 24 });
+  lines.push({ t: '_________________________' });
+  lines.push({ t: `${FIRM.nombre} · ${FIRM.ciudad}`, size: 9, color: [0.45, 0.45, 0.45] });
+  const safe = (client.name || 'cliente').replace(/[^\w.\-]+/g, '_').slice(0, 40);
+  const filename = `Recibo_${number ? number.replace(/[^\w.\-]+/g, '') + '_' : ''}${safe}.pdf`;
+  return { title: 'RECIBO', filename, lines };
+}
+
+module.exports = { buildDocumento, buildRecibo, TIPOS, longDate, objetoTramite };

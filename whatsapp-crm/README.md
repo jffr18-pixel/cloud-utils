@@ -50,6 +50,11 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   cliente (nombre, NIF/NIE, teléfono, correo) y sus trámites en curso, con la
   línea de firma en blanco para imprimir y firmar en la oficina. Se diferencia
   de la firma digital (abajo): aquí se firma en papel. Sin dependencias.
+- **🧾 Recibos de pago en PDF**: en cada expediente con el honorario cobrado,
+  genera un recibo/justificante con el nombre y NIF del cliente, el importe (con
+  céntimos), el concepto (el trámite) y la forma de pago. Lleva un **número de
+  recibo** que se asigna una sola vez (las reimpresiones mantienen el mismo
+  número). Para dárselo al cliente o enviárselo. Sin dependencias.
 - **📝 Plantillas**: respuestas frecuentes reutilizables desde el chat, con la
   variable `{nombre}` que se sustituye por el nombre del cliente.
 - **⏰ Recordatorios**: seguimientos con fecha, opcionalmente ligados a un

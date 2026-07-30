@@ -1471,6 +1471,33 @@ async function main() {
     const docBad = await fetch(`${BASE}/api/clients/${clientId}/documento/loquesea`);
     assert(docBad.status === 404, 'un tipo de documento no válido → 404');
 
+    console.log('Recibo de pago (PDF)');
+    // Módulo puro: el recibo se rellena con cliente, importe y concepto.
+    const rec = docsLib.buildRecibo({ client: docCli, concepto: 'Renovación NIE', amount: 150.5, method: 'caja', number: 'R-2026-0001', now: Date.UTC(2026, 6, 30) });
+    const recTxt = rec.lines.map((l) => (typeof l === 'string' ? l : l.t)).join('\n');
+    assert(rec.title === 'RECIBO', 'el recibo tiene título correcto');
+    assert(recTxt.includes('Amina El Fassi') && recTxt.includes('150,50 euros') && recTxt.includes('Renovación NIE'),
+      'el recibo lleva cliente, importe con céntimos y concepto');
+    assert(recTxt.includes('R-2026-0001') && /efectivo/.test(recTxt), 'el recibo lleva nº y forma de pago');
+    // Endpoint: expediente con honorario cobrado → recibo PDF con nº persistente.
+    const recCase = await req('POST', '/api/cases', { clientId, title: 'Recibo test', type: 'fiscal', fee: 90, paid: true, payMethod: 'transferencia' });
+    const r1 = await fetch(`${BASE}/api/cases/${recCase.data.id}/recibo`);
+    const r1buf = Buffer.from(await r1.arrayBuffer());
+    assert(r1.status === 200 && (r1.headers.get('content-type') || '').includes('application/pdf')
+      && r1buf.slice(0, 5).toString() === '%PDF-', 'el recibo se sirve como PDF válido');
+    const recCaseAfter = await req('GET', `/api/cases/${recCase.data.id}`);
+    assert(/^R-\d{4}-\d{4}$/.test(recCaseAfter.data.reciboNumber || ''), 'se asigna un nº de recibo persistente');
+    // Reimprimir usa el mismo número.
+    await fetch(`${BASE}/api/cases/${recCase.data.id}/recibo`);
+    const recCaseAgain = await req('GET', `/api/cases/${recCase.data.id}`);
+    assert(recCaseAgain.data.reciboNumber === recCaseAfter.data.reciboNumber, 'reimprimir el recibo conserva el mismo número');
+    // Sin honorario → 400.
+    const recNoFee = await req('POST', '/api/cases', { clientId, title: 'Sin honorario', type: 'otro', fee: 0 });
+    assert((await fetch(`${BASE}/api/cases/${recNoFee.data.id}/recibo`)).status === 400,
+      'un expediente sin honorario no genera recibo');
+    await req('PUT', `/api/cases/${recCase.data.id}`, { status: 'completado' });
+    await req('PUT', `/api/cases/${recNoFee.data.id}`, { status: 'completado' });
+
     const badPage = await fetch(`${BASE}/estado/token-inexistente-1234567890`);
     assert(badPage.status === 404, 'token inválido → 404 en la página de estado');
 

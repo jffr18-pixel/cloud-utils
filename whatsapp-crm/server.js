@@ -2254,6 +2254,34 @@ async function handleApi(req, res, url) {
     const item = db.cases.find((c) => c.id === id);
     if (!item) return json(res, 404, { error: 'Expediente no encontrado' });
     if (!canSeeCase(item, me, db)) return json(res, 403, { error: 'Sin acceso a este expediente' });
+    // Recibo/justificante de pago del honorario en PDF. Asigna un número de
+    // recibo persistente la primera vez (para que las reimpresiones coincidan).
+    if (parts[3] === 'recibo' && req.method === 'GET') {
+      const amount = Number(item.fee) || 0;
+      if (amount <= 0) return json(res, 400, { error: 'Este expediente no tiene honorario que justificar' });
+      if (!item.reciboNumber) {
+        if (!db.settings || typeof db.settings !== 'object') db.settings = {};
+        const seq = (Number(db.settings.reciboSeq) || 0) + 1;
+        db.settings.reciboSeq = seq;
+        const year = new Date().getFullYear();
+        item.reciboNumber = `R-${year}-${String(seq).padStart(4, '0')}`;
+        item.reciboAt = Date.now();
+        save();
+      }
+      const client = db.clients.find((c) => c.id === item.clientId) || {};
+      const doc = documentos.buildRecibo({
+        client, concepto: item.title, amount, method: item.payMethod,
+        number: item.reciboNumber, tasa: Number(item.taxAmount) || 0, tasaPaid: !!item.taxPaid,
+        now: item.reciboAt || Date.now(),
+      });
+      const pdf = pdfsign.buildTextPdf({ title: doc.title, lines: doc.lines });
+      security.audit('recibo_generado', { caseId: item.id, clientId: item.clientId, number: item.reciboNumber, user: sessionUser(req) });
+      res.writeHead(200, {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="${doc.filename}"`,
+      });
+      return res.end(pdf);
+    }
     if (req.method === 'GET') return json(res, 200, item);
     if (req.method === 'PUT') {
       const b = await readBody(req);

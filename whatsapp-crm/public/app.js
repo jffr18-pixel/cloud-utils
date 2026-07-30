@@ -1668,8 +1668,26 @@ function caseFields(item = {}, clients = [], fichas = []) {
     checklistField(item, fichas),
     { name: 'docs', label: 'Documentación necesaria (una línea por documento; se usa en la automatización)', type: 'textarea', value: item.docs },
     { name: 'notes', label: 'Notas', type: 'textarea', value: item.notes },
+    ...(item.id && Number(item.fee) > 0 ? [reciboField(item)] : []),
     ...(state.isolation && item.id ? [caseShareField(item, clients)] : []),
   ];
+}
+
+// Campo personalizado: recibo/justificante de pago del honorario en PDF.
+// Solo aparece cuando el honorario está cobrado (un recibo prueba un pago).
+function reciboField(item) {
+  return {
+    name: '_recibo', label: 'Recibo de pago', type: 'custom',
+    mount(el) {
+      if (!item.paid) {
+        el.innerHTML = `<p class="hint" style="margin:0">El recibo se podrá generar cuando marques el honorario como <strong>cobrado</strong> y guardes.</p>`;
+        return;
+      }
+      el.innerHTML = `<a class="btn small" href="/api/cases/${esc(item.id)}/recibo" target="_blank" rel="noopener">🧾 Generar recibo (PDF)</a>
+        <p class="hint" style="margin:6px 0 0">Justificante del honorario cobrado, con nº de recibo, para dárselo al cliente o enviárselo. El número se asigna una sola vez.</p>`;
+    },
+    getValue() { return undefined; },
+  };
 }
 
 // Campo personalizado: compartir un expediente en concreto con otro usuario,
