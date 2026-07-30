@@ -1372,6 +1372,27 @@ async function main() {
       'exportación del informe responde CSV');
     assert((await repCsv.text()).includes('Trámite'), 'el CSV del informe incluye la cabecera');
 
+    console.log('Libro de ingresos (export)');
+    // Un cobro sella la fecha (paidAt) y aparece en el libro de ingresos.
+    const ingClient = await req('POST', '/api/clients', { name: 'Ingreso Test', phone: '600321321', nif: 'Y1111111X' });
+    const ingCase = await req('POST', '/api/cases', {
+      clientId: ingClient.data.id, title: 'Consulta fiscal', type: 'fiscal', fee: 120.5, paid: false,
+    });
+    assert(!ingCase.data.paidAt, 'un expediente sin cobrar no tiene fecha de cobro');
+    const ingPaid = await req('PUT', `/api/cases/${ingCase.data.id}`, { paid: true, payMethod: 'transferencia' });
+    assert(typeof ingPaid.data.paidAt === 'number', 'al cobrar se sella la fecha de cobro (paidAt)');
+    const incCsv = await fetch(`${BASE}/api/export/ingresos.csv`);
+    assert(incCsv.status === 200 && incCsv.headers.get('content-type').includes('text/csv'),
+      'el libro de ingresos responde CSV');
+    const incTxt = await incCsv.text();
+    assert(incTxt.includes('Fecha de cobro') && incTxt.includes('Honorario'), 'el libro lleva cabecera de ingresos');
+    assert(incTxt.includes('Ingreso Test') && incTxt.includes('120,50') && /TOTAL/.test(incTxt),
+      'el libro incluye el honorario cobrado y una fila de total');
+    // Revertir el cobro borra la fecha y lo saca del libro.
+    const ingRev = await req('PUT', `/api/cases/${ingCase.data.id}`, { paid: false });
+    assert(ingRev.data.paidAt === null, 'revertir el cobro borra la fecha de cobro');
+    await req('DELETE', '/api/clients/' + ingClient.data.id); // limpieza
+
     console.log('Estado del trámite (página pública)');
     console.log('Foto del cliente (avatar)');
     const noPhoto = await fetch(`${BASE}/api/clients/${clientId}/avatar`);

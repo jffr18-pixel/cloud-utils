@@ -2091,6 +2091,9 @@ $('#rep-to').addEventListener('change', () => { state_report.to = $('#rep-to').v
 $('#btn-export-report').addEventListener('click', () => {
   location.href = `/api/export/informe.csv?${reportQuery()}`;
 });
+$('#btn-export-income').addEventListener('click', () => {
+  location.href = `/api/export/ingresos.csv?${reportQuery()}`;
+});
 function reportQuery() {
   const p = [];
   if (state_report.from) p.push('from=' + state_report.from);

@@ -2226,11 +2226,13 @@ async function handleApi(req, res, url) {
         docs: b.docs || '', // documentación necesaria (para la automatización)
         fee: money2(b.fee), // honorario del trámite (€, con céntimos)
         paid: Boolean(b.paid), // cobrado o pendiente
+        paidAt: b.paid ? Date.now() : null, // fecha de cobro (para el libro de ingresos)
         payMethod: PAY_METHODS.includes(b.payMethod) ? b.payMethod : '', // forma de cobro: caja | banco
         // Tasa oficial del trámite, separada de los honorarios de la gestoría.
         taxModel: b.taxModel ? String(b.taxModel).trim().slice(0, 60) : '', // ej. «790 cód. 012»
         taxAmount: money2(b.taxAmount), // importe de la tasa oficial (€, con céntimos)
         taxPaid: Boolean(b.taxPaid), // tasa abonada o pendiente
+        taxPaidAt: b.taxPaid ? Date.now() : null, // fecha de abono de la tasa
         // Checklist de documentación recibida: [{ item, done }]
         checklist: Array.isArray(b.checklist)
           ? b.checklist.map((c) => ({ item: String(c.item || '').trim(), done: Boolean(c.done) })).filter((c) => c.item)
@@ -2299,11 +2301,23 @@ async function handleApi(req, res, url) {
         item.renewalCaseId = null;
       }
       if (b.fee !== undefined) item.fee = money2(b.fee);
-      if (b.paid !== undefined) item.paid = Boolean(b.paid);
+      if (b.paid !== undefined) {
+        const nowPaid = Boolean(b.paid);
+        // Se sella la fecha de cobro al pasar de pendiente a cobrado (y se borra
+        // si se revierte), para el libro de ingresos.
+        if (nowPaid && !item.paid) item.paidAt = Date.now();
+        else if (!nowPaid) item.paidAt = null;
+        item.paid = nowPaid;
+      }
       if (b.payMethod !== undefined) item.payMethod = PAY_METHODS.includes(b.payMethod) ? b.payMethod : '';
       if (b.taxModel !== undefined) item.taxModel = String(b.taxModel).trim().slice(0, 60);
       if (b.taxAmount !== undefined) item.taxAmount = money2(b.taxAmount);
-      if (b.taxPaid !== undefined) item.taxPaid = Boolean(b.taxPaid);
+      if (b.taxPaid !== undefined) {
+        const nowTaxPaid = Boolean(b.taxPaid);
+        if (nowTaxPaid && !item.taxPaid) item.taxPaidAt = Date.now();
+        else if (!nowTaxPaid) item.taxPaidAt = null;
+        item.taxPaid = nowTaxPaid;
+      }
       if (Array.isArray(b.checklist)) {
         item.checklist = b.checklist
           .map((c) => ({ item: String(c.item || '').trim(), done: Boolean(c.done) }))
@@ -2687,11 +2701,13 @@ async function handleApi(req, res, url) {
         if ((Number(c.fee) || 0) > 0 && !c.paid) {
           c.paid = true;
           c.payMethod = method;
+          c.paidAt = Date.now();
           honorarios += Number(c.fee) || 0;
           c.updatedAt = Date.now();
         }
         if (b.includeTax && (Number(c.taxAmount) || 0) > 0 && !c.taxPaid) {
           c.taxPaid = true;
+          c.taxPaidAt = Date.now();
           tasas += Number(c.taxAmount) || 0;
           c.updatedAt = Date.now();
         }
@@ -2980,6 +2996,47 @@ async function handleApi(req, res, url) {
       csv = toCsv(
         ['Área', 'Trámite', 'Total', 'Completados'],
         Object.values(agg).sort((a, b) => b.count - a.count).map((r) => [r.area, r.title, r.count, r.completados]),
+      );
+    }
+    if (id === 'ingresos.csv') {
+      // Libro de ingresos: honorarios cobrados por fecha de cobro, para la
+      // asesoría/impuestos. Las tasas oficiales se muestran aparte (no son
+      // ingreso de la gestoría: se ingresan en la Administración).
+      name = 'libro-ingresos';
+      const AREA = { extranjeria: 'Extranjería', vehiculos: 'Tráfico / Vehículos', fiscal: 'Fiscal / Impuestos', laboral: 'Laboral / Nóminas', contabilidad: 'Contabilidad', pensiones: 'Pensiones / Prestaciones', social: 'Servicios sociales (JCCM)', otro: 'Otros trámites' };
+      const PAY = { caja: 'Efectivo', transferencia: 'Transferencia', tarjeta: 'Tarjeta', banco: 'Banco' };
+      const from = url.searchParams.get('from');
+      const to = url.searchParams.get('to');
+      const fromTs = from ? new Date(from + 'T00:00:00').getTime() : -Infinity;
+      const toTs = to ? new Date(to + 'T23:59:59').getTime() : Infinity;
+      const eur = (n) => (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const nameOf = (cid) => db.clients.find((c) => c.id === cid)?.name || '';
+      const nifOf = (cid) => db.clients.find((c) => c.id === cid)?.nif || '';
+      // Fecha de cobro: paidAt; si es un cobro antiguo sin sello, updatedAt/createdAt.
+      const paidWhen = (c) => c.paidAt || c.updatedAt || c.createdAt || 0;
+      const rows = [];
+      let totalHon = 0;
+      let totalTasa = 0;
+      const cobrados = casesV
+        .filter((c) => c.paid && (Number(c.fee) || 0) > 0 && paidWhen(c) >= fromTs && paidWhen(c) <= toTs)
+        .sort((a, b) => paidWhen(a) - paidWhen(b));
+      for (const c of cobrados) {
+        const hon = Number(c.fee) || 0;
+        const tasa = c.taxPaid ? (Number(c.taxAmount) || 0) : 0;
+        totalHon += hon;
+        totalTasa += tasa;
+        rows.push([
+          fmtDate(paidWhen(c)), c.reciboNumber || '', nameOf(c.clientId), nifOf(c.clientId),
+          c.title, AREA[c.type] || c.type, eur(hon), PAY[c.payMethod] || '',
+          tasa ? eur(tasa) : '', c.taxModel || '',
+        ]);
+      }
+      // Fila de totales.
+      rows.push(['', '', '', '', '', 'TOTAL', eur(totalHon), '', totalTasa ? eur(totalTasa) : '', '']);
+      csv = toCsv(
+        ['Fecha de cobro', 'Nº recibo', 'Cliente', 'NIF/NIE', 'Concepto (trámite)', 'Área',
+          'Honorario (€)', 'Forma de pago', 'Tasa oficial (€)', 'Modelo tasa'],
+        rows,
       );
     }
     if (csv === null) return json(res, 404, { error: 'Exportación no disponible' });
@@ -4245,7 +4302,7 @@ async function executeTgAction(crmUser, action) {
     let tasas = 0;
     for (const c of db.cases) {
       if (c.clientId !== action.clientId || !canSeeCase(c, crmUser, db)) continue;
-      if ((Number(c.fee) || 0) > 0 && !c.paid) { c.paid = true; c.payMethod = action.method; honor += Number(c.fee) || 0; c.updatedAt = Date.now(); }
+      if ((Number(c.fee) || 0) > 0 && !c.paid) { c.paid = true; c.payMethod = action.method; c.paidAt = Date.now(); honor += Number(c.fee) || 0; c.updatedAt = Date.now(); }
       if (action.includeTax && (Number(c.taxAmount) || 0) > 0 && !c.taxPaid) { c.taxPaid = true; tasas += Number(c.taxAmount) || 0; c.updatedAt = Date.now(); }
     }
     if (!honor && !tasas) throw new Error('ya no había importes pendientes');

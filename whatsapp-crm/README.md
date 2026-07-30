@@ -168,6 +168,12 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
 - **📊 Informes financieros**: además del cuadro de trámites, ingresos por mes
   (cobrado), facturado / cobrado / pendiente y tasas oficiales gestionadas,
   abonadas y pendientes, con desglose por área y exportación a CSV.
+- **📒 Libro de ingresos (export)**: desde Informes, exporta en CSV los
+  honorarios **cobrados** por **fecha de cobro** en el periodo elegido (una
+  línea por cobro: fecha, nº de recibo, cliente, NIF, concepto, área, importe y
+  forma de pago), con fila de total. Pensado para tu asesoría o tus impuestos.
+  Las tasas oficiales se muestran aparte, ya que no son ingreso de la gestoría
+  (se ingresan en la Administración). Cada cobro sella su fecha automáticamente.
 - **🏆 Rendimiento por usuario**: al final de los Informes, una tabla que
   compara a cada compañero (p. ej. José y Carmen) en el periodo elegido:
   trámites y completados, cobrado y pendiente, clientes nuevos, conversaciones
