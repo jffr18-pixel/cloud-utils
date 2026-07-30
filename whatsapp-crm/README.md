@@ -165,6 +165,11 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   (agrupado por cliente) a quien lo tenga desde hace más de X días (por defecto
   15), sin repetir el aviso antes de N días (por defecto 7). Solo en horario
   laboral y respetando la ventana de 24 h. Se activa en Automatizaciones.
+- **⭐ Pedir reseña en Google**: cuando marcas un expediente como completado, el
+  cliente recibe (una sola vez) un WhatsApp pidiéndole una reseña con tu enlace
+  de Google. Se activa en Automatizaciones → «Pedir reseña en Google», donde
+  pones el enlace y el mensaje (variables `{nombre}` y `{enlace}`). No se repite
+  al mismo cliente aunque complete más trámites.
 - **📊 Informes financieros**: además del cuadro de trámites, ingresos por mes
   (cobrado), facturado / cobrado / pendiente y tasas oficiales gestionadas,
   abonadas y pendientes, con desglose por área y exportación a CSV.

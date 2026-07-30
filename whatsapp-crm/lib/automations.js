@@ -136,6 +136,14 @@ const DEFAULTS = {
     maxPerDay: 12,         // tope de citas por día
     reason: 'Consulta',    // motivo por defecto de la cita reservada
   },
+  // Pedir reseña en Google al completar un trámite. Cuando un expediente pasa a
+  // «completado», se envía al cliente (una vez) un WhatsApp con el enlace de
+  // reseñas de la gestoría. {enlace} se sustituye por reviewUrl.
+  reviews: {
+    enabled: false,
+    reviewUrl: '',         // enlace de reseñas de Google del negocio
+    text: 'Hola {nombre} 🙏 Ha sido un placer ayudarte con tu trámite. Si has quedado contento/a, ¿nos dejarías una reseña? Nos ayuda muchísimo: {enlace} — ¡Gracias! Burocracia Zero',
+  },
   // Recordatorio de honorarios pendientes de cobro.
   payments: {
     enabled: false,
@@ -367,6 +375,13 @@ async function onCaseStatusChanged(db, item, client, send, now = new Date()) {
     item.docsRequestedAt = now.getTime();
     item.docsFollowUpAt = null;
     return;
+  }
+  // Al completar un trámite: pedir reseña en Google (una sola vez por cliente).
+  // Independiente de statusNotify: se controla con su propio interruptor.
+  if (item.status === 'completado' && s.reviews && s.reviews.enabled
+      && String(s.reviews.reviewUrl || '').trim() && !client.reviewAskedAt) {
+    await send(client, fillTemplate(s.reviews.text, { ...vars, enlace: String(s.reviews.reviewUrl).trim() }));
+    client.reviewAskedAt = now.getTime();
   }
   if (!s.statusNotify.enabled) return;
   if (item.status === 'en_curso' && s.statusNotify.onEnCurso) {

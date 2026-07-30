@@ -3060,6 +3060,10 @@ async function renderAutomations() {
   $('#auto-pay-days').value = s.payments.daysAfter;
   $('#auto-pay-completed').checked = s.payments.onlyCompleted;
   $('#auto-pay-text').value = s.payments.text;
+  const rev = s.reviews || {};
+  $('#auto-rev-enabled').checked = Boolean(rev.enabled);
+  $('#auto-rev-url').value = rev.reviewUrl || '';
+  $('#auto-rev-text').value = rev.text || '';
   const ac = s.autoCollect || {};
   $('#auto-collect-enabled').checked = Boolean(ac.enabled);
   $('#auto-collect-days').value = ac.daysOverdue ?? 15;
@@ -3173,6 +3177,11 @@ $('#btn-auto-save').addEventListener('click', async () => {
           daysAfter: Number($('#auto-pay-days').value) || 7,
           onlyCompleted: $('#auto-pay-completed').checked,
           text: $('#auto-pay-text').value,
+        },
+        reviews: {
+          enabled: $('#auto-rev-enabled').checked,
+          reviewUrl: $('#auto-rev-url').value.trim(),
+          text: $('#auto-rev-text').value,
         },
         autoCollect: {
           enabled: $('#auto-collect-enabled').checked,

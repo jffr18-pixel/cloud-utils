@@ -1186,6 +1186,24 @@ async function main() {
     assert(last.auto === true && last.text.includes('Declaración renta 2025'),
       'aviso de expediente completado con {tramite}');
 
+    // Pedir reseña en Google al completar (una sola vez por cliente).
+    await req('PUT', '/api/automations', {
+      reviews: { enabled: true, reviewUrl: 'https://g.page/r/BUROZERO/review' },
+    });
+    const revCase1 = await req('POST', '/api/cases', { clientId, title: 'Cita previa DGT', type: 'vehiculos' });
+    await req('PUT', `/api/cases/${revCase1.data.id}`, { status: 'completado' });
+    msgs = (await req('GET', `/api/messages?clientId=${clientId}`)).data;
+    assert(msgs.some((mm) => (mm.text || '').includes('g.page/r/BUROZERO/review')),
+      'al completar el trámite se pide reseña con el enlace de Google');
+    // Segundo trámite completado del mismo cliente → no se repite la petición.
+    const beforeCount = msgs.filter((mm) => (mm.text || '').includes('g.page/r/BUROZERO/review')).length;
+    const revCase2 = await req('POST', '/api/cases', { clientId, title: 'Otra gestión', type: 'otro' });
+    await req('PUT', `/api/cases/${revCase2.data.id}`, { status: 'completado' });
+    const afterMsgs = (await req('GET', `/api/messages?clientId=${clientId}`)).data;
+    const afterCount = afterMsgs.filter((mm) => (mm.text || '').includes('g.page/r/BUROZERO/review')).length;
+    assert(afterCount === beforeCount, 'la petición de reseña no se repite al mismo cliente');
+    await req('PUT', '/api/automations', { reviews: { enabled: false } });
+
     // Recordatorio enviado al cliente en su fecha.
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
