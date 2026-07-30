@@ -141,7 +141,8 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
 - **✨ Respuesta sugerida con IA**: en el chat, el botón ✨ propone un borrador
   de respuesta al último mensaje del cliente, usando el hilo reciente y la base
   de conocimiento. El texto aparece en el cuadro para que lo revises y edites
-  antes de enviar (no se envía solo). Requiere `OPENAI_API_KEY`.
+  antes de enviar (no se envía solo). Requiere una clave de IA (`ANTHROPIC_API_KEY`
+  para Claude, o `OPENAI_API_KEY`).
 - **💶 Por cobrar**: honorarios y tasas oficiales pendientes de cobro, agrupados
   por cliente y ordenados por importe, con el total y un botón para reclamar por
   WhatsApp en un clic (con el desglose de lo pendiente). La barra lateral avisa
@@ -375,8 +376,15 @@ botones ✅/❌.** Nada sale sin tu visto bueno.
      Así cada persona actúa como su usuario del CRM y solo ve/toca lo suyo
      (respeta el aislamiento). Para dar de alta a Carmen, que le escriba al bot,
      te pase su ID y lo añades a la lista.
-4. Para que entienda lenguaje natural y notas de voz, configura `OPENAI_API_KEY`
-   (la misma clave que ya usa la transcripción de notas de voz).
+4. Para que entienda lenguaje natural, elige un proveedor de IA (con una de las
+   dos claves basta; si están las dos, manda Claude):
+   - **Claude (Anthropic)**: define `ANTHROPIC_API_KEY`. Modelo por defecto
+     `claude-opus-5`; para abaratar puedes poner `ANTHROPIC_MODEL=claude-haiku-4-5`.
+   - **OpenAI**: define `OPENAI_API_KEY` (modelo por defecto `gpt-4o-mini`).
+   - **Notas de voz**: la transcripción usa Whisper de OpenAI (Claude no
+     transcribe audio), así que para entender **notas de voz** necesitas
+     `OPENAI_API_KEY` aunque el asistente use Claude. Por texto funciona con
+     cualquiera de las dos.
 
 El bot funciona por *long polling*: no hace falta abrir puertos ni configurar
 webhooks. En cuanto el servidor arranca con el token puesto, queda a la escucha.
@@ -415,11 +423,12 @@ Pensado para datos sensibles (extranjería). Medidas aplicadas:
 - **Sin filtraciones**: el token del bot nunca aparece en los logs y los errores
   internos no se muestran al usuario (solo un aviso genérico).
 
-> **Privacidad (RGPD)**: el texto de tus órdenes se envía a OpenAI para
-> interpretarlo (igual que la transcripción de voz). No se manda la base de
-> clientes: el modelo solo extrae la intención y los nombres que tú escribes; la
-> búsqueda del cliente se hace en local. Actívalo solo si el proveedor te ofrece
-> garantías adecuadas (DPA/UE).
+> **Privacidad (RGPD)**: el texto de tus órdenes se envía al proveedor de IA que
+> configures (Claude/Anthropic u OpenAI) para interpretarlo; las notas de voz se
+> transcriben con Whisper de OpenAI. No se manda la base de clientes: el modelo
+> solo extrae la intención y los nombres que tú escribes; la búsqueda del cliente
+> se hace en local. Actívalo solo si el proveedor te ofrece garantías adecuadas
+> (DPA/UE).
 
 ## Variables de entorno
 
@@ -437,7 +446,9 @@ Pensado para datos sensibles (extranjería). Medidas aplicadas:
 | `WEBHOOK_VERIFY_TOKEN` | Token que verifica el webhook de Meta | `gestoria-crm` |
 | `WHATSAPP_GRAPH_VERSION` | Versión de la Graph API | `v20.0` |
 | `MS_TENANT_ID` / `MS_CLIENT_ID` / `MS_CLIENT_SECRET` | Credenciales de la app de Entra ID para Outlook y SharePoint (vacías → sin sincronización) | *(vacío)* |
-| `OPENAI_API_KEY` | Clave de OpenAI (o compatible). Se usa para transcribir notas de voz **y** para el asistente por Telegram | *(vacío)* |
+| `ANTHROPIC_API_KEY` | Clave de Claude (Anthropic). Si está, el asistente y las respuestas sugeridas usan Claude (tiene prioridad sobre OpenAI) | *(vacío)* |
+| `ANTHROPIC_MODEL` | Modelo de Claude para el asistente | `claude-opus-5` |
+| `OPENAI_API_KEY` | Clave de OpenAI (o compatible). Transcribe notas de voz (Whisper) **y**, si no hay clave de Claude, mueve el asistente y las respuestas sugeridas | *(vacío)* |
 | `TELEGRAM_BOT_TOKEN` | Token del bot de Telegram (de @BotFather). Vacío → asistente desactivado | *(vacío)* |
 | `TELEGRAM_ALLOWED` | Lista blanca `idTelegram:usuarioCRM,idTelegram2:usuarioCRM2`. Solo esos IDs pueden usar el asistente | *(vacío)* |
 | `TELEGRAM_AGENT_MODEL` | Modelo que interpreta las órdenes del asistente | `gpt-4o-mini` |

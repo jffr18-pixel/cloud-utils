@@ -540,6 +540,60 @@ async function testTelegramAssistant() {
   }
 }
 
+// Proveedor Claude de extremo a extremo: un servidor «mock» emula la API de
+// Mensajes de Anthropic y se comprueba que interpret()/chat() construyen bien
+// la petición y leen bien la respuesta por HTTP real.
+async function testClaudeProvider() {
+  const http = require('http');
+  const asst = require('./lib/assistant');
+  const PORT = 3788;
+  const seen = [];
+  const mock = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    req.on('end', () => {
+      let parsed = {};
+      try { parsed = JSON.parse(body || '{}'); } catch { parsed = {}; }
+      seen.push({ url: req.url, headers: req.headers, body: parsed });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      if (parsed.tools) {
+        // Petición del asistente (con herramientas) → devolver una acción.
+        res.end(JSON.stringify({ stop_reason: 'tool_use', content: [
+          { type: 'thinking', thinking: 'razonando' },
+          { type: 'tool_use', name: 'enviar_whatsapp', input: { destinatario: 'Juan', mensaje: 'Hola Juan' } },
+        ] }));
+      } else {
+        // Petición de «sugerir respuesta» (sin herramientas) → texto.
+        res.end(JSON.stringify({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'Hola, te confirmo enseguida.' }] }));
+      }
+    });
+  });
+  await new Promise((r) => mock.listen(PORT, r));
+  const prevKey = process.env.ANTHROPIC_API_KEY;
+  const prevBase = process.env.ANTHROPIC_BASE_URL;
+  process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+  process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${PORT}`;
+  try {
+    const intent = await asst.interpret('dile a Juan que hola', { today: '2026-07-30' });
+    assert(intent.tool === 'enviar_whatsapp' && intent.args.destinatario === 'Juan', 'interpret() usa Claude por HTTP y lee la herramienta');
+    const toolCall = seen.find((s) => s.body.tools);
+    assert(toolCall && toolCall.url === '/v1/messages' && toolCall.headers['x-api-key'] === 'sk-ant-test' && toolCall.headers['anthropic-version'],
+      'la llamada a Claude va a /v1/messages con las cabeceras correctas');
+    const suggestion = await asst.chat([
+      { role: 'system', content: 'Eres un asistente.' },
+      { role: 'user', content: 'Redacta una respuesta.' },
+    ]);
+    assert(/te confirmo/.test(suggestion), 'chat() usa Claude y devuelve el texto');
+    const chatCall = seen.find((s) => !s.body.tools);
+    assert(chatCall && chatCall.body.system === 'Eres un asistente.' && chatCall.body.messages[0].role === 'user',
+      'en chat() el system va arriba y el usuario aparte (formato Anthropic)');
+  } finally {
+    if (prevKey === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = prevKey;
+    if (prevBase === undefined) delete process.env.ANTHROPIC_BASE_URL; else process.env.ANTHROPIC_BASE_URL = prevBase;
+    mock.close();
+  }
+}
+
 async function main() {
   const server = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
     env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, WHATSAPP_TOKEN: '', WHATSAPP_PHONE_NUMBER_ID: '' },
@@ -1733,6 +1787,38 @@ async function main() {
     assert(toolResp.tool === 'crear_cita' && toolResp.args.hora === '10:00', 'lee la herramienta y sus argumentos');
     const textResp = asst.parseAgentResponse({ choices: [{ message: { content: '¿A qué hora?' } }] });
     assert(textResp.reply === '¿A qué hora?', 'una respuesta sin herramienta se devuelve como texto');
+
+    // --- Soporte de Claude (Anthropic) ---
+    const prevAnthropic = process.env.ANTHROPIC_API_KEY;
+    const prevOpenai = process.env.OPENAI_API_KEY;
+    const prevTranscribe = process.env.TRANSCRIBE_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY; delete process.env.OPENAI_API_KEY; delete process.env.TRANSCRIBE_API_KEY;
+    assert(asst.provider() === '' && asst.isConfigured() === false, 'sin claves no hay proveedor de IA');
+    process.env.OPENAI_API_KEY = 'sk-openai';
+    assert(asst.provider() === 'openai', 'con OPENAI_API_KEY el proveedor es OpenAI');
+    process.env.ANTHROPIC_API_KEY = 'sk-ant';
+    assert(asst.provider() === 'anthropic', 'con ANTHROPIC_API_KEY manda Claude');
+    // La petición a Claude usa el formato de Anthropic (system arriba, input_schema en las herramientas).
+    const arq = asst.buildAnthropicRequest('manda a Juan hola', { today: '2026-07-29' });
+    assert(/\/v1\/messages$/.test(arq.url) && arq.headers['x-api-key'] === 'sk-ant' && arq.headers['anthropic-version'], 'petición a la API de Mensajes de Anthropic');
+    assert(/2026-07-29/.test(arq.body.system) && arq.body.messages[0].role === 'user', 'system arriba y el usuario aparte');
+    assert(arq.body.tools.some((t) => t.name === 'enviar_whatsapp' && t.input_schema), 'herramientas en formato Anthropic (input_schema)');
+    assert(arq.body.tool_choice && arq.body.tool_choice.type === 'auto', 'tool_choice de Anthropic');
+    // Lectura de la respuesta de Claude: ignora el razonamiento, lee tool_use y texto.
+    const aTool = asst.parseAnthropicResponse({ content: [
+      { type: 'thinking', thinking: '...' },
+      { type: 'tool_use', name: 'crear_cita', input: { cliente: 'Juan', fecha: '2026-07-30', hora: '10:00' } },
+    ] });
+    assert(aTool.tool === 'crear_cita' && aTool.args.hora === '10:00', 'lee la herramienta de Claude ignorando el razonamiento');
+    const aText = asst.parseAnthropicResponse({ content: [{ type: 'text', text: '¿A qué hora?' }] });
+    assert(aText.reply === '¿A qué hora?', 'lee el texto de Claude');
+    assert(asst.parseAnthropicResponse({ stop_reason: 'refusal', content: [] }).reply, 'un rechazo de Claude devuelve un aviso, no revienta');
+    if (prevAnthropic === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = prevAnthropic;
+    if (prevOpenai === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = prevOpenai;
+    if (prevTranscribe === undefined) delete process.env.TRANSCRIBE_API_KEY; else process.env.TRANSCRIBE_API_KEY = prevTranscribe;
+
+    await testClaudeProvider();
+
     // El token del bot nunca debe aparecer en textos que se registren o muestren.
     const tgLib = require('./lib/telegram');
     const prevTok = process.env.TELEGRAM_BOT_TOKEN;

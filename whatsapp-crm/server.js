@@ -1684,7 +1684,7 @@ async function handleApi(req, res, url) {
     const client = db.clients.find((c) => c.id === b.clientId);
     if (!client) return json(res, 404, { error: 'Cliente no encontrado' });
     if (!canSeeClient(client, me)) return json(res, 403, { error: 'No tienes acceso a este cliente' });
-    if (!assistant.isConfigured()) return json(res, 400, { error: 'La IA no está configurada (falta OPENAI_API_KEY).' });
+    if (!assistant.isConfigured()) return json(res, 400, { error: 'La IA no está configurada (falta ANTHROPIC_API_KEY u OPENAI_API_KEY).' });
     const msgs = db.messages.filter((m) => m.clientId === client.id)
       .sort((a, b2) => a.timestamp - b2.timestamp).slice(-12);
     if (!msgs.length) return json(res, 400, { error: 'Todavía no hay conversación con este cliente.' });
@@ -3828,7 +3828,7 @@ async function handleTelegramUpdate(update) {
   let text = text0;
   if (msg.voice || msg.audio) {
     if (!transcribe.isConfigured()) {
-      await telegram.sendMessage(chatId, 'Para entender notas de voz hay que configurar OPENAI_API_KEY.');
+      await telegram.sendMessage(chatId, 'Para entender notas de voz hay que configurar OPENAI_API_KEY (la transcripción usa Whisper; Claude no transcribe audio). Escríbeme el mensaje por texto.');
       return;
     }
     try {
@@ -4278,7 +4278,10 @@ server.listen(PORT, () => {
     if (!TG_ALLOWED.size) {
       console.warn('⚠️  Asistente de Telegram activo pero sin TELEGRAM_ALLOWED: nadie está autorizado. Añade tu ID.');
     } else {
-      console.log(`Asistente de Telegram activo (${TG_ALLOWED.size} usuario(s) autorizado(s)${assistant.isConfigured() ? ', IA activada' : ', SIN IA: falta OPENAI_API_KEY'}).`);
+      const iaLabel = assistant.isConfigured()
+        ? `, IA: ${assistant.provider() === 'anthropic' ? 'Claude (' + assistant.anthropicModel() + ')' : 'OpenAI (' + assistant.model() + ')'}`
+        : ', SIN IA: falta ANTHROPIC_API_KEY u OPENAI_API_KEY';
+      console.log(`Asistente de Telegram activo (${TG_ALLOWED.size} usuario(s) autorizado(s)${iaLabel}).`);
       // Avisa si un ID apunta a un usuario del CRM que no existe (con
       // aislamiento, ese usuario no vería ningún cliente).
       if (isolationOn()) {

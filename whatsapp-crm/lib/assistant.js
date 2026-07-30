@@ -2,9 +2,15 @@
 
 // Núcleo (puro y testable) del asistente por Telegram: interpreta lo que la
 // persona escribe/dice en lenguaje natural y lo traduce a una acción del CRM.
-// La interpretación usa un modelo compatible con la API de OpenAI (la misma
-// clave que ya se usa para transcribir notas de voz). Toda la parte de red y
-// de acceso a datos vive en server.js; aquí solo hay funciones sin efectos.
+// Funciona con dos proveedores de IA, elegido por la clave que haya:
+//   - ANTHROPIC_API_KEY  → Claude (API de Mensajes de Anthropic).
+//   - OPENAI_API_KEY      → un modelo compatible con la API de OpenAI.
+// Si están las dos, Claude tiene prioridad. Toda la red y el acceso a datos
+// viven en server.js; aquí solo hay funciones sin efectos.
+//
+// NOTA: la transcripción de notas de voz (lib/transcribe.js) usa Whisper de
+// OpenAI; Claude no transcribe audio, así que las notas de voz siguen
+// necesitando OPENAI_API_KEY aunque el asistente use Claude.
 //
 // AVISO RGPD: el texto que se manda al modelo puede contener datos personales
 // (nombres, teléfonos que teclee el usuario). Se envía lo mínimo: NO se manda
@@ -13,12 +19,21 @@
 
 const { normalizePhone } = require('./store');
 
-function apiKey() {
-  return process.env.OPENAI_API_KEY || process.env.TRANSCRIBE_API_KEY || '';
+// Proveedor de IA activo: 'anthropic' (Claude) o 'openai'. Claude tiene
+// prioridad si su clave está definida. '' si no hay ninguna configurada.
+function provider() {
+  if (process.env.ANTHROPIC_API_KEY) return 'anthropic';
+  if (process.env.OPENAI_API_KEY || process.env.TRANSCRIBE_API_KEY) return 'openai';
+  return '';
 }
 
 function isConfigured() {
-  return Boolean(apiKey());
+  return Boolean(provider());
+}
+
+// --- OpenAI (compatible) ---------------------------------------------------
+function apiKey() {
+  return process.env.OPENAI_API_KEY || process.env.TRANSCRIBE_API_KEY || '';
 }
 
 function endpoint() {
@@ -29,6 +44,35 @@ function endpoint() {
 
 function model() {
   return process.env.TELEGRAM_AGENT_MODEL || 'gpt-4o-mini';
+}
+
+// --- Claude (Anthropic) ----------------------------------------------------
+function anthropicKey() {
+  return process.env.ANTHROPIC_API_KEY || '';
+}
+
+function anthropicEndpoint() {
+  const base = process.env.ANTHROPIC_BASE_URL ? process.env.ANTHROPIC_BASE_URL.replace(/\/+$/, '') : 'https://api.anthropic.com';
+  return `${base}/v1/messages`;
+}
+
+function anthropicModel() {
+  // Por defecto el Opus más capaz; puede bajarse a un modelo más barato/rápido
+  // (p. ej. claude-haiku-4-5) con ANTHROPIC_MODEL para reducir coste.
+  return process.env.ANTHROPIC_MODEL || 'claude-opus-5';
+}
+
+function anthropicHeaders() {
+  return { 'x-api-key': anthropicKey(), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' };
+}
+
+// Las mismas herramientas, en el formato que espera la API de Anthropic.
+function anthropicTools() {
+  return TOOLS.map((t) => ({
+    name: t.function.name,
+    description: t.function.description,
+    input_schema: t.function.parameters,
+  }));
 }
 
 // Lista blanca «id:usuarioCRM,id2:usuarioCRM2» → Map(idTelegram → usuarioCRM).
@@ -178,17 +222,20 @@ const TOOLS = [
   },
 ];
 
-// Construye la petición al modelo (chat completions con herramientas).
-function buildAgentRequest(text, opts = {}) {
-  const today = opts.today || '';
-  const system = [
+// Instrucciones del sistema para el asistente (comunes a ambos proveedores).
+function agentSystemPrompt(today) {
+  return [
     'Eres el asistente de una gestoría española («Burocracia Zero»). Ayudas al gestor a manejar su CRM por Telegram.',
-    `La fecha de hoy es ${today}. Convierte expresiones como «mañana», «el jueves» o «la semana que viene» a fechas concretas en formato YYYY-MM-DD a partir de hoy.`,
+    `La fecha de hoy es ${today || ''}. Convierte expresiones como «mañana», «el jueves» o «la semana que viene» a fechas concretas en formato YYYY-MM-DD a partir de hoy.`,
     'Cuando la persona pida una acción (mandar un WhatsApp, crear una cita o un recordatorio, registrar un cobro, cambiar el estado de un expediente, dar de alta un cliente, o hacer una consulta), llama a la herramienta adecuada.',
     'Estados de expediente posibles: «pendiente», «en_curso», «esperando_documentacion» y «completado». Mapea lo que diga la persona (p. ej. «en trámite» → en_curso, «presentado» o «terminado» → completado, «le faltan papeles» → esperando_documentacion).',
     'No inventes nombres de clientes, teléfonos ni datos: usa exactamente lo que diga la persona. Si falta algún dato imprescindible (por ejemplo la hora de una cita), pídelo en un mensaje breve en español en lugar de llamar a una herramienta.',
     'Responde siempre en español, de forma breve y cercana.',
   ].join(' ');
+}
+
+// Construye la petición al modelo de OpenAI (chat completions con herramientas).
+function buildAgentRequest(text, opts = {}) {
   return {
     url: endpoint(),
     headers: { Authorization: `Bearer ${apiKey()}`, 'Content-Type': 'application/json' },
@@ -196,7 +243,7 @@ function buildAgentRequest(text, opts = {}) {
       model: opts.model || model(),
       temperature: 0,
       messages: [
-        { role: 'system', content: system },
+        { role: 'system', content: agentSystemPrompt(opts.today) },
         { role: 'user', content: String(text || '') },
       ],
       tools: TOOLS,
@@ -205,7 +252,23 @@ function buildAgentRequest(text, opts = {}) {
   };
 }
 
-// Interpreta la respuesta del modelo. Devuelve { tool, args } si pide una
+// Construye la petición a la API de Mensajes de Claude (con herramientas).
+function buildAnthropicRequest(text, opts = {}) {
+  return {
+    url: anthropicEndpoint(),
+    headers: anthropicHeaders(),
+    body: {
+      model: opts.model || anthropicModel(),
+      max_tokens: 2048,
+      system: agentSystemPrompt(opts.today),
+      messages: [{ role: 'user', content: String(text || '') }],
+      tools: anthropicTools(),
+      tool_choice: { type: 'auto' },
+    },
+  };
+}
+
+// Interpreta la respuesta de OpenAI. Devuelve { tool, args } si pide una
 // acción, o { reply } con un texto para responder directamente.
 function parseAgentResponse(json) {
   const msg = json && json.choices && json.choices[0] && json.choices[0].message;
@@ -217,6 +280,18 @@ function parseAgentResponse(json) {
     return { tool: call.function.name, args };
   }
   return { reply: (msg.content || 'De acuerdo.').trim() };
+}
+
+// Interpreta la respuesta de Claude (array de bloques de contenido). Ignora los
+// bloques de razonamiento; devuelve la herramienta invocada o el texto.
+function parseAnthropicResponse(json) {
+  const j = json || {};
+  if (j.stop_reason === 'refusal') return { reply: 'No puedo ayudarte con eso.' };
+  const content = Array.isArray(j.content) ? j.content : [];
+  const toolUse = content.find((b) => b && b.type === 'tool_use');
+  if (toolUse) return { tool: toolUse.name, args: (toolUse.input && typeof toolUse.input === 'object') ? toolUse.input : {} };
+  const text = content.filter((b) => b && b.type === 'text').map((b) => String(b.text || '')).join('').trim();
+  return { reply: text || 'De acuerdo.' };
 }
 
 // ¿El texto parece un número de teléfono? (dígitos, +, espacios, guiones).
@@ -252,13 +327,8 @@ function resolveClient(db, query, isVisible = () => true) {
   return { none: true };
 }
 
-// Llama al modelo y devuelve { tool, args } o { reply }. Si no hay clave
-// configurada, devuelve un aviso para que se configure OPENAI_API_KEY.
-async function interpret(text, opts = {}) {
-  if (!isConfigured()) {
-    return { reply: 'El asistente inteligente no está configurado (falta OPENAI_API_KEY). Aun así puedo ejecutar órdenes directas.' };
-  }
-  const { url, headers, body } = buildAgentRequest(text, opts);
+// POST JSON con timeout; devuelve el JSON de la respuesta o lanza error.
+async function postJson(url, headers, body, label) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), Number(process.env.AGENT_TIMEOUT_MS || 20000));
   let res;
@@ -269,38 +339,49 @@ async function interpret(text, opts = {}) {
   }
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
-    throw new Error(`asistente HTTP ${res.status}${detail ? ': ' + detail.slice(0, 200) : ''}`);
+    throw new Error(`${label} HTTP ${res.status}${detail ? ': ' + detail.slice(0, 200) : ''}`);
   }
-  const json = await res.json().catch(() => ({}));
-  return parseAgentResponse(json);
+  return res.json().catch(() => ({}));
 }
 
-// Chat genérico con el modelo (sin herramientas): devuelve el texto de la
-// respuesta. Se usa para «sugerir respuesta» a un cliente. Con timeout.
+// Llama al modelo y devuelve { tool, args } o { reply }. Usa Claude u OpenAI
+// según la clave configurada.
+async function interpret(text, opts = {}) {
+  const p = provider();
+  if (!p) {
+    return { reply: 'El asistente inteligente no está configurado (falta ANTHROPIC_API_KEY u OPENAI_API_KEY). Aun así puedo ejecutar órdenes directas.' };
+  }
+  if (p === 'anthropic') {
+    const { url, headers, body } = buildAnthropicRequest(text, opts);
+    return parseAnthropicResponse(await postJson(url, headers, body, 'asistente'));
+  }
+  const { url, headers, body } = buildAgentRequest(text, opts);
+  return parseAgentResponse(await postJson(url, headers, body, 'asistente'));
+}
+
+// Chat genérico (sin herramientas): devuelve el texto de la respuesta. Se usa
+// para «sugerir respuesta» a un cliente. `messages` puede incluir un mensaje
+// con role 'system'; para Claude se separa como `system` de nivel superior.
 async function chat(messages, opts = {}) {
-  if (!isConfigured()) throw new Error('IA no configurada (falta OPENAI_API_KEY)');
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), Number(process.env.AGENT_TIMEOUT_MS || 20000));
-  let res;
-  try {
-    res = await fetch(endpoint(), {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey()}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: opts.model || model(),
-        temperature: typeof opts.temperature === 'number' ? opts.temperature : 0.4,
-        messages,
-      }),
-      signal: ctrl.signal,
-    });
-  } finally {
-    clearTimeout(timer);
+  const p = provider();
+  if (!p) throw new Error('IA no configurada (falta ANTHROPIC_API_KEY u OPENAI_API_KEY)');
+  if (p === 'anthropic') {
+    const system = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
+    const conv = messages.filter((m) => m.role !== 'system').map((m) => ({ role: m.role, content: m.content }));
+    // Holgura de tokens: los modelos Opus 5 razonan por defecto y el
+    // presupuesto se reparte entre el razonamiento y el texto de la respuesta.
+    const body = { model: opts.model || anthropicModel(), max_tokens: 2048, messages: conv };
+    if (system) body.system = system;
+    const json = await postJson(anthropicEndpoint(), anthropicHeaders(), body, 'IA');
+    if (json.stop_reason === 'refusal') return '';
+    const content = Array.isArray(json.content) ? json.content : [];
+    return content.filter((b) => b && b.type === 'text').map((b) => String(b.text || '')).join('').trim();
   }
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`IA HTTP ${res.status}${detail ? ': ' + detail.slice(0, 200) : ''}`);
-  }
-  const json = await res.json().catch(() => ({}));
+  const json = await postJson(endpoint(), { Authorization: `Bearer ${apiKey()}`, 'Content-Type': 'application/json' }, {
+    model: opts.model || model(),
+    temperature: typeof opts.temperature === 'number' ? opts.temperature : 0.4,
+    messages,
+  }, 'IA');
   return String((json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content) || '').trim();
 }
 
@@ -315,6 +396,9 @@ function validTime(s) {
 }
 
 module.exports = {
-  isConfigured, apiKey, endpoint, model, parseAllowed, buildAgentRequest,
-  parseAgentResponse, interpret, chat, resolveClient, looksLikePhone, validDate, validTime, TOOLS,
+  isConfigured, provider, apiKey, endpoint, model,
+  anthropicModel, anthropicEndpoint,
+  parseAllowed, buildAgentRequest, parseAgentResponse,
+  buildAnthropicRequest, parseAnthropicResponse,
+  interpret, chat, resolveClient, looksLikePhone, validDate, validTime, TOOLS,
 };
