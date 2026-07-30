@@ -162,6 +162,12 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
 - **📊 Informes financieros**: además del cuadro de trámites, ingresos por mes
   (cobrado), facturado / cobrado / pendiente y tasas oficiales gestionadas,
   abonadas y pendientes, con desglose por área y exportación a CSV.
+- **🏆 Rendimiento por usuario**: al final de los Informes, una tabla que
+  compara a cada compañero (p. ej. José y Carmen) en el periodo elegido:
+  trámites y completados, cobrado y pendiente, clientes nuevos, conversaciones
+  atendidas, WhatsApp enviados y tiempo medio de respuesta. La atribución se
+  hace por el dueño de cada cliente; solo agrega recuentos e importes, sin
+  exponer datos de clientes ajenos. Requiere varios usuarios (`CRM_USERS`).
 - **☁️ Copias de seguridad en la nube (Microsoft)**: además de la copia local
   diaria, la copia se sube automáticamente a SharePoint/OneDrive (activable en
   Automatizaciones → Microsoft 365), para no perder nada si falla el servidor.

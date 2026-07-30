@@ -567,6 +567,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .rep-table th { background: #faf9f5; font-weight: 700; font-size: 12px; letter-spacing: .2px; color: var(--muted); text-transform: uppercase; }
 .rep-table tr:last-child td { border-bottom: none; }
 .rep-table td.num, .rep-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.rep-table td.warn-txt { color: var(--accent-dark); font-weight: 600; }
+.perf-table { display: block; overflow-x: auto; }
 .rep-bar-row { display: flex; align-items: center; gap: 10px; margin: 7px 0; font-size: 13px; }
 .rep-bar-label { width: 150px; min-width: 150px; color: var(--text); }
 .rep-bar-track { flex: 1; background: var(--accent-light); border-radius: 6px; height: 20px; overflow: hidden; }

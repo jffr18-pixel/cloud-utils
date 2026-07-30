@@ -319,6 +319,25 @@ async function testIsolationServer() {
     const searchJuan = (await as(juan, 'GET', '/api/search?q=reservado')).data;
     assert(Array.isArray(searchJuan.clients) && !searchJuan.clients.some((c) => c.id === cPriv.id),
       'la búsqueda de Juan no filtra clientes de Carmen');
+
+    // Panel de rendimiento por usuario: atribuye trámites al dueño del cliente.
+    // Carmen creó 2 clientes y varios expedientes; Juan, 1 cliente y 0 expedientes.
+    await as(carmen, 'PUT', '/api/cases/' + expCarmen.id, { fee: 300, paid: true, payMethod: 'caja', status: 'completado' });
+    const perf = await as(carmen, 'GET', '/api/performance');
+    assert(perf.status === 200 && perf.data.isolation === true, 'el panel de rendimiento requiere aislamiento activo');
+    const rowC = perf.data.users.find((u) => u.user === 'carmen');
+    const rowJ = perf.data.users.find((u) => u.user === 'juan');
+    assert(rowC && rowJ, 'el panel lista a Carmen y a Juan');
+    assert(rowC.clientesNuevos >= 2 && rowJ.clientesNuevos >= 1,
+      'los clientes nuevos se atribuyen a quien los dio de alta');
+    assert(rowC.tramitesCompletados === 1 && rowC.cobrado === 300,
+      'el trámite completado y su cobro se atribuyen a Carmen');
+    assert(rowJ.tramitesCompletados === 0 && rowJ.cobrado === 0,
+      'Juan no tiene trámites completados ni cobros');
+    // El rango de fechas filtra: un rango pasado deja a todos a cero.
+    const perfPast = (await as(carmen, 'GET', '/api/performance?from=2000-01-01&to=2000-12-31')).data;
+    assert(perfPast.users.every((u) => u.tramitesTotal === 0 && u.clientesNuevos === 0),
+      'un rango de fechas sin actividad devuelve todo a cero');
   } finally {
     server.kill();
     fs.rmSync(isoDataDir, { recursive: true, force: true });

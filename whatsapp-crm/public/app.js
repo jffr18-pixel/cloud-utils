@@ -2136,6 +2136,52 @@ async function renderReports() {
         <tr><td>${esc(TYPE_LABEL[t.type] || t.type)}</td><td>${esc(t.title)}</td>
         <td class="num">${t.count}</td><td class="num">${t.completados}</td></tr>`).join('')}</tbody>
     </table>` : '<p class="hint">No hay expedientes en este periodo.</p>';
+
+  await renderPerformance();
+}
+
+// Panel de rendimiento por usuario (José vs Carmen). Reutiliza el rango de
+// fechas de los informes. Solo tiene sentido con varios usuarios.
+async function renderPerformance() {
+  const box = $('#rep-performance');
+  if (!box) return;
+  let p;
+  try { p = await api('performance?' + reportQuery()); }
+  catch { box.innerHTML = '<p class="hint">No se pudo cargar el rendimiento.</p>'; return; }
+  const eur = (n) => (Number(n) || 0).toLocaleString('es-ES') + ' €';
+  const resp = (m) => (m == null ? '—' : m < 60 ? `${m} min` : `${Math.round(m / 60 * 10) / 10} h`);
+  if (!p.isolation) {
+    box.innerHTML = '<p class="hint">Con un solo usuario no hay reparto que mostrar. Cuando cada compañero (p. ej. José y Carmen) entre con su propio usuario y sus clientes queden a su nombre, aquí verás las métricas de cada uno.</p>';
+    return;
+  }
+  if (!p.users.length) { box.innerHTML = '<p class="hint">Todavía no hay actividad atribuida a ningún usuario en este periodo.</p>'; return; }
+  box.innerHTML = `
+    <table class="rep-table perf-table">
+      <thead><tr>
+        <th>Usuario</th>
+        <th class="num">Trámites</th>
+        <th class="num">Completados</th>
+        <th class="num">Cobrado</th>
+        <th class="num">Pendiente</th>
+        <th class="num">Clientes nuevos</th>
+        <th class="num">Conversaciones</th>
+        <th class="num">WhatsApp enviados</th>
+        <th class="num">Resp. media</th>
+      </tr></thead>
+      <tbody>${p.users.map((u) => `
+        <tr>
+          <td><strong>${esc(u.user)}</strong></td>
+          <td class="num">${u.tramitesTotal}</td>
+          <td class="num">${u.tramitesCompletados}</td>
+          <td class="num">${eur(u.cobrado)}</td>
+          <td class="num ${u.pendiente ? 'warn-txt' : ''}">${eur(u.pendiente)}</td>
+          <td class="num">${u.clientesNuevos}</td>
+          <td class="num">${u.conversaciones}</td>
+          <td class="num">${u.mensajesEnviados}</td>
+          <td class="num">${resp(u.avgResponseMinutes)}</td>
+        </tr>`).join('')}</tbody>
+    </table>
+    <p class="hint">Atribución por el dueño de cada cliente. «Cobrado» y «Pendiente» son honorarios de expedientes creados en el periodo. «Resp. media» es el tiempo medio hasta la primera respuesta a un mensaje entrante.</p>`;
 }
 
 // ---------------------------------------------------------------------------

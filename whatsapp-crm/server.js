@@ -2732,6 +2732,100 @@ async function handleApi(req, res, url) {
     });
   }
 
+  // --- Panel de rendimiento por usuario ------------------------------------
+  // Métricas de cada usuario del equipo (p. ej. José vs Carmen) en un rango de
+  // fechas: trámites y completados, importes facturados/cobrados, clientes
+  // nuevos, conversaciones atendidas y tiempo medio de respuesta. La atribución
+  // se hace por el dueño del cliente (client.owner). Solo agrega recuentos e
+  // importes: no expone datos identificativos de clientes ajenos.
+  if (req.method === 'GET' && resource === 'performance') {
+    const DAY = 24 * 3600 * 1000;
+    const from = url.searchParams.get('from');
+    const to = url.searchParams.get('to');
+    const fromTs = from ? new Date(from + 'T00:00:00').getTime() : -Infinity;
+    const toTs = to ? new Date(to + 'T23:59:59').getTime() : Infinity;
+    const inRange = (ts) => ts >= fromTs && ts <= toTs;
+
+    // Dueño de cada cliente (client.owner), o '' para los comunes/sin asignar.
+    const ownerOf = new Map();
+    for (const c of db.clients) ownerOf.set(c.id, c.owner || '');
+    const rowFor = (rows, user) => {
+      let r = rows.get(user);
+      if (!r) {
+        r = { user, tramitesTotal: 0, tramitesCompletados: 0, facturado: 0, cobrado: 0,
+          clientesNuevos: 0, conversaciones: new Set(), mensajesEnviados: 0, _gaps: [] };
+        rows.set(user, r);
+      }
+      return r;
+    };
+    const rows = new Map();
+    // Se listan primero todos los usuarios configurados (para que salgan a 0).
+    for (const u of authUsers().keys()) rowFor(rows, u);
+
+    // Clientes nuevos en el periodo, por dueño.
+    for (const c of db.clients) {
+      if (inRange(c.createdAt || 0)) rowFor(rows, c.owner || '').clientesNuevos += 1;
+    }
+    // Expedientes en el periodo, por dueño del cliente.
+    for (const c of db.cases) {
+      if (!inRange(c.createdAt || 0)) continue;
+      const r = rowFor(rows, ownerOf.get(c.clientId) || '');
+      r.tramitesTotal += 1;
+      if (c.status === 'completado') r.tramitesCompletados += 1;
+      const fee = Number(c.fee) || 0;
+      r.facturado += fee;
+      if (c.paid) r.cobrado += fee;
+    }
+    // Mensajes salientes en el periodo, por dueño del cliente.
+    for (const m of db.messages) {
+      if (m.direction !== 'out' || !inRange(m.timestamp || 0)) continue;
+      const r = rowFor(rows, ownerOf.get(m.clientId) || '');
+      r.mensajesEnviados += 1;
+      r.conversaciones.add(m.clientId);
+    }
+    // Tiempo medio de respuesta (entrante→saliente) por dueño del cliente.
+    const byClient = new Map();
+    for (const m of db.messages) {
+      if (m.direction !== 'in' && m.direction !== 'out') continue;
+      const list = byClient.get(m.clientId) || [];
+      list.push(m);
+      byClient.set(m.clientId, list);
+    }
+    for (const [cid, msgs] of byClient) {
+      msgs.sort((a, b) => a.timestamp - b.timestamp);
+      const r = rowFor(rows, ownerOf.get(cid) || '');
+      let pendingIn = null;
+      for (const m of msgs) {
+        if (m.direction === 'in') {
+          if (pendingIn === null) pendingIn = m.timestamp;
+        } else if (pendingIn !== null) {
+          if (inRange(m.timestamp)) r._gaps.push(m.timestamp - pendingIn);
+          pendingIn = null;
+        }
+      }
+    }
+
+    const users = [...rows.values()].map((r) => ({
+      user: r.user || '(común)',
+      assigned: !!r.user,
+      tramitesTotal: r.tramitesTotal,
+      tramitesCompletados: r.tramitesCompletados,
+      facturado: r.facturado,
+      cobrado: r.cobrado,
+      pendiente: r.facturado - r.cobrado,
+      clientesNuevos: r.clientesNuevos,
+      conversaciones: r.conversaciones.size,
+      mensajesEnviados: r.mensajesEnviados,
+      avgResponseMinutes: r._gaps.length
+        ? Math.round(r._gaps.reduce((a, b) => a + b, 0) / r._gaps.length / 60000) : null,
+    }))
+      // Se ocultan filas totalmente vacías salvo que sean usuarios configurados.
+      .filter((r) => r.assigned || r.tramitesTotal || r.mensajesEnviados || r.clientesNuevos)
+      .sort((a, b) => b.cobrado - a.cobrado || b.tramitesCompletados - a.tramitesCompletados);
+
+    return json(res, 200, { isolation: isolationOn(), users });
+  }
+
   // --- Copias de seguridad --------------------------------------------------
   if (resource === 'backups') {
     if (req.method === 'GET' && !id) return json(res, 200, backup.list());
