@@ -1456,11 +1456,13 @@ async function openClientDetail(id) {
     { name: '_cases', label: 'Expedientes (solo lectura, gestión en la pestaña Expedientes)', type: 'textarea', value: casesTxt },
     ...(state.isolation ? [shareField(client)] : []),
     estadoLinkField(client),
+    documentosField(client),
     dossierField(client),
   ], async (v) => {
     delete v._cases;
     delete v._estado;
     delete v._dossier;
+    delete v._documentos;
     delete v._share;
     await api('clients/' + id, { method: 'PUT', body: parseClientValues(v) });
     await refreshView();
@@ -1503,6 +1505,26 @@ function shareField(client) {
           } catch (e) { status.textContent = e.message; }
         });
       });
+    },
+    getValue() { return undefined; },
+  };
+}
+
+// Campo personalizado: documentos pre-rellenados en PDF (autorización de
+// representación, hoja de encargo, consentimiento RGPD). Se generan ya
+// rellenos con los datos del cliente, listos para imprimir y firmar en papel.
+function documentosField(client) {
+  const docs = [
+    ['autorizacion', '📝 Autorización de representación'],
+    ['encargo', '📋 Hoja de encargo'],
+    ['rgpd', '🔒 Consentimiento RGPD'],
+  ];
+  return {
+    name: '_documentos', label: 'Documentos pre-rellenados', type: 'custom',
+    mount(el) {
+      el.innerHTML = `<div class="doc-btns" style="display:flex;flex-wrap:wrap;gap:8px">${docs.map(([tipo, lbl]) =>
+        `<a class="btn small" href="/api/clients/${esc(client.id)}/documento/${tipo}" target="_blank" rel="noopener">${lbl}</a>`).join('')}</div>
+        <p class="hint" style="margin:6px 0 0">PDF ya relleno con los datos del cliente (nombre, NIF/NIE, teléfono) y sus trámites en curso, con la línea de firma en blanco. Para imprimir y firmar en la oficina.</p>`;
     },
     getValue() { return undefined; },
   };

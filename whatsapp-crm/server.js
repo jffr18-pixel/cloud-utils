@@ -15,6 +15,7 @@ const msgraph = require('./lib/msgraph');
 const security = require('./lib/security');
 const transcribe = require('./lib/transcribe');
 const pdfsign = require('./lib/pdfsign');
+const documentos = require('./lib/documentos');
 const telegram = require('./lib/telegram');
 const assistant = require('./lib/assistant');
 
@@ -1579,6 +1580,22 @@ async function handleApi(req, res, url) {
         }
         return json(res, 200, { ok: true });
       }
+    }
+    // Documento pre-rellenado en PDF (autorización, hoja de encargo o RGPD),
+    // ya relleno con los datos del cliente y listo para imprimir y firmar.
+    if (parts[3] === 'documento' && req.method === 'GET') {
+      const tipo = parts[4];
+      if (!documentos.TIPOS[tipo]) return json(res, 404, { error: 'Tipo de documento no válido' });
+      const cases = db.cases.filter((c) => c.clientId === client.id)
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      const doc = documentos.buildDocumento(tipo, { client, cases });
+      const pdf = pdfsign.buildTextPdf({ title: doc.title, lines: doc.lines });
+      security.audit('documento_generado', { clientId: client.id, tipo, user: sessionUser(req) });
+      res.writeHead(200, {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="${doc.filename}"`,
+      });
+      return res.end(pdf);
     }
     // Dossier del cliente en PDF (datos + expedientes + firmas + actividad).
     if (parts[3] === 'dossier' && req.method === 'GET') {

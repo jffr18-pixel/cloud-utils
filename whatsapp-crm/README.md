@@ -44,6 +44,12 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   con sus datos, todos sus expedientes (estado, fechas, nº de registro,
   honorarios y tasas), los documentos que ha firmado y un resumen de actividad.
   Para archivo, traspaso o inspección. Sin dependencias (motor de PDF propio).
+- **📝 Documentos pre-rellenados en PDF**: desde la ficha del cliente, genera
+  al instante la **autorización de representación**, la **hoja de encargo
+  profesional** o el **consentimiento RGPD**, ya rellenos con los datos del
+  cliente (nombre, NIF/NIE, teléfono, correo) y sus trámites en curso, con la
+  línea de firma en blanco para imprimir y firmar en la oficina. Se diferencia
+  de la firma digital (abajo): aquí se firma en papel. Sin dependencias.
 - **📝 Plantillas**: respuestas frecuentes reutilizables desde el chat, con la
   variable `{nombre}` que se sustituye por el nombre del cliente.
 - **⏰ Recordatorios**: seguimientos con fecha, opcionalmente ligados a un

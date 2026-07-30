@@ -1348,6 +1348,41 @@ async function main() {
       'el dossier se sirve como application/pdf');
     assert(dossierBuf.slice(0, 5).toString() === '%PDF-' && dossierBuf.includes(Buffer.from('%%EOF')),
       'el dossier es un PDF válido');
+    console.log('Documentos pre-rellenados (PDF)');
+    // Módulo puro: el contenido se rellena con los datos del cliente.
+    const docsLib = require('./lib/documentos');
+    const docCli = { id: 'x', name: 'Amina El Fassi', nif: 'X1234567Z', phone: '34600111222', email: 'amina@example.com' };
+    const docCases = [{ id: 'c1', title: 'Renovación NIE', type: 'extranjeria', status: 'en_curso' }];
+    const autz = docsLib.buildDocumento('autorizacion', { client: docCli, cases: docCases, now: Date.UTC(2026, 6, 30) });
+    const autzTxt = autz.lines.map((l) => (typeof l === 'string' ? l : l.t)).join('\n');
+    assert(autz.title.includes('AUTORIZACIÓN'), 'la autorización tiene título correcto');
+    assert(autzTxt.includes('Amina El Fassi') && autzTxt.includes('X1234567Z') && autzTxt.includes('34600111222'),
+      'la autorización se rellena con nombre, NIF y teléfono del cliente');
+    assert(autzTxt.includes('Renovación NIE'), 'la autorización cita el trámite en curso del cliente');
+    assert(autzTxt.includes('30 de julio de 2026'), 'la autorización lleva la fecha en formato largo');
+    assert(docsLib.buildDocumento('encargo', { client: docCli, cases: docCases }).title.includes('ENCARGO'),
+      'la hoja de encargo tiene título correcto');
+    assert(docsLib.buildDocumento('rgpd', { client: docCli, cases: [] }).title.includes('RGPD'),
+      'el consentimiento RGPD tiene título correcto');
+    // Dato ausente → hueco para rellenar a mano (no "undefined").
+    const sinNif = docsLib.buildDocumento('autorizacion', { client: { name: 'Sin Datos' }, cases: [] });
+    const sinNifTxt = sinNif.lines.map((l) => (typeof l === 'string' ? l : l.t)).join('\n');
+    assert(!sinNifTxt.includes('undefined') && sinNifTxt.includes('__________'),
+      'un dato ausente deja un hueco para rellenar, sin "undefined"');
+    assert(docsLib.buildDocumento('inexistente', { client: docCli }) === null,
+      'un tipo de documento desconocido devuelve null');
+    // Endpoint: sirve un PDF válido para cada tipo, y 404 para tipo inválido.
+    for (const tipo of ['autorizacion', 'encargo', 'rgpd']) {
+      const dr = await fetch(`${BASE}/api/clients/${clientId}/documento/${tipo}`);
+      const drBuf = Buffer.from(await dr.arrayBuffer());
+      assert(dr.status === 200 && (dr.headers.get('content-type') || '').includes('application/pdf'),
+        `el documento «${tipo}» se sirve como application/pdf`);
+      assert(drBuf.slice(0, 5).toString() === '%PDF-' && drBuf.includes(Buffer.from('%%EOF')),
+        `el documento «${tipo}» es un PDF válido`);
+    }
+    const docBad = await fetch(`${BASE}/api/clients/${clientId}/documento/loquesea`);
+    assert(docBad.status === 404, 'un tipo de documento no válido → 404');
+
     const badPage = await fetch(`${BASE}/estado/token-inexistente-1234567890`);
     assert(badPage.status === 404, 'token inválido → 404 en la página de estado');
 
