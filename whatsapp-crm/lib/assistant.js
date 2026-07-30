@@ -57,9 +57,9 @@ function anthropicEndpoint() {
 }
 
 function anthropicModel() {
-  // Por defecto el Opus más capaz; puede bajarse a un modelo más barato/rápido
-  // (p. ej. claude-haiku-4-5) con ANTHROPIC_MODEL para reducir coste.
-  return process.env.ANTHROPIC_MODEL || 'claude-opus-5';
+  // Por defecto Haiku (rápido y barato, de sobra para órdenes cortas). Para
+  // más capacidad, sube con ANTHROPIC_MODEL (p. ej. claude-opus-5).
+  return process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5';
 }
 
 function anthropicHeaders() {

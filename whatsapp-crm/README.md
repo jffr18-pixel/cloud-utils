@@ -379,7 +379,8 @@ botones ✅/❌.** Nada sale sin tu visto bueno.
 4. Para que entienda lenguaje natural, elige un proveedor de IA (con una de las
    dos claves basta; si están las dos, manda Claude):
    - **Claude (Anthropic)**: define `ANTHROPIC_API_KEY`. Modelo por defecto
-     `claude-opus-5`; para abaratar puedes poner `ANTHROPIC_MODEL=claude-haiku-4-5`.
+     `claude-haiku-4-5` (rápido y barato, de sobra para las órdenes del bot);
+     para más capacidad puedes poner `ANTHROPIC_MODEL=claude-opus-5`.
    - **OpenAI**: define `OPENAI_API_KEY` (modelo por defecto `gpt-4o-mini`).
    - **Notas de voz**: la transcripción usa Whisper de OpenAI (Claude no
      transcribe audio), así que para entender **notas de voz** necesitas
@@ -447,7 +448,7 @@ Pensado para datos sensibles (extranjería). Medidas aplicadas:
 | `WHATSAPP_GRAPH_VERSION` | Versión de la Graph API | `v20.0` |
 | `MS_TENANT_ID` / `MS_CLIENT_ID` / `MS_CLIENT_SECRET` | Credenciales de la app de Entra ID para Outlook y SharePoint (vacías → sin sincronización) | *(vacío)* |
 | `ANTHROPIC_API_KEY` | Clave de Claude (Anthropic). Si está, el asistente y las respuestas sugeridas usan Claude (tiene prioridad sobre OpenAI) | *(vacío)* |
-| `ANTHROPIC_MODEL` | Modelo de Claude para el asistente | `claude-opus-5` |
+| `ANTHROPIC_MODEL` | Modelo de Claude para el asistente (sube a `claude-opus-5` si quieres más capacidad) | `claude-haiku-4-5` |
 | `OPENAI_API_KEY` | Clave de OpenAI (o compatible). Transcribe notas de voz (Whisper) **y**, si no hay clave de Claude, mueve el asistente y las respuestas sugeridas | *(vacío)* |
 | `TELEGRAM_BOT_TOKEN` | Token del bot de Telegram (de @BotFather). Vacío → asistente desactivado | *(vacío)* |
 | `TELEGRAM_ALLOWED` | Lista blanca `idTelegram:usuarioCRM,idTelegram2:usuarioCRM2`. Solo esos IDs pueden usar el asistente | *(vacío)* |
