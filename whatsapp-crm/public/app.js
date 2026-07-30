@@ -18,9 +18,12 @@ async function api(path, options = {}) {
 }
 
 function esc(s) {
-  const div = document.createElement('div');
-  div.textContent = s ?? '';
-  return div.innerHTML;
+  // Escapa también comillas: esc() se usa dentro de atributos HTML entre
+  // comillas, y un valor con " (p. ej. el nombre de un adjunto de WhatsApp,
+  // controlado por el remitente) podría inyectar atributos si no se escapa.
+  return String(s ?? '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
 }
 
 // Formatea un importe en euros con dos decimales (para céntimos). Los importes

@@ -476,6 +476,21 @@ function isAuthenticated(req) {
 function isolationOn() {
   return authRequired() && authUsers().size > 1;
 }
+// Usuarios administradores: pueden descargar copias de toda la base de datos y
+// cambiar la configuración global (automatizaciones, datos de la gestoría…).
+// Por defecto es el primer usuario de CRM_USERS; se puede fijar con
+// CRM_ADMIN="usuario1,usuario2". Con un solo usuario (sin aislamiento) todos lo
+// son, para no cambiar el comportamiento de una instalación individual.
+function crmAdmins() {
+  const raw = (process.env.CRM_ADMIN || '').trim();
+  if (raw) return new Set(raw.split(',').map((s) => s.trim()).filter(Boolean));
+  const first = authUsers().keys().next().value;
+  return new Set(first ? [first] : []);
+}
+function isAdmin(user) {
+  if (!isolationOn()) return true;
+  return crmAdmins().has(user);
+}
 function canSeeClient(client, user) {
   if (!isolationOn()) return true;
   if (!client) return false;
@@ -1927,7 +1942,8 @@ async function handleApi(req, res, url) {
   if (resource === 'scheduled-messages') {
     if (req.method === 'GET') {
       const clientId = url.searchParams.get('clientId');
-      let list = db.scheduledMessages;
+      // Aislamiento: solo los mensajes programados de clientes visibles.
+      let list = db.scheduledMessages.filter((s) => !visIds || visIds.has(s.clientId));
       if (clientId) list = list.filter((s) => s.clientId === clientId);
       list = list.slice().sort((a, b) => a.sendAt - b.sendAt);
       return json(res, 200, list);
@@ -1936,6 +1952,7 @@ async function handleApi(req, res, url) {
       const b = await readBody(req);
       const client = db.clients.find((c) => c.id === b.clientId);
       if (!client) return json(res, 404, { error: 'Cliente no encontrado' });
+      if (!canSeeClient(client, me)) return json(res, 403, { error: 'No tienes acceso a este cliente' });
       const text = String(b.text || '').trim();
       if (!text) return json(res, 400, { error: 'El mensaje está vacío' });
       const sendAt = Number(b.sendAt);
@@ -1956,9 +1973,10 @@ async function handleApi(req, res, url) {
       return json(res, 201, sched);
     }
     if (req.method === 'DELETE' && id) {
-      const before = db.scheduledMessages.length;
+      const item = db.scheduledMessages.find((s) => s.id === id);
+      if (!item) return json(res, 404, { error: 'No encontrado' });
+      if (visIds && !visIds.has(item.clientId)) return json(res, 403, { error: 'Sin acceso' });
       db.scheduledMessages = db.scheduledMessages.filter((s) => s.id !== id);
-      if (db.scheduledMessages.length === before) return json(res, 404, { error: 'No encontrado' });
       save();
       return json(res, 200, { ok: true });
     }
@@ -2024,7 +2042,8 @@ async function handleApi(req, res, url) {
     }
     if (req.method === 'GET' && !id) {
       const clientId = url.searchParams.get('clientId');
-      let list = db.signatures.map(publicSignature);
+      // Aislamiento: solo las firmas de clientes visibles para el usuario.
+      let list = db.signatures.filter((s) => !visIds || visIds.has(s.clientId)).map(publicSignature);
       if (clientId) list = list.filter((s) => s.clientId === clientId);
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       return json(res, 200, list);
@@ -2033,6 +2052,7 @@ async function handleApi(req, res, url) {
       const b = await readBody(req);
       const client = db.clients.find((c) => c.id === b.clientId);
       if (!client) return json(res, 404, { error: 'Cliente no encontrado' });
+      if (!canSeeClient(client, me)) return json(res, 403, { error: 'No tienes acceso a este cliente' });
       const docType = SIGN_DOCS[b.docType] ? b.docType : 'representacion';
       let caseTitle = '';
       if (b.caseId) {
@@ -2084,6 +2104,11 @@ async function handleApi(req, res, url) {
     }
     const sig = db.signatures.find((s) => s.id === id);
     if (id && !sig) return json(res, 404, { error: 'Solicitud de firma no encontrada' });
+    // Aislamiento: no se puede ver ni tocar una firma de un cliente ajeno (si no
+    // el token secreto de firma quedaría expuesto por enumeración de ids).
+    if (sig && !canSeeClient(db.clients.find((c) => c.id === sig.clientId), me)) {
+      return json(res, 403, { error: 'No tienes acceso a esta firma' });
+    }
     if (req.method === 'GET' && sig) {
       return json(res, 200, { ...publicSignature(sig), signUrl: `${publicBase(req)}/firmar/${sig.token}` });
     }
@@ -2878,6 +2903,9 @@ async function handleApi(req, res, url) {
 
   // --- Copias de seguridad --------------------------------------------------
   if (resource === 'backups') {
+    // Una copia contiene TODA la base de datos (todos los usuarios). Con
+    // aislamiento activo, solo un administrador puede crear/listar/descargar.
+    if (!isAdmin(me)) return json(res, 403, { error: 'Solo un administrador puede gestionar las copias de seguridad' });
     if (req.method === 'GET' && !id) return json(res, 200, backup.list());
     if (req.method === 'POST' && !id) {
       const b = backup.create(true);
@@ -2961,7 +2989,13 @@ async function handleApi(req, res, url) {
 
   // --- Exportación CSV ------------------------------------------------------
   if (req.method === 'GET' && resource === 'export' && id) {
-    const csvCell = (v) => `"${String(v ?? '').replaceAll('"', '""')}"`;
+    const csvCell = (v) => {
+      let s = String(v ?? '');
+      // Neutraliza la inyección de fórmulas: una celda que empiece por = + - @
+      // (o tabulador/retorno) la interpreta Excel/LibreOffice como fórmula.
+      if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+      return `"${s.replaceAll('"', '""')}"`;
+    };
     // BOM para que Excel abra el CSV con acentos correctos.
     const toCsv = (headers, rows) => '\uFEFF' + [headers, ...rows]
       .map((r) => r.map(csvCell).join(';')).join('\r\n');
@@ -3099,6 +3133,9 @@ async function handleApi(req, res, url) {
       return json(res, 200, auto.getSettings(db));
     }
     if (req.method === 'PUT' && !id) {
+      // La configuración es global (afecta a todo el equipo, incluye el texto
+      // legal/RGPD y los datos de la gestoría): solo un administrador la cambia.
+      if (!isAdmin(me)) return json(res, 403, { error: 'Solo un administrador puede cambiar la configuración' });
       const b = await readBody(req);
       const settings = auto.setSettings(db, b);
       save();
@@ -3749,6 +3786,14 @@ const server = http.createServer(async (req, res) => {
           security.audit('webhook_rechazado', { ip: ipOf(req) });
           return json(res, 401, { error: 'Firma del webhook no válida' });
         }
+        // Sin secreto configurado, cualquiera podría inyectar mensajes falsos.
+        // En un despliegue real (con WhatsApp conectado) se rechaza salvo que se
+        // permita explícitamente con CRM_ALLOW_UNSIGNED_WEBHOOK=1.
+        if (verdict.via === 'sin_verificacion' && wa.isConfigured()
+            && process.env.CRM_ALLOW_UNSIGNED_WEBHOOK !== '1') {
+          security.audit('webhook_sin_secreto_rechazado', { ip: ipOf(req) });
+          return json(res, 401, { error: 'Webhook sin firma: configura YCLOUD_WEBHOOK_SECRET' });
+        }
         let body = {};
         try { body = raw ? JSON.parse(raw) : {}; } catch { return json(res, 400, { error: 'JSON inválido' }); }
         await handleWebhookPayload(load(), body);
@@ -4266,9 +4311,16 @@ async function handleTgCallback(cq) {
   const chatId = cq.message && cq.message.chat && cq.message.chat.id;
   const messageId = cq.message && cq.message.message_id;
   const fromId = String((cq.from && cq.from.id) || '');
+  // Solo chats privados (defensa en profundidad, igual que en los mensajes).
+  const chatType = cq.message && cq.message.chat && cq.message.chat.type;
+  if (chatType && chatType !== 'private') { await telegram.answerCallbackQuery(cq.id).catch(() => null); return; }
   // Autorización también en los botones: sin esto, cualquiera podría pulsar un
   // botón (p. ej. en un grupo) y ejecutar una acción.
   if (!tgAuthorized(fromId)) { await telegram.answerCallbackQuery(cq.id, 'No autorizado').catch(() => null); return; }
+  // Límite de ritmo también en la confirmación (simetría con los mensajes).
+  if (!security.rateLimit(`tgcb:${fromId}`, Number(process.env.RATE_LIMIT_TG || 60))) {
+    await telegram.answerCallbackQuery(cq.id, 'Demasiadas acciones seguidas, espera un momento').catch(() => null); return;
+  }
   await telegram.answerCallbackQuery(cq.id).catch(() => null);
   if (!chatId) return;
   const [kind, token] = String(cq.data || '').split(':');

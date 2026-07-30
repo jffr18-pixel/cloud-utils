@@ -483,6 +483,8 @@ Pensado para datos sensibles (extranjería). Medidas aplicadas:
 | `CRM_PASSWORD` | Contraseña de acceso a la interfaz (vacía → sin login, solo para pruebas locales) | *(vacío)* |
 | `CRM_USER` | Usuario de acceso | `admin` |
 | `CRM_USERS` | Varios usuarios: `nombre:clave,nombre2:clave2` (tiene prioridad sobre `CRM_USER`/`CRM_PASSWORD`) | *(vacío)* |
+| `CRM_ADMIN` | Usuario(s) administrador(es) — `usuario1,usuario2` — que pueden descargar copias de toda la base de datos y cambiar la configuración global. Con aislamiento, por defecto es el **primer** usuario de `CRM_USERS` | *(1º de `CRM_USERS`)* |
+| `CRM_ALLOW_UNSIGNED_WEBHOOK` | `1` acepta webhooks **sin firma** aunque WhatsApp esté configurado (solo para pruebas; en producción define `YCLOUD_WEBHOOK_SECRET` en su lugar) | *(vacío)* |
 | `YCLOUD_API_KEY` | API key de YCloud (Developers → API Keys en su consola; máxima prioridad si está definida) | *(vacío)* |
 | `YCLOUD_WHATSAPP_FROM` | Número del negocio en YCloud, formato internacional (ej. `+34612345678`) | *(vacío)* |
 | `WHATSAPP_360DIALOG_API_KEY` | API key de 360dialog | *(vacío)* |
@@ -566,8 +568,17 @@ Medidas activas en el CRM:
   (secreto del endpoint en la consola de YCloud → Developers → Webhooks),
   solo se aceptan webhooks firmados HMAC-SHA256 por YCloud, con tolerancia
   anti-replay de 5 minutos. Para Meta directo, `META_APP_SECRET` verifica
-  `X-Hub-Signature-256`. **Configúralo en producción**: sin él, cualquiera
-  que conozca la URL podría inyectar mensajes falsos.
+  `X-Hub-Signature-256`. **Obligatorio en producción**: si WhatsApp está
+  configurado y no hay secreto, los webhooks **se rechazan** (para que nadie
+  pueda inyectar mensajes falsos). Para saltarlo en pruebas: `CRM_ALLOW_UNSIGNED_WEBHOOK=1`.
+- **Aislamiento reforzado**: cada endpoint que devuelve o modifica datos de un
+  cliente (incluidas firmas y mensajes programados) comprueba que el usuario
+  pueda ver a ese cliente. Las copias de seguridad y la configuración global
+  (que afectan a toda la base de datos y a todo el equipo) quedan restringidas
+  a un usuario **administrador** (`CRM_ADMIN`, por defecto el primero de
+  `CRM_USERS`).
+- **Exportaciones CSV**: las celdas que empiezan por `= + - @` se neutralizan
+  para evitar inyección de fórmulas al abrir el CSV en Excel/LibreOffice.
 - **Cabeceras de seguridad**: Content-Security-Policy estricta, HSTS (tras
   HTTPS), `nosniff`, `X-Frame-Options: DENY`, Referrer-Policy y
   Permissions-Policy.

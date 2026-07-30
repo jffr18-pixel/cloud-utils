@@ -320,6 +320,41 @@ async function testIsolationServer() {
     assert(Array.isArray(searchJuan.clients) && !searchJuan.clients.some((c) => c.id === cPriv.id),
       'la búsqueda de Juan no filtra clientes de Carmen');
 
+    // Firmas: no se puede enumerar la firma (ni el token) de un cliente ajeno.
+    const sigC = await as(carmen, 'POST', '/api/signatures', { clientId: cPriv.id, docType: 'rgpd' });
+    assert(sigC.status === 201, 'Carmen crea una firma para su cliente reservado');
+    assert((await as(juan, 'GET', '/api/signatures/' + sigC.data.id)).status === 403,
+      'Juan no puede ver la firma (ni su enlace/token) de un cliente de Carmen');
+    assert(!(await as(juan, 'GET', '/api/signatures')).data.some((s) => s.id === sigC.data.id),
+      'la lista de firmas de Juan no incluye las de Carmen');
+    assert((await as(juan, 'POST', '/api/signatures', { clientId: cPriv.id, docType: 'rgpd' })).status === 403,
+      'Juan no puede pedir una firma sobre un cliente de Carmen');
+    assert((await as(juan, 'POST', '/api/signatures/' + sigC.data.id + '/resend')).status === 403,
+      'Juan no puede reenviar la firma de un cliente de Carmen');
+    assert((await as(juan, 'DELETE', '/api/signatures/' + sigC.data.id)).status === 403,
+      'Juan no puede anular la firma de un cliente de Carmen');
+
+    // Mensajes programados: aislamiento en creación, listado y borrado.
+    const schC = await as(carmen, 'POST', '/api/scheduled-messages', { clientId: cPriv.id, text: 'hola', sendAt: Date.now() + 3600000 });
+    assert(schC.status === 201, 'Carmen programa un mensaje a su cliente');
+    assert((await as(juan, 'POST', '/api/scheduled-messages', { clientId: cPriv.id, text: 'x', sendAt: Date.now() + 3600000 })).status === 403,
+      'Juan no puede programar un mensaje a un cliente de Carmen');
+    assert(!(await as(juan, 'GET', '/api/scheduled-messages')).data.some((s) => s.id === schC.data.id),
+      'la lista de programados de Juan no incluye los de Carmen');
+    assert((await as(juan, 'DELETE', '/api/scheduled-messages/' + schC.data.id)).status === 403,
+      'Juan no puede borrar un mensaje programado de Carmen');
+
+    // Copias de seguridad: solo el administrador (primer usuario de CRM_USERS).
+    assert((await as(juan, 'POST', '/api/backups')).status === 403, 'un no-admin no puede crear copias');
+    assert((await as(juan, 'GET', '/api/backups')).status === 403, 'un no-admin no puede listar copias');
+    assert([200, 201].includes((await as(carmen, 'POST', '/api/backups')).status), 'el administrador sí puede crear copias');
+
+    // Configuración global (incluye texto legal y datos de la gestoría): solo admin.
+    assert((await as(juan, 'PUT', '/api/automations', { empresa: { nombre: 'Intruso' } })).status === 403,
+      'un no-admin no puede cambiar la configuración global');
+    assert((await as(carmen, 'PUT', '/api/automations', { empresa: { nombre: 'Burocracia Zero SLP' } })).status === 200,
+      'el administrador sí puede cambiar la configuración');
+
     // Panel de rendimiento por usuario: atribuye trámites al dueño del cliente.
     // Carmen creó 2 clientes y varios expedientes; Juan, 1 cliente y 0 expedientes.
     await as(carmen, 'PUT', '/api/cases/' + expCarmen.id, { fee: 300, paid: true, payMethod: 'caja', status: 'completado' });
@@ -1902,6 +1937,12 @@ async function main() {
       'el CSV de clientes incluye cabecera y datos');
     const csvCases = await fetch(`${BASE}/api/export/cases.csv`);
     assert((await csvCases.text()).includes('Declaración renta 2025'), 'el CSV de expedientes incluye datos');
+    // Inyección de fórmulas: un nombre que empieza por «=» se neutraliza con «'».
+    const evilCli = await req('POST', '/api/clients', { name: '=HYPERLINK("http://evil","x")', phone: '600999888' });
+    const csvEvil = await (await fetch(`${BASE}/api/export/clients.csv`)).text();
+    assert(csvEvil.includes('"\'=HYPERLINK') && !/(^|;)"=HYPERLINK/m.test(csvEvil),
+      'una celda que empieza por = se neutraliza (prefijo \') contra inyección de fórmulas');
+    await req('DELETE', '/api/clients/' + evilCli.data.id);
 
     console.log('Campañas por etiqueta');
     const campBad = await req('POST', '/api/campaigns', { tag: 'inexistente', text: 'Hola' });
