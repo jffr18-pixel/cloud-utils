@@ -240,6 +240,58 @@ function buildTextPdf(opts) {
     ops.push('BT ' + rgb + font + ' ' + size + ' Tf ' + MARGIN + ' ' + y.toFixed(1)
       + ' Td (' + escapePdfText(toWinAnsi(text)) + ') Tj ET');
   };
+  // Igual que drawLine pero con posición X libre (para la cabecera/membrete).
+  const drawAt = (text, x, yy, { bold = false, size = FONT_SIZE, color = null } = {}) => {
+    const font = bold ? '/F2' : '/F1';
+    const rgb = color ? `${color[0]} ${color[1]} ${color[2]} rg ` : '0 0 0 rg ';
+    ops.push('BT ' + rgb + font + ' ' + size + ' Tf ' + x.toFixed(1) + ' ' + yy.toFixed(1)
+      + ' Td (' + escapePdfText(toWinAnsi(text)) + ') Tj ET');
+  };
+
+  // Cabecera (membrete) de la primera página: logotipo «B» + nombre + datos.
+  //   header = { name, tagline, info: [líneas], mark?: bool (por defecto true) }
+  if (opts.header) {
+    const h = opts.header;
+    const S = 34;                 // lado del logotipo
+    const top = y;                // borde superior del logo
+    const bottom = top - S;
+    if (h.mark !== false) {
+      // Cuadrado redondeado oscuro (#1d1d1b).
+      const r = 7;
+      const x0 = MARGIN;
+      const x1 = MARGIN + S;
+      const y0 = bottom;
+      const y1 = top;
+      const c = (a, b) => `${a.toFixed(1)} ${b.toFixed(1)}`;
+      ops.push('q 0.114 0.114 0.106 rg');
+      ops.push(`${c(x0, y0 + r)} m`);
+      ops.push(`${c(x0, y1 - r)} l`);
+      ops.push(`${c(x0, y1)} ${c(x0 + r, y1)} ${c(x0 + r, y1)} c`);
+      ops.push(`${c(x1 - r, y1)} l`);
+      ops.push(`${c(x1, y1)} ${c(x1, y1 - r)} ${c(x1, y1 - r)} c`);
+      ops.push(`${c(x1, y0 + r)} l`);
+      ops.push(`${c(x1, y0)} ${c(x1 - r, y0)} ${c(x1 - r, y0)} c`);
+      ops.push(`${c(x0 + r, y0)} l`);
+      ops.push(`${c(x0, y0)} ${c(x0, y0 + r)} ${c(x0, y0 + r)} c`);
+      ops.push('f Q');
+      // «B» blanca centrada.
+      ops.push('BT 1 1 1 rg /F2 23 Tf ' + (MARGIN + 9.5).toFixed(1) + ' ' + (bottom + 9).toFixed(1)
+        + ' Td (B) Tj ET');
+    }
+    const tx = (h.mark === false) ? MARGIN : MARGIN + S + 12;
+    if (h.name) drawAt(h.name, tx, top - 13, { bold: true, size: 15 });
+    if (h.tagline) drawAt(h.tagline, tx, top - 26, { size: 8.5, color: [0.45, 0.45, 0.45] });
+    // Datos de contacto bajo el logo.
+    let iy = bottom - 15;
+    for (const line of (h.info || [])) {
+      drawAt(line, MARGIN, iy, { size: 8.5, color: [0.35, 0.35, 0.35] });
+      iy -= 11.5;
+    }
+    // Línea separadora.
+    const sepY = Math.min(bottom, iy) - 4;
+    ops.push(`0.8 0.8 0.8 RG 0.6 w ${MARGIN} ${sepY.toFixed(1)} m ${(PAGE_W - MARGIN)} ${sepY.toFixed(1)} l S`);
+    y = sepY - 22;
+  }
 
   // Título en la primera página.
   drawLine(title, { bold: true, size: TITLE_SIZE });

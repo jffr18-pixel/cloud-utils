@@ -1594,8 +1594,8 @@ async function handleApi(req, res, url) {
       if (!documentos.TIPOS[tipo]) return json(res, 404, { error: 'Tipo de documento no válido' });
       const cases = db.cases.filter((c) => c.clientId === client.id)
         .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      const doc = documentos.buildDocumento(tipo, { client, cases });
-      const pdf = pdfsign.buildTextPdf({ title: doc.title, lines: doc.lines });
+      const doc = documentos.buildDocumento(tipo, { client, cases, empresa: auto.getSettings(db).empresa });
+      const pdf = pdfsign.buildTextPdf({ title: doc.title, lines: doc.lines, header: doc.header });
       security.audit('documento_generado', { clientId: client.id, tipo, user: sessionUser(req) });
       res.writeHead(200, {
         'Content-Type': 'application/pdf',
@@ -2274,9 +2274,9 @@ async function handleApi(req, res, url) {
       const doc = documentos.buildRecibo({
         client, concepto: item.title, amount, method: item.payMethod,
         number: item.reciboNumber, tasa: Number(item.taxAmount) || 0, tasaPaid: !!item.taxPaid,
-        now: item.reciboAt || Date.now(),
+        empresa: auto.getSettings(db).empresa, now: item.reciboAt || Date.now(),
       });
-      const pdf = pdfsign.buildTextPdf({ title: doc.title, lines: doc.lines });
+      const pdf = pdfsign.buildTextPdf({ title: doc.title, lines: doc.lines, header: doc.header });
       security.audit('recibo_generado', { caseId: item.id, clientId: item.clientId, number: item.reciboNumber, user: sessionUser(req) });
       res.writeHead(200, {
         'Content-Type': 'application/pdf',

@@ -20,11 +20,43 @@ function longDate(d) {
   return `${dd.getDate()} de ${MESES[dd.getMonth()]} de ${dd.getFullYear()}`;
 }
 
-// Datos de la gestoría (constantes; no hay multi-empresa en este CRM).
+// Datos de la gestoría por defecto (editables en Automatizaciones → «Datos de
+// la gestoría»; se pasan al generar el documento vía ctx.empresa).
 const FIRM = {
-  nombre: 'BUROCRACIA ZERO',
+  nombre: 'Burocracia Zero SLP',
   ciudad: 'Toledo',
 };
+
+// Fusiona los datos recibidos con los de por defecto.
+function firmFrom(empresa) {
+  const e = empresa || {};
+  return {
+    nombre: (e.nombre || '').trim() || FIRM.nombre,
+    cif: (e.cif || '').trim(),
+    direccion: (e.direccion || '').trim(),
+    ciudad: (e.ciudad || '').trim() || FIRM.ciudad,
+    telefono: (e.telefono || '').trim(),
+    email: (e.email || '').trim(),
+    web: (e.web || '').trim(),
+    colegiado: (e.colegiado || '').trim(),
+  };
+}
+
+// Cabecera (membrete) para el PDF a partir de los datos de la gestoría.
+function firmHeader(firm) {
+  const l1 = [];
+  if (firm.cif) l1.push(`CIF ${firm.cif}`);
+  if (firm.colegiado) l1.push(`Gestoría colegiada nº ${firm.colegiado}`);
+  const l3 = [];
+  if (firm.telefono) l3.push(`Tel. ${firm.telefono}`);
+  if (firm.email) l3.push(firm.email);
+  if (firm.web) l3.push(firm.web);
+  const info = [];
+  if (l1.length) info.push(l1.join(' · '));
+  if (firm.direccion) info.push(firm.direccion);
+  if (l3.length) info.push(l3.join(' · '));
+  return { name: firm.nombre, tagline: 'Simplificamos tus trámites', info, mark: true };
+}
 
 // Áreas de trámite (mismo catálogo que el resto del CRM), para redactar el
 // objeto del encargo a partir de los expedientes del cliente.
@@ -71,14 +103,14 @@ function clientBlock(client) {
 }
 
 // Bloque de firma en blanco (para firmar en papel).
-function signatureBlock({ city, dateStr, dual }) {
+function signatureBlock({ firm, dateStr, dual }) {
   const lines = [
-    { t: `En ${city}, a ${dateStr}.`, gap: 22 },
+    { t: `En ${firm.ciudad}, a ${dateStr}.`, gap: 22 },
   ];
   if (dual) {
     lines.push({ t: 'Firma del cliente:                              Firma de la gestoría:', gap: 34 });
     lines.push({ t: '_________________________            _________________________' });
-    lines.push({ t: `${FIRM.nombre}`, size: 9, color: [0.45, 0.45, 0.45] });
+    lines.push({ t: `${firm.nombre}`, size: 9, color: [0.45, 0.45, 0.45] });
   } else {
     lines.push({ t: 'Firma del cliente:', gap: 34 });
     lines.push({ t: '_________________________' });
@@ -88,26 +120,26 @@ function signatureBlock({ city, dateStr, dual }) {
 
 // --- Plantillas ------------------------------------------------------------
 
-function docAutorizacion({ client, cases, dateStr }) {
+function docAutorizacion({ client, cases, dateStr, firm }) {
   const objeto = objetoTramite(cases);
   const lines = [];
-  lines.push({ t: `Documento generado el ${dateStr} · ${FIRM.nombre}`, size: 9, color: [0.45, 0.45, 0.45] });
+  lines.push({ t: `Documento generado el ${dateStr}`, size: 9, color: [0.45, 0.45, 0.45] });
   lines.push({ t: 'DATOS DEL REPRESENTADO', bold: true, size: 12, gap: 14 });
   lines.push(...clientBlock(client));
   lines.push({ t: 'AUTORIZACIÓN', bold: true, size: 12, gap: 16 });
-  lines.push({ t: `Por medio del presente documento, la persona arriba identificada AUTORIZA a ${FIRM.nombre} (gestoría con domicilio en ${FIRM.ciudad}) a actuar en su nombre y representación ante los organismos públicos competentes —Oficina de Extranjería, Dirección General de Tráfico (DGT), Agencia Tributaria (AEAT), Tesorería General de la Seguridad Social y demás Administraciones Públicas— para la tramitación de: ${objeto}.`, gap: 8 });
+  lines.push({ t: `Por medio del presente documento, la persona arriba identificada AUTORIZA a ${firm.nombre} (gestoría con domicilio en ${firm.ciudad}) a actuar en su nombre y representación ante los organismos públicos competentes —Oficina de Extranjería, Dirección General de Tráfico (DGT), Agencia Tributaria (AEAT), Tesorería General de la Seguridad Social y demás Administraciones Públicas— para la tramitación de: ${objeto}.`, gap: 8 });
   lines.push({ t: 'Esta autorización habilita a la gestoría a presentar, subsanar, retirar y recoger en su nombre cuanta documentación sea necesaria, así como a recibir notificaciones relacionadas con dichos trámites.', gap: 8 });
   lines.push({ t: 'En cumplimiento del Reglamento (UE) 2016/679 (RGPD) y de la Ley Orgánica 3/2018 (LOPDGDD), el/la firmante consiente el tratamiento de sus datos personales por parte de la gestoría con la única finalidad de prestar los servicios encomendados.', gap: 8 });
-  lines.push(...signatureBlock({ city: FIRM.ciudad, dateStr, dual: false }));
+  lines.push(...signatureBlock({ firm, dateStr, dual: false }));
   return { title: 'AUTORIZACIÓN DE REPRESENTACIÓN', lines };
 }
 
-function docEncargo({ client, cases, dateStr }) {
+function docEncargo({ client, cases, dateStr, firm }) {
   const objeto = objetoTramite(cases);
   const lines = [];
-  lines.push({ t: `Documento generado el ${dateStr} · ${FIRM.nombre}`, size: 9, color: [0.45, 0.45, 0.45] });
+  lines.push({ t: `Documento generado el ${dateStr}`, size: 9, color: [0.45, 0.45, 0.45] });
   lines.push({ t: 'PARTES', bold: true, size: 12, gap: 14 });
-  lines.push({ t: `De una parte, ${FIRM.nombre}, gestoría administrativa con domicilio en ${FIRM.ciudad} (en adelante, «la gestoría»).` });
+  lines.push({ t: `De una parte, ${firm.nombre}, gestoría administrativa con domicilio en ${firm.ciudad} (en adelante, «la gestoría»).` });
   lines.push({ t: 'De otra parte, el cliente:', gap: 4 });
   lines.push(...clientBlock(client));
   lines.push({ t: 'OBJETO DEL ENCARGO', bold: true, size: 12, gap: 16 });
@@ -117,38 +149,39 @@ function docEncargo({ client, cases, dateStr }) {
   lines.push({ t: 'PROTECCIÓN DE DATOS', bold: true, size: 12, gap: 16 });
   lines.push({ t: 'Los datos personales del cliente se tratarán conforme al Reglamento (UE) 2016/679 (RGPD) y a la Ley Orgánica 3/2018 (LOPDGDD), con la única finalidad de prestar los servicios contratados. Se conservarán durante el tiempo legalmente exigible y no se cederán a terceros salvo obligación legal. El cliente puede ejercer sus derechos de acceso, rectificación, supresión, oposición, limitación y portabilidad dirigiéndose a la gestoría.', gap: 8 });
   lines.push({ t: 'Y en prueba de conformidad, ambas partes firman el presente documento.', gap: 8 });
-  lines.push(...signatureBlock({ city: FIRM.ciudad, dateStr, dual: true }));
+  lines.push(...signatureBlock({ firm, dateStr, dual: true }));
   return { title: 'HOJA DE ENCARGO PROFESIONAL', lines };
 }
 
-function docRgpd({ client, dateStr }) {
+function docRgpd({ client, dateStr, firm }) {
   const lines = [];
-  lines.push({ t: `Documento generado el ${dateStr} · ${FIRM.nombre}`, size: 9, color: [0.45, 0.45, 0.45] });
+  lines.push({ t: `Documento generado el ${dateStr}`, size: 9, color: [0.45, 0.45, 0.45] });
   lines.push({ t: 'DATOS DEL INTERESADO', bold: true, size: 12, gap: 14 });
   lines.push(...clientBlock(client));
   lines.push({ t: 'CONSENTIMIENTO', bold: true, size: 12, gap: 16 });
-  lines.push({ t: `La persona arriba identificada, en cumplimiento del Reglamento (UE) 2016/679 (RGPD) y de la Ley Orgánica 3/2018 (LOPDGDD), CONSIENTE el tratamiento de sus datos personales por parte de ${FIRM.nombre} (gestoría con domicilio en ${FIRM.ciudad}) con la finalidad de prestar los servicios de gestoría contratados y mantener la comunicación necesaria a través de WhatsApp y otros medios.`, gap: 8 });
+  lines.push({ t: `La persona arriba identificada, en cumplimiento del Reglamento (UE) 2016/679 (RGPD) y de la Ley Orgánica 3/2018 (LOPDGDD), CONSIENTE el tratamiento de sus datos personales por parte de ${firm.nombre} (gestoría con domicilio en ${firm.ciudad}) con la finalidad de prestar los servicios de gestoría contratados y mantener la comunicación necesaria a través de WhatsApp y otros medios.`, gap: 8 });
   lines.push({ t: 'Los datos se conservarán durante el tiempo legalmente exigible y no se cederán a terceros salvo obligación legal. El/la interesado/a puede ejercer sus derechos de acceso, rectificación, supresión, oposición, limitación y portabilidad dirigiéndose a la gestoría.', gap: 8 });
-  lines.push(...signatureBlock({ city: FIRM.ciudad, dateStr, dual: false }));
+  lines.push(...signatureBlock({ firm, dateStr, dual: false }));
   return { title: 'CONSENTIMIENTO DE PROTECCIÓN DE DATOS (RGPD)', lines };
 }
 
 const BUILDERS = { autorizacion: docAutorizacion, encargo: docEncargo, rgpd: docRgpd };
 
-// Genera un documento pre-rellenado. Devuelve { title, filename, lines }.
+// Genera un documento pre-rellenado. Devuelve { title, filename, lines, header }.
 //   tipo  = 'autorizacion' | 'encargo' | 'rgpd'
-//   ctx   = { client, cases, now }
+//   ctx   = { client, cases, empresa, now }
 function buildDocumento(tipo, ctx) {
   const builder = BUILDERS[tipo];
   if (!builder) return null;
   const client = (ctx && ctx.client) || {};
   const cases = (ctx && ctx.cases) || [];
+  const firm = firmFrom(ctx && ctx.empresa);
   const now = (ctx && ctx.now) ? new Date(ctx.now) : new Date();
   const dateStr = longDate(now);
-  const { title, lines } = builder({ client, cases, dateStr });
+  const { title, lines } = builder({ client, cases, dateStr, firm });
   const safe = (client.name || 'cliente').replace(/[^\w.\-]+/g, '_').slice(0, 40);
   const filename = `${TIPOS[tipo].replace(/\s+/g, '_')}_${safe}.pdf`;
-  return { title, filename, lines };
+  return { title, filename, lines, header: firmHeader(firm) };
 }
 
 // Importe con dos decimales (formato español) seguido de «euros». Se evita el
@@ -166,9 +199,10 @@ const PAGO = {
 };
 
 // Recibo/justificante de pago de honorarios. Documento puro para buildTextPdf.
-//   ctx = { client, concepto, amount, method, number, tasa, tasaPaid, now }
+//   ctx = { client, concepto, amount, method, number, tasa, tasaPaid, empresa, now }
 function buildRecibo(ctx) {
   const client = (ctx && ctx.client) || {};
+  const firm = firmFrom(ctx && ctx.empresa);
   const now = (ctx && ctx.now) ? new Date(ctx.now) : new Date();
   const dateStr = longDate(now);
   const amount = Math.round((Number(ctx && ctx.amount) || 0) * 100) / 100;
@@ -177,7 +211,7 @@ function buildRecibo(ctx) {
   const number = (ctx && ctx.number) ? String(ctx.number) : '';
 
   const lines = [];
-  lines.push({ t: `Recibo nº ${number || '—'} · ${dateStr} · ${FIRM.nombre}`, size: 9, color: [0.45, 0.45, 0.45] });
+  lines.push({ t: `Recibo nº ${number || '—'} · ${dateStr}`, size: 9, color: [0.45, 0.45, 0.45] });
   lines.push({ t: `He recibido de D./Dª ${orBlank(client.name)}, con NIF/NIE ${orBlank(client.nif)}, la cantidad de:`, gap: 16 });
   lines.push({ t: `${eur(amount)}`, bold: true, size: 15, gap: 8 });
   lines.push({ t: `en concepto de honorarios profesionales por: ${concepto}.`, gap: 8 });
@@ -185,13 +219,13 @@ function buildRecibo(ctx) {
   if (ctx && ctx.tasa && ctx.tasaPaid) {
     lines.push({ t: `Nota: además se ha abonado la tasa oficial correspondiente (${eur(ctx.tasa)}), que se ingresa en la Administración y no forma parte de estos honorarios.`, size: 9, color: [0.45, 0.45, 0.45], gap: 10 });
   }
-  lines.push({ t: `Y para que conste, se expide el presente recibo en ${FIRM.ciudad}, a ${dateStr}.`, gap: 18 });
+  lines.push({ t: `Y para que conste, se expide el presente recibo en ${firm.ciudad}, a ${dateStr}.`, gap: 18 });
   lines.push({ t: 'Firma y sello de la gestoría:', gap: 24 });
   lines.push({ t: '_________________________' });
-  lines.push({ t: `${FIRM.nombre} · ${FIRM.ciudad}`, size: 9, color: [0.45, 0.45, 0.45] });
+  lines.push({ t: `${firm.nombre}`, size: 9, color: [0.45, 0.45, 0.45] });
   const safe = (client.name || 'cliente').replace(/[^\w.\-]+/g, '_').slice(0, 40);
   const filename = `Recibo_${number ? number.replace(/[^\w.\-]+/g, '') + '_' : ''}${safe}.pdf`;
-  return { title: 'RECIBO', filename, lines };
+  return { title: 'RECIBO', filename, lines, header: firmHeader(firm) };
 }
 
 module.exports = { buildDocumento, buildRecibo, TIPOS, longDate, objetoTramite };

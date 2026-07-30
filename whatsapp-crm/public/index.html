@@ -421,6 +421,27 @@
         <p class="hint">Los mensajes automáticos aparecen en el chat marcados con 🤖. Variables disponibles: <code>{nombre}</code>, <code>{tramite}</code>, <code>{documentos}</code> y <code>{texto}</code> (recordatorios).</p>
 
         <div class="auto-card">
+          <h3>🏢 Datos de la gestoría</h3>
+          <p class="hint">Aparecen en la cabecera (membrete) de los recibos y los documentos pre-rellenados, junto al logo. Deja en blanco lo que no quieras mostrar.</p>
+          <label>Nombre / razón social</label>
+          <input type="text" id="auto-emp-nombre" placeholder="Burocracia Zero SLP">
+          <div class="auto-row">
+            <label style="flex:1">NIF / CIF<input type="text" id="auto-emp-cif" placeholder="B00000000"></label>
+            <label style="flex:1">Nº de colegiado/a<input type="text" id="auto-emp-col" placeholder="0146"></label>
+          </div>
+          <label>Dirección</label>
+          <input type="text" id="auto-emp-dir" placeholder="Calle …, nº … · CP Toledo">
+          <div class="auto-row">
+            <label style="flex:1">Ciudad<input type="text" id="auto-emp-ciudad" placeholder="Toledo"></label>
+            <label style="flex:1">Teléfono<input type="text" id="auto-emp-tel" placeholder="674573447"></label>
+          </div>
+          <div class="auto-row">
+            <label style="flex:1">Email<input type="email" id="auto-emp-email" placeholder="hola@…"></label>
+            <label style="flex:1">Web<input type="text" id="auto-emp-web" placeholder="www.…"></label>
+          </div>
+        </div>
+
+        <div class="auto-card">
           <h3>🕘 Horario de la gestoría</h3>
           <p class="hint">Se usa para la respuesta fuera de horario y como franja de envío de los mensajes programados.</p>
           <div class="auto-row" id="auto-days"></div>

@@ -1068,6 +1068,14 @@ async function main() {
     const autoDefaults = await req('GET', '/api/automations');
     assert(autoDefaults.status === 200 && autoDefaults.data.afterHours.enabled === false,
       'configuración por defecto: todo desactivado');
+    // Datos de la gestoría: vienen con valores por defecto y son editables.
+    assert(autoDefaults.data.empresa && autoDefaults.data.empresa.cif === 'B56918402',
+      'los datos de la gestoría traen el CIF por defecto');
+    const empSet = await req('PUT', '/api/automations', { empresa: { telefono: '925000000', web: '' } });
+    assert(empSet.data.empresa.telefono === '925000000' && empSet.data.empresa.web === ''
+      && empSet.data.empresa.cif === 'B56918402',
+      'los datos de la gestoría se editan (y se pueden dejar en blanco)');
+    await req('PUT', '/api/automations', { empresa: { telefono: '674573447', web: 'www.burocraciazero.es' } });
     // Copia de seguridad en la nube: la opción se guarda.
     const cloudSet = await req('PUT', '/api/automations', {
       microsoft: { backup: { enabled: true, folderPath: 'Copias CRM' } },
@@ -1480,9 +1488,11 @@ async function main() {
     const docsLib = require('./lib/documentos');
     const docCli = { id: 'x', name: 'Amina El Fassi', nif: 'X1234567Z', phone: '34600111222', email: 'amina@example.com' };
     const docCases = [{ id: 'c1', title: 'Renovación NIE', type: 'extranjeria', status: 'en_curso' }];
-    const autz = docsLib.buildDocumento('autorizacion', { client: docCli, cases: docCases, now: Date.UTC(2026, 6, 30) });
+    const autz = docsLib.buildDocumento('autorizacion', { client: docCli, cases: docCases, now: Date.UTC(2026, 6, 30), empresa: { nombre: 'Burocracia Zero SLP', ciudad: 'Toledo', cif: 'B56918402' } });
     const autzTxt = autz.lines.map((l) => (typeof l === 'string' ? l : l.t)).join('\n');
     assert(autz.title.includes('AUTORIZACIÓN'), 'la autorización tiene título correcto');
+    assert(autz.header && autz.header.name === 'Burocracia Zero SLP' && autzTxt.includes('Burocracia Zero SLP'),
+      'el documento lleva cabecera con los datos de la gestoría');
     assert(autzTxt.includes('Amina El Fassi') && autzTxt.includes('X1234567Z') && autzTxt.includes('34600111222'),
       'la autorización se rellena con nombre, NIF y teléfono del cliente');
     assert(autzTxt.includes('Renovación NIE'), 'la autorización cita el trámite en curso del cliente');
@@ -1512,12 +1522,20 @@ async function main() {
 
     console.log('Recibo de pago (PDF)');
     // Módulo puro: el recibo se rellena con cliente, importe y concepto.
-    const rec = docsLib.buildRecibo({ client: docCli, concepto: 'Renovación NIE', amount: 150.5, method: 'caja', number: 'R-2026-0001', now: Date.UTC(2026, 6, 30) });
+    const rec = docsLib.buildRecibo({ client: docCli, concepto: 'Renovación NIE', amount: 150.5, method: 'caja', number: 'R-2026-0001', now: Date.UTC(2026, 6, 30),
+      empresa: { nombre: 'Burocracia Zero SLP', cif: 'B56918402', colegiado: '0146', direccion: 'Calle Río Alberche 38', telefono: '674573447', email: 'jose@burocraciazero.es', web: 'www.burocraciazero.es' } });
     const recTxt = rec.lines.map((l) => (typeof l === 'string' ? l : l.t)).join('\n');
     assert(rec.title === 'RECIBO', 'el recibo tiene título correcto');
     assert(recTxt.includes('Amina El Fassi') && recTxt.includes('150,50 euros') && recTxt.includes('Renovación NIE'),
       'el recibo lleva cliente, importe con céntimos y concepto');
     assert(recTxt.includes('R-2026-0001') && /efectivo/.test(recTxt), 'el recibo lleva nº y forma de pago');
+    // Cabecera (membrete) con logo + datos de la gestoría.
+    assert(rec.header && rec.header.mark === true && rec.header.name === 'Burocracia Zero SLP',
+      'el recibo lleva cabecera con logo y nombre de la gestoría');
+    assert(rec.header.info.some((l) => l.includes('B56918402') && l.includes('colegiada')),
+      'la cabecera incluye CIF y nº de colegiado');
+    assert(rec.header.info.some((l) => l.includes('674573447') && l.includes('burocraciazero')),
+      'la cabecera incluye teléfono, email y web');
     // Endpoint: expediente con honorario cobrado → recibo PDF con nº persistente.
     const recCase = await req('POST', '/api/cases', { clientId, title: 'Recibo test', type: 'fiscal', fee: 90, paid: true, payMethod: 'transferencia' });
     const r1 = await fetch(`${BASE}/api/cases/${recCase.data.id}/recibo`);

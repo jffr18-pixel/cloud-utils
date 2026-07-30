@@ -3037,6 +3037,16 @@ async function renderAutomations() {
   $('#auto-rem-enabled').checked = s.clientReminders.enabled;
   $('#auto-rem-text').value = s.clientReminders.text;
 
+  const emp = s.empresa || {};
+  $('#auto-emp-nombre').value = emp.nombre || '';
+  $('#auto-emp-cif').value = emp.cif || '';
+  $('#auto-emp-col').value = emp.colegiado || '';
+  $('#auto-emp-dir').value = emp.direccion || '';
+  $('#auto-emp-ciudad').value = emp.ciudad || '';
+  $('#auto-emp-tel').value = emp.telefono || '';
+  $('#auto-emp-email').value = emp.email || '';
+  $('#auto-emp-web').value = emp.web || '';
+
   $('#auto-ren-enabled').checked = s.renewals.enabled;
   $('#auto-ren-days').value = s.renewals.daysBefore;
   $('#auto-ren-notify').checked = s.renewals.notifyClient;
@@ -3127,6 +3137,16 @@ $('#btn-auto-save').addEventListener('click', async () => {
     await api('automations', {
       method: 'PUT',
       body: {
+        empresa: {
+          nombre: $('#auto-emp-nombre').value.trim(),
+          cif: $('#auto-emp-cif').value.trim(),
+          colegiado: $('#auto-emp-col').value.trim(),
+          direccion: $('#auto-emp-dir').value.trim(),
+          ciudad: $('#auto-emp-ciudad').value.trim(),
+          telefono: $('#auto-emp-tel').value.trim(),
+          email: $('#auto-emp-email').value.trim(),
+          web: $('#auto-emp-web').value.trim(),
+        },
         businessHours: { days, open: $('#auto-open').value, close: $('#auto-close').value },
         welcome: {
           enabled: $('#auto-wel-enabled').checked,

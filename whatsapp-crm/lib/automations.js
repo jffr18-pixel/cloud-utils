@@ -10,6 +10,18 @@
 // pestaña «Automatizaciones» de la interfaz.
 
 const DEFAULTS = {
+  // Datos de la gestoría, para la cabecera (membrete) de recibos y documentos.
+  // Editables desde Automatizaciones → «Datos de la gestoría».
+  empresa: {
+    nombre: 'Burocracia Zero SLP',
+    cif: 'B56918402',
+    direccion: 'Calle Río Alberche nº 38, local 32 · 45007 Toledo',
+    ciudad: 'Toledo',
+    telefono: '674573447',
+    email: 'jose@burocraciazero.es',
+    web: 'www.burocraciazero.es',
+    colegiado: '0146',
+  },
   businessHours: {
     // 0 = domingo … 6 = sábado (hora local del servidor)
     days: [1, 2, 3, 4, 5],

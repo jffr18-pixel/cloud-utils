@@ -54,7 +54,12 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   genera un recibo/justificante con el nombre y NIF del cliente, el importe (con
   céntimos), el concepto (el trámite) y la forma de pago. Lleva un **número de
   recibo** que se asigna una sola vez (las reimpresiones mantienen el mismo
-  número). Para dárselo al cliente o enviárselo. Sin dependencias.
+  número) y una **cabecera con el logo y los datos de la gestoría** (nombre,
+  CIF, dirección, teléfono, email, web, nº de colegiado). Para dárselo al
+  cliente o enviárselo. Sin dependencias.
+- **🏢 Datos de la gestoría**: editables en Automatizaciones → «Datos de la
+  gestoría». Se usan como membrete (con el logotipo) en los recibos y en los
+  documentos pre-rellenados. Lo que dejes en blanco no aparece.
 - **📝 Plantillas**: respuestas frecuentes reutilizables desde el chat, con la
   variable `{nombre}` que se sustituye por el nombre del cliente.
 - **⏰ Recordatorios**: seguimientos con fecha, opcionalmente ligados a un
