@@ -23,6 +23,17 @@ function esc(s) {
   return div.innerHTML;
 }
 
+// Formatea un importe en euros con dos decimales (para céntimos). Los importes
+// enteros se muestran sin decimales (300 €); los que tienen parte decimal, con
+// dos (150,50 €). Redondea a céntimo para evitar ruido de coma flotante.
+function money(n) {
+  const v = Math.round((Number(n) || 0) * 100) / 100;
+  const dec = Number.isInteger(v) ? 0 : 2;
+  return v.toLocaleString('es-ES', { minimumFractionDigits: dec, maximumFractionDigits: 2 });
+}
+// Importe con el símbolo del euro.
+const eur = (n) => money(n) + ' €';
+
 function fmtTime(ts) {
   if (!ts) return '';
   const d = new Date(ts);
@@ -113,6 +124,12 @@ function openDialog(title, fields, onSubmit) {
     } else if (f.type === 'custom') {
       // Campo con render propio; el valor se guarda en window['dlg_'+name].
       input = `<div id="${id}"></div>`;
+    } else if (f.type === 'number') {
+      // step="any" (o el indicado) permite decimales; sin él, el navegador
+      // asume step=1 y rechaza valores como 150,50. inputmode="decimal" abre el
+      // teclado numérico con coma en el móvil.
+      input = `<input id="${id}" type="number" inputmode="decimal" step="${esc(f.step || 'any')}"`
+        + `${f.min !== undefined ? ` min="${esc(f.min)}"` : ''} value="${esc(f.value || '')}" ${f.required ? 'required' : ''}>`;
     } else {
       input = `<input id="${id}" type="${f.type || 'text'}" value="${esc(f.value || '')}" ${f.required ? 'required' : ''}>`;
     }
@@ -1632,7 +1649,7 @@ function caseFields(item = {}, clients = [], fichas = []) {
     { name: 'registryNumber', label: 'Nº de registro / expediente de la administración (lo ve el cliente)', value: item.registryNumber || '' },
     { name: 'trackingUrl', label: 'URL de seguimiento en la administración (opcional; el cliente verá un botón para consultarlo)', type: 'url', value: item.trackingUrl || '' },
     { name: 'expiryDate', label: 'Fecha de caducidad (TIE, NIE, ITV… avisa antes de vencer)', type: 'date', value: item.expiryDate },
-    { name: 'fee', label: 'Honorario de la gestoría (€)', type: 'number', value: item.fee || '' },
+    { name: 'fee', label: 'Honorario de la gestoría (€)', type: 'number', step: '0.01', min: 0, value: item.fee || '' },
     {
       name: 'paid', label: 'Honorario cobrado', type: 'select', value: item.paid ? 'si' : 'no',
       options: [['no', 'Pendiente de cobro'], ['si', 'Cobrado']],
@@ -1643,7 +1660,7 @@ function caseFields(item = {}, clients = [], fichas = []) {
         ...(item.payMethod === 'banco' ? [['banco', '🏦 Banco']] : [])],
     },
     { name: 'taxModel', label: 'Tasa oficial · modelo (ej. «790 cód. 012», «Tasa 052»)', value: item.taxModel || '' },
-    { name: 'taxAmount', label: 'Tasa oficial · importe (€)', type: 'number', value: item.taxAmount || '' },
+    { name: 'taxAmount', label: 'Tasa oficial · importe (€)', type: 'number', step: '0.01', min: 0, value: item.taxAmount || '' },
     {
       name: 'taxPaid', label: 'Tasa oficial abonada', type: 'select', value: item.taxPaid ? 'si' : 'no',
       options: [['no', 'Pendiente de pago'], ['si', 'Abonada']],
@@ -1782,10 +1799,10 @@ async function renderCases() {
     const payIcon = payMeta ? ' ' + payMeta.icon : '';
     const payTitle = payMeta ? ' (' + payMeta.label.toLowerCase() + ')' : '';
     const feeBadge = fee
-      ? `<span class="fee-badge ${c.paid ? 'paid' : 'due'}" title="${c.paid ? 'Honorario cobrado' + payTitle : 'Honorario pendiente de cobro'}">${fee.toLocaleString('es-ES')} € ${c.paid ? '✓' : '•'}${payIcon}</span>` : '';
+      ? `<span class="fee-badge ${c.paid ? 'paid' : 'due'}" title="${c.paid ? 'Honorario cobrado' + payTitle : 'Honorario pendiente de cobro'}">${eur(fee)} ${c.paid ? '✓' : '•'}${payIcon}</span>` : '';
     const taxAmt = Number(c.taxAmount) || 0;
     const taxBadge = (taxAmt || c.taxModel)
-      ? `<span class="tax-badge ${c.taxPaid ? 'paid' : 'due'}" title="Tasa oficial${c.taxModel ? ' (' + esc(c.taxModel) + ')' : ''}: ${c.taxPaid ? 'abonada' : 'pendiente de pago'}">🏛️ ${taxAmt ? taxAmt.toLocaleString('es-ES') + ' € ' : ''}${c.taxPaid ? '✓' : '•'}</span>` : '';
+      ? `<span class="tax-badge ${c.taxPaid ? 'paid' : 'due'}" title="Tasa oficial${c.taxModel ? ' (' + esc(c.taxModel) + ')' : ''}: ${c.taxPaid ? 'abonada' : 'pendiente de pago'}">🏛️ ${taxAmt ? eur(taxAmt) + ' ' : ''}${c.taxPaid ? '✓' : '•'}</span>` : '';
     const subBadge = c.submittedDate
       ? `<span class="sub-badge" title="Presentado en la administración el ${fmtDate(c.submittedDate)} (visible para el cliente)">📨 ${fmtDate(c.submittedDate)}</span>` : '';
     const regBadge = c.registryNumber
@@ -2095,7 +2112,6 @@ async function renderReports() {
   $('#rep-chart-seg').innerHTML = barList(segEntries, SEGMENT_LABEL);
 
   // Ingresos: facturado / cobrado / pendiente + facturación por área.
-  const eur = (n) => (Number(n) || 0).toLocaleString('es-ES') + ' €';
   // Desglose de lo cobrado por forma de pago (solo las que tengan importe).
   const bm = r.cobradoByMethod || { caja: r.cobradoCaja || 0, banco: r.cobradoBanco || 0, sin: r.cobradoSinMetodo || 0 };
   const methodCards = ['caja', 'transferencia', 'tarjeta', 'banco']
@@ -2148,7 +2164,6 @@ async function renderPerformance() {
   let p;
   try { p = await api('performance?' + reportQuery()); }
   catch { box.innerHTML = '<p class="hint">No se pudo cargar el rendimiento.</p>'; return; }
-  const eur = (n) => (Number(n) || 0).toLocaleString('es-ES') + ' €';
   const resp = (m) => (m == null ? '—' : m < 60 ? `${m} min` : `${Math.round(m / 60 * 10) / 10} h`);
   if (!p.isolation) {
     box.innerHTML = '<p class="hint">Con un solo usuario no hay reparto que mostrar. Cuando cada compañero (p. ej. José y Carmen) entre con su propio usuario y sus clientes queden a su nombre, aquí verás las métricas de cada uno.</p>';
@@ -2190,7 +2205,6 @@ async function renderPerformance() {
 
 async function renderReceivables() {
   const r = await api('receivables');
-  const eur = (n) => (Number(n) || 0).toLocaleString('es-ES') + ' €';
   $('#cobros-cards').innerHTML = `
     <div class="card ${r.total ? 'warn' : ''}"><div class="num">${eur(r.total)}</div><div class="lbl">Total por cobrar</div></div>
     <div class="card"><div class="num">${eur(r.totalHonorarios)}</div><div class="lbl">Honorarios pendientes</div></div>

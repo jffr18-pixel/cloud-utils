@@ -886,6 +886,13 @@ async function main() {
       checklist: [{ item: 'Pasaporte', done: true }, { item: 'Empadronamiento', done: false }, { item: '', done: true }],
     });
     assert(feed.data.fee === 250 && feed.data.paid === true, 'expediente guarda honorario y estado de cobro');
+    // Honorarios con céntimos (dos decimales): se conservan; más de dos se
+    // redondean al céntimo.
+    const feeDec = await req('POST', '/api/cases', { clientId, title: 'Con céntimos', type: 'fiscal', fee: 150.5, taxAmount: 34.99 });
+    assert(feeDec.data.fee === 150.5 && feeDec.data.taxAmount === 34.99,
+      'el honorario y la tasa guardan dos decimales (céntimos)');
+    const feeRnd = await req('PUT', `/api/cases/${feeDec.data.id}`, { fee: 150.555, status: 'completado' });
+    assert(feeRnd.data.fee === 150.56, 'un importe con más de dos decimales se redondea al céntimo');
     assert(feed.data.checklist.length === 2 && feed.data.checklist[0].done === true,
       'checklist filtra ítems vacíos y conserva marcas');
     const feed2 = await req('PUT', `/api/cases/${feed.data.id}`, {

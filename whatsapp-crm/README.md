@@ -138,7 +138,8 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
 - **🏛️ Tasas oficiales por expediente**: además de tus honorarios, cada
   expediente puede llevar la tasa oficial (modelo 790, tasa 052…), su importe y
   si está abonada o pendiente, con distintivo propio separado del cobro de la
-  gestoría.
+  gestoría. Tanto los honorarios como las tasas admiten **dos decimales**
+  (céntimos, p. ej. `104,05 €`); los importes enteros se muestran sin decimales.
 - **📖 Base de conocimiento de trámites**: catálogo de honorarios, tasas
   orientativas y documentos por trámite (extranjería, tráfico…). Desde el chat,
   el botón 📖 busca un trámite (tolerante a acentos) e inserta la respuesta

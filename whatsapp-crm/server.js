@@ -831,6 +831,12 @@ function publicBase(req) {
   return `${proto}://${host}`;
 }
 
+// Redondea un importe a dos decimales (céntimos), evitando el ruido de coma
+// flotante. Se usa para honorarios y tasas.
+function money2(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
 function longDate(d = new Date()) {
   const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
     'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -2218,12 +2224,12 @@ async function handleApi(req, res, url) {
         // el aviso de renovación antes de que venza.
         expiryDate: b.expiryDate || null,
         docs: b.docs || '', // documentación necesaria (para la automatización)
-        fee: Number(b.fee) || 0, // honorario del trámite (€)
+        fee: money2(b.fee), // honorario del trámite (€, con céntimos)
         paid: Boolean(b.paid), // cobrado o pendiente
         payMethod: PAY_METHODS.includes(b.payMethod) ? b.payMethod : '', // forma de cobro: caja | banco
         // Tasa oficial del trámite, separada de los honorarios de la gestoría.
         taxModel: b.taxModel ? String(b.taxModel).trim().slice(0, 60) : '', // ej. «790 cód. 012»
-        taxAmount: Number(b.taxAmount) || 0, // importe de la tasa oficial (€)
+        taxAmount: money2(b.taxAmount), // importe de la tasa oficial (€, con céntimos)
         taxPaid: Boolean(b.taxPaid), // tasa abonada o pendiente
         // Checklist de documentación recibida: [{ item, done }]
         checklist: Array.isArray(b.checklist)
@@ -2264,11 +2270,11 @@ async function handleApi(req, res, url) {
         item.expiryNotifiedAt = null;
         item.renewalCaseId = null;
       }
-      if (b.fee !== undefined) item.fee = Number(b.fee) || 0;
+      if (b.fee !== undefined) item.fee = money2(b.fee);
       if (b.paid !== undefined) item.paid = Boolean(b.paid);
       if (b.payMethod !== undefined) item.payMethod = PAY_METHODS.includes(b.payMethod) ? b.payMethod : '';
       if (b.taxModel !== undefined) item.taxModel = String(b.taxModel).trim().slice(0, 60);
-      if (b.taxAmount !== undefined) item.taxAmount = Number(b.taxAmount) || 0;
+      if (b.taxAmount !== undefined) item.taxAmount = money2(b.taxAmount);
       if (b.taxPaid !== undefined) item.taxPaid = Boolean(b.taxPaid);
       if (Array.isArray(b.checklist)) {
         item.checklist = b.checklist
