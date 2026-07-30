@@ -1670,6 +1670,16 @@ async function main() {
       'descarga de la copia en gzip');
     const bkBad = await fetch(`${BASE}/api/backups/..%2F..%2Fdb.json`);
     assert(bkBad.status === 404, 'nombres de copia maliciosos rechazados');
+    // Opción «solo nube»: el ajuste se guarda.
+    const coSet = await req('PUT', '/api/automations', { microsoft: { backup: { cloudOnly: true } } });
+    assert(coSet.data.microsoft.backup.cloudOnly === true, 'la opción «copias solo en la nube» se guarda');
+    await req('PUT', '/api/automations', { microsoft: { backup: { cloudOnly: false } } });
+    // Módulo de copias: remove() crea y borra una copia local, y valida el nombre.
+    const backupLib = require('./lib/backup');
+    const madeName = backupLib.create(true).name; // en el dir del proceso de test
+    assert(backupLib.remove(madeName) === true, 'remove() borra una copia local existente');
+    assert(backupLib.remove(madeName) === false, 'remove() sobre una copia inexistente devuelve false');
+    assert(backupLib.remove('../../db.json') === false, 'remove() rechaza nombres maliciosos');
 
     console.log('Documentos por expediente');
     const link = await req('PUT', `/api/messages/${fileMsg.data.id}`, { caseId: kase.data.id });

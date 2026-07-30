@@ -3091,6 +3091,7 @@ async function renderAutomations() {
   $('#auto-ms-sp-folder').value = s.microsoft.sharepoint.folderTemplate;
   $('#auto-ms-backup').checked = (s.microsoft.backup || {}).enabled || false;
   $('#auto-ms-backup-folder').value = (s.microsoft.backup || {}).folderPath || 'Copias de seguridad CRM';
+  $('#auto-ms-backup-cloudonly').checked = (s.microsoft.backup || {}).cloudOnly || false;
   api('test-microsoft').then((r) => {
     $('#ms-status').textContent = r.configured
       ? 'Credenciales de Microsoft configuradas en el servidor.'
@@ -3225,6 +3226,7 @@ $('#btn-auto-save').addEventListener('click', async () => {
           backup: {
             enabled: $('#auto-ms-backup').checked,
             folderPath: $('#auto-ms-backup-folder').value.trim() || 'Copias de seguridad CRM',
+            cloudOnly: $('#auto-ms-backup-cloudonly').checked,
           },
         },
       },

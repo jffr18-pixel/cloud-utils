@@ -64,4 +64,13 @@ function read(name) {
   return fs.createReadStream(full);
 }
 
-module.exports = { list, create, ensureDaily, read, BACKUPS_DIR };
+// Borra una copia local (p. ej. tras subirla a la nube en modo «solo nube»).
+function remove(name) {
+  if (!/^backup-[\d-]+\.json\.gz$/.test(name)) return false;
+  const full = path.join(BACKUPS_DIR, name);
+  if (!fs.existsSync(full)) return false;
+  fs.rmSync(full, { force: true });
+  return true;
+}
+
+module.exports = { list, create, ensureDaily, read, remove, BACKUPS_DIR };

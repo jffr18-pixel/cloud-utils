@@ -205,6 +205,10 @@ const DEFAULTS = {
     backup: {
       enabled: false,
       folderPath: 'Copias de seguridad CRM',
+      // Si está activo, tras subir cada copia a SharePoint se borra la copia
+      // local (ahorra disco en el CRM). Si la subida falla, la local se
+      // conserva para no perder la copia.
+      cloudOnly: false,
     },
   },
   // Plantilla aprobada de Meta para cuando la ventana de 24 h está cerrada

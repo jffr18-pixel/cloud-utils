@@ -2885,7 +2885,15 @@ async function handleApi(req, res, url) {
       // Subida a la nube de Microsoft (si está activada).
       try {
         const cloud = await uploadBackupToCloud(db, b.name);
-        if (cloud) { b.cloudUrl = cloud.webUrl; security.audit('backup_nube', { name: b.name }); }
+        if (cloud) {
+          b.cloudUrl = cloud.webUrl;
+          security.audit('backup_nube', { name: b.name });
+          // «Solo nube»: se borra la copia local tras subirla correctamente.
+          if (auto.getSettings(db).microsoft.backup.cloudOnly) {
+            backup.remove(b.name);
+            b.localRemoved = true;
+          }
+        }
       } catch (err) {
         b.cloudError = err.message;
         console.error('No se pudo subir la copia a la nube:', err.message);
@@ -3891,11 +3899,28 @@ setInterval(() => {
   // Resumen diario por Telegram (una vez al día, a partir de la hora fijada).
   maybeTelegramDigest(db).catch((err) => console.error('Resumen Telegram:', telegram.redact(err && err.message)));
   try {
-    const created = backup.ensureDaily();
-    if (created) {
+    // Copia diaria: una al día. Se usa una marca de fecha en los ajustes (en vez
+    // de fiarse de si existe el fichero local), para que en modo «solo nube»
+    // —donde la copia local se borra tras subirla— no se vuelva a crear en cada
+    // ciclo del planificador.
+    const nb = new Date();
+    const dayKey = `${nb.getFullYear()}${String(nb.getMonth() + 1).padStart(2, '0')}${String(nb.getDate()).padStart(2, '0')}`;
+    if (!db.settings || typeof db.settings !== 'object') db.settings = {};
+    if (db.settings.lastDailyBackup !== dayKey) {
+      const created = backup.create(false); // backup-AAAAMMDD.json.gz
+      db.settings.lastDailyBackup = dayKey;
+      save();
       console.log(`Copia de seguridad diaria creada: ${created.name}`);
+      const cloudOnly = auto.getSettings(db).microsoft.backup.cloudOnly;
       uploadBackupToCloud(db, created.name)
-        .then((cloud) => { if (cloud) console.log(`Copia subida a la nube: ${created.name}`); })
+        .then((cloud) => {
+          if (!cloud) return;
+          console.log(`Copia subida a la nube: ${created.name}`);
+          if (cloudOnly) {
+            backup.remove(created.name);
+            console.log(`Copia local eliminada (solo nube): ${created.name}`);
+          }
+        })
         .catch((err) => console.error('No se pudo subir la copia a la nube:', err.message));
     }
   } catch (err) {

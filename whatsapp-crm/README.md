@@ -193,6 +193,9 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
 - **☁️ Copias de seguridad en la nube (Microsoft)**: además de la copia local
   diaria, la copia se sube automáticamente a SharePoint/OneDrive (activable en
   Automatizaciones → Microsoft 365), para no perder nada si falla el servidor.
+  Con la opción **«copias solo en SharePoint»** se borra la copia local tras
+  subirla, para no ocupar disco en el CRM (si la subida falla, la copia local se
+  conserva para no perderla).
 - **📊 Panel con gráficas**: mensajes por día (recibidos/enviados),
   expedientes por estado, mensajes de la semana y tiempo medio de primera
   respuesta de los últimos 30 días.
