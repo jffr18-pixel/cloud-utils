@@ -213,7 +213,11 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
     escriba se le responde **solo** con un aviso de que la gestoría está
     cerrada (no se le manda el menú, la bienvenida ni la respuesta fuera de
     horario), como máximo una vez al día por cliente. Variables `{nombre}`,
-    `{desde}` y `{hasta}` (fechas en formato largo).
+    `{desde}` y `{hasta}` (fechas en formato largo). Además, durante el cierre
+    **se pausan todos los envíos automáticos por temporizador** (cobros
+    automáticos, avisos de renovación/caducidad, reclamos de documentación y
+    recordatorios al cliente): no sale nada a los clientes hasta la vuelta. Los
+    mensajes que programes tú a mano (con fecha y hora concretas) sí se envían.
   - *Avisos de expediente*: al pasar un trámite a «en curso» o «completado»,
     el cliente recibe el aviso solo.
   - *Petición y reclamo de documentación*: al poner un expediente en

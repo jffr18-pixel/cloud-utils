@@ -456,6 +456,10 @@ async function onCaseStatusChanged(db, item, client, send, now = new Date()) {
 async function runScheduled(db, send, now = new Date()) {
   const s = getSettings(db);
   const actions = [];
+  // Durante las vacaciones/cierre no sale NINGÚN mensaje automático al cliente
+  // (cobros automáticos, avisos de renovación, reclamos de documentación,
+  // recordatorios…): no hay nadie para dar seguimiento. Se reanuda al terminar.
+  if (isHolidayActive(db, now)) return actions;
   if (!isBusinessOpen(s, now)) return actions;
 
   // Reclamo de documentación pendiente.

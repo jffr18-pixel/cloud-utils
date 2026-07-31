@@ -2031,6 +2031,22 @@ async function main() {
     // Desactivado → no responde aunque la fecha esté en rango.
     const holOff = { settings: { automations: { holiday: { enabled: false, from: '2026-08-01', to: '2026-08-17', message: 'x' } } } };
     assert(autoLib.isHolidayActive(holOff, new Date('2026-08-05T10:00:00')) === false, 'desactivado → no activo');
+    // En vacaciones NO salen los envíos automáticos por temporizador.
+    const schedDb = {
+      settings: { automations: {
+        holiday: { enabled: true, from: '2026-08-01', to: '2026-08-17', message: 'x' },
+        businessHours: { days: [0, 1, 2, 3, 4, 5, 6], open: '00:00', close: '23:59' },
+        docs: { enabled: true, followUpDays: 0, requestText: 'r', followUpText: 'Reclamo {nombre}' },
+      } },
+      clients: [{ id: 'c1', name: 'Ana' }],
+      cases: [{ id: 'k1', clientId: 'c1', status: 'esperando_documentacion', docsRequestedAt: 1, docsFollowUpAt: null, title: 'T' }],
+      messages: [], reminders: [], appointments: [],
+    };
+    const noop = async () => {};
+    const inHol = await autoLib.runScheduled(schedDb, noop, new Date('2026-08-05T10:00:00'));
+    assert(Array.isArray(inHol) && inHol.length === 0, 'en vacaciones no se ejecuta ningún envío automático');
+    const outHol = await autoLib.runScheduled(schedDb, noop, new Date('2026-07-30T10:00:00'));
+    assert(outHol.some((a) => a.type === 'docs_follow_up'), 'fuera de vacaciones sí se reclama la documentación');
 
     console.log('Asistente (núcleo)');
     const asst = require('./lib/assistant');
