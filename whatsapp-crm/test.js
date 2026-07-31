@@ -2013,6 +2013,25 @@ async function main() {
     console.log('Aislamiento por usuario');
     await testIsolationServer();
 
+    console.log('Vacaciones / cierre temporal');
+    const autoLib = require('./lib/automations');
+    const holDb = { settings: { automations: { holiday: { enabled: true, from: '2026-08-01', to: '2026-08-17', message: 'Cerrado del {desde} al {hasta}. Hola {nombre}.' } } } };
+    assert(autoLib.isHolidayActive(holDb, new Date('2026-08-05T10:00:00')) === true, 'vacaciones activas dentro del rango');
+    assert(autoLib.isHolidayActive(holDb, new Date('2026-07-31T10:00:00')) === false, 'fuera del rango, no activas');
+    assert(autoLib.isHolidayActive(holDb, new Date('2026-08-18T10:00:00')) === false, 'pasado el rango, no activas');
+    let holSent = null;
+    const holSend = async (c, t) => { holSent = t; };
+    const holClient = { id: 'h1', name: 'Amina El Fassi' };
+    await autoLib.maybeHoliday(holDb, holClient, holSend, new Date('2026-08-05T10:00:00'));
+    assert(holSent && holSent.includes('17 de agosto de 2026') && holSent.includes('Amina'),
+      'el aviso de vacaciones se rellena con la fecha de vuelta y el nombre');
+    holSent = null;
+    await autoLib.maybeHoliday(holDb, holClient, holSend, new Date('2026-08-05T14:00:00'));
+    assert(holSent === null, 'no se repite el aviso al mismo cliente el mismo día');
+    // Desactivado → no responde aunque la fecha esté en rango.
+    const holOff = { settings: { automations: { holiday: { enabled: false, from: '2026-08-01', to: '2026-08-17', message: 'x' } } } };
+    assert(autoLib.isHolidayActive(holOff, new Date('2026-08-05T10:00:00')) === false, 'desactivado → no activo');
+
     console.log('Asistente (núcleo)');
     const asst = require('./lib/assistant');
     // Lista blanca de Telegram.

@@ -34,6 +34,16 @@ const DEFAULTS = {
     // No repetir la respuesta automática al mismo cliente durante estas horas.
     cooldownHours: 12,
   },
+  // Vacaciones / cierre temporal: entre las fechas «from» y «to» (incluidas),
+  // a quien escriba se le responde con este aviso (y solo con este: no se le
+  // envía el menú, la bienvenida ni la respuesta fuera de horario). {desde} y
+  // {hasta} se sustituyen por las fechas en formato largo.
+  holiday: {
+    enabled: true,
+    from: '2026-08-01',
+    to: '2026-08-17',
+    message: 'Hola {nombre} 👋 Gracias por tu mensaje. La gestoría permanece cerrada por vacaciones del {desde} al {hasta}. Te atenderemos a la vuelta lo antes posible. Si es urgente, déjanoslo dicho por aquí y lo priorizamos a nuestro regreso. ¡Gracias por tu paciencia! — Burocracia Zero',
+  },
   // Mensaje de servicios: se envía a CUALQUIER cliente que escriba (nuevo o
   // ya existente), como máximo una vez cada N horas por cliente. Si se
   // definen áreas, se envía como menú interactivo de WhatsApp y, al elegir
@@ -376,6 +386,38 @@ async function maybeAutoReply(db, client, send, now = new Date()) {
   return true;
 }
 
+const MESES_LARGO = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+  'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+// «2026-08-17» → «17 de agosto de 2026». Sin usar Date (evita zonas horarias).
+function fmtLongDate(ymdStr) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymdStr || ''));
+  if (!m) return String(ymdStr || '');
+  return `${Number(m[3])} de ${MESES_LARGO[Number(m[2]) - 1]} de ${m[1]}`;
+}
+function ymd(date) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}`;
+}
+// ¿Estamos dentro del periodo de vacaciones/cierre? (activo y hoy en el rango).
+function isHolidayActive(db, now = new Date()) {
+  const h = getSettings(db).holiday || {};
+  if (!h.enabled || !h.from || !h.to) return false;
+  const today = ymd(now);
+  return today >= h.from && today <= h.to;
+}
+// Responde con el aviso de vacaciones (una vez cada ~20 h por cliente).
+async function maybeHoliday(db, client, send, now = new Date()) {
+  if (!isHolidayActive(db, now)) return false;
+  const h = getSettings(db).holiday;
+  const cooldownMs = 20 * 3600 * 1000;
+  if (client.holidayNotifiedAt && now.getTime() - client.holidayNotifiedAt < cooldownMs) return false;
+  client.holidayNotifiedAt = now.getTime();
+  await send(client, fillTemplate(h.message, {
+    nombre: firstName(client), desde: fmtLongDate(h.from), hasta: fmtLongDate(h.to),
+  }));
+  return true;
+}
+
 // 2) y 3) Reacción a un cambio de estado de expediente.
 async function onCaseStatusChanged(db, item, client, send, now = new Date()) {
   const s = getSettings(db);
@@ -603,6 +645,8 @@ module.exports = {
   maybeWelcome,
   maybeMenuReply,
   maybeAutoReply,
+  isHolidayActive,
+  maybeHoliday,
   onCaseStatusChanged,
   onAppointmentCreated,
   runScheduled,

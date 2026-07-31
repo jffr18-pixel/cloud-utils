@@ -209,6 +209,11 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   por defecto):
   - *Respuesta fuera de horario*: contesta automáticamente cuando un cliente
     escribe fuera del horario configurado (una vez por cliente cada 12 h).
+  - *Vacaciones / cierre temporal*: entre dos fechas (incluidas), a quien
+    escriba se le responde **solo** con un aviso de que la gestoría está
+    cerrada (no se le manda el menú, la bienvenida ni la respuesta fuera de
+    horario), como máximo una vez al día por cliente. Variables `{nombre}`,
+    `{desde}` y `{hasta}` (fechas en formato largo).
   - *Avisos de expediente*: al pasar un trámite a «en curso» o «completado»,
     el cliente recibe el aviso solo.
   - *Petición y reclamo de documentación*: al poner un expediente en

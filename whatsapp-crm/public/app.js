@@ -3083,6 +3083,12 @@ async function renderAutomations() {
   $('#auto-collect-cooldown').value = ac.cooldownDays ?? 7;
   $('#auto-collect-tax').checked = Boolean(ac.includeTax);
 
+  const hol = s.holiday || {};
+  $('#auto-hol-enabled').checked = Boolean(hol.enabled);
+  $('#auto-hol-from').value = hol.from || '';
+  $('#auto-hol-to').value = hol.to || '';
+  $('#auto-hol-text').value = hol.message || '';
+
   $('#auto-tr-enabled').checked = s.transcription.enabled;
   $('#auto-legal-text').value = s.legal.text;
 
@@ -3159,6 +3165,12 @@ $('#btn-auto-save').addEventListener('click', async () => {
           frequencyHours: Number($('#auto-wel-hours').value) || 24,
         },
         afterHours: { enabled: $('#auto-ah-enabled').checked, message: $('#auto-ah-message').value },
+        holiday: {
+          enabled: $('#auto-hol-enabled').checked,
+          from: $('#auto-hol-from').value,
+          to: $('#auto-hol-to').value,
+          message: $('#auto-hol-text').value,
+        },
         statusNotify: {
           enabled: $('#auto-sn-enabled').checked,
           onEnCurso: $('#auto-sn-encurso').checked,

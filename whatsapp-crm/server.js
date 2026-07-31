@@ -1220,7 +1220,14 @@ async function handleWebhookPayload(db, body) {
   // servicios (máx. una vez cada N horas por cliente) y la respuesta fuera
   // de horario.
   const alreadyGreeted = new Set();
+  const onHoliday = auto.isHolidayActive(db);
   for (const item of freshIncoming) {
+    // En vacaciones/cierre: solo el aviso de vacaciones, nada más.
+    if (onHoliday) {
+      await auto.maybeHoliday(db, item.client, autoSender(db));
+      alreadyGreeted.add(item.client.id);
+      continue;
+    }
     const wasMenuReply = await auto.maybeMenuReply(db, item.client, item.text, autoSender(db));
     if (wasMenuReply || alreadyGreeted.has(item.client.id)) continue;
     alreadyGreeted.add(item.client.id);
@@ -2194,10 +2201,14 @@ async function handleApi(req, res, url) {
       read: false,
     });
     save();
-    const wasMenuReply = await auto.maybeMenuReply(db, client, b.text || '', autoSender(db));
-    if (!wasMenuReply) {
-      await auto.maybeWelcome(db, client, autoSender(db));
-      await auto.maybeAutoReply(db, client, autoSender(db));
+    if (auto.isHolidayActive(db)) {
+      await auto.maybeHoliday(db, client, autoSender(db));
+    } else {
+      const wasMenuReply = await auto.maybeMenuReply(db, client, b.text || '', autoSender(db));
+      if (!wasMenuReply) {
+        await auto.maybeWelcome(db, client, autoSender(db));
+        await auto.maybeAutoReply(db, client, autoSender(db));
+      }
     }
     return json(res, 201, { ok: true, clientId: client.id });
   }

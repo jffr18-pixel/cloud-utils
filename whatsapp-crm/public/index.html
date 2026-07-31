@@ -452,6 +452,17 @@
         </div>
 
         <div class="auto-card">
+          <h3><label><input type="checkbox" id="auto-hol-enabled"> 🏖️ Vacaciones / cierre temporal</label></h3>
+          <p class="hint">Entre las dos fechas (incluidas), a quien escriba se le responde <strong>solo</strong> con este aviso (no se le manda el menú, la bienvenida ni la respuesta fuera de horario). Como máximo una vez al día por cliente. Variables: <code>{nombre}</code>, <code>{desde}</code>, <code>{hasta}</code>.</p>
+          <div class="auto-row">
+            <label>Desde <input type="date" id="auto-hol-from"></label>
+            <label>Hasta <input type="date" id="auto-hol-to"></label>
+          </div>
+          <label>Mensaje</label>
+          <textarea id="auto-hol-text" rows="3"></textarea>
+        </div>
+
+        <div class="auto-card">
           <h3><label><input type="checkbox" id="auto-wel-enabled"> 👋 Menú de servicios al escribirnos</label></h3>
           <p class="hint">Se envía a <strong>cualquier</strong> cliente que escriba — nuevo o ya existente — como máximo una vez cada las horas indicadas. Llega como <strong>menú de WhatsApp con botón</strong>: el cliente elige un área y recibe sus precios al momento (también funciona si escribe el número o el nombre del área). Si usas esta, desactiva la automatización equivalente de YCloud para no duplicar.</p>
           <label>Texto de presentación</label>
