@@ -2028,6 +2028,10 @@ async function main() {
     holSent = null;
     await autoLib.maybeHoliday(holDb, holClient, holSend, new Date('2026-08-05T14:00:00'));
     assert(holSent === null, 'no se repite el aviso al mismo cliente el mismo día');
+    // Al día siguiente sí se le vuelve a avisar (una vez por día).
+    holSent = null;
+    await autoLib.maybeHoliday(holDb, holClient, holSend, new Date('2026-08-06T09:00:00'));
+    assert(holSent !== null, 'al día siguiente se le avisa de nuevo (una vez al día)');
     // Desactivado → no responde aunque la fecha esté en rango.
     const holOff = { settings: { automations: { holiday: { enabled: false, from: '2026-08-01', to: '2026-08-17', message: 'x' } } } };
     assert(autoLib.isHolidayActive(holOff, new Date('2026-08-05T10:00:00')) === false, 'desactivado → no activo');

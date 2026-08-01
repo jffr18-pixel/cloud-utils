@@ -39,7 +39,7 @@ const DEFAULTS = {
   // envía el menú, la bienvenida ni la respuesta fuera de horario). {desde} y
   // {hasta} se sustituyen por las fechas en formato largo.
   holiday: {
-    enabled: true,
+    enabled: false,
     from: '2026-08-01',
     to: '2026-08-17',
     message: 'Hola {nombre} 👋 Gracias por tu mensaje. La gestoría permanece cerrada por vacaciones del {desde} al {hasta}. Te atenderemos a la vuelta lo antes posible. Si es urgente, déjanoslo dicho por aquí y lo priorizamos a nuestro regreso. ¡Gracias por tu paciencia! — Burocracia Zero',
@@ -405,13 +405,15 @@ function isHolidayActive(db, now = new Date()) {
   const today = ymd(now);
   return today >= h.from && today <= h.to;
 }
-// Responde con el aviso de vacaciones (una vez cada ~20 h por cliente).
+// Responde con el aviso de vacaciones como máximo UNA VEZ AL DÍA por cliente
+// (aunque escriba varias veces): se guarda el día del último aviso y no se
+// vuelve a enviar hasta el día siguiente.
 async function maybeHoliday(db, client, send, now = new Date()) {
   if (!isHolidayActive(db, now)) return false;
   const h = getSettings(db).holiday;
-  const cooldownMs = 20 * 3600 * 1000;
-  if (client.holidayNotifiedAt && now.getTime() - client.holidayNotifiedAt < cooldownMs) return false;
-  client.holidayNotifiedAt = now.getTime();
+  const today = ymd(now);
+  if (client.holidayNotifiedDay === today) return false; // ya se le avisó hoy
+  client.holidayNotifiedDay = today;
   await send(client, fillTemplate(h.message, {
     nombre: firstName(client), desde: fmtLongDate(h.from), hasta: fmtLongDate(h.to),
   }));
