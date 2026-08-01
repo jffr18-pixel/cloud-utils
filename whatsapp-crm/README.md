@@ -191,11 +191,27 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   hace por el dueño de cada cliente; solo agrega recuentos e importes, sin
   exponer datos de clientes ajenos. Requiere varios usuarios (`CRM_USERS`).
 - **☁️ Copias de seguridad en la nube (Microsoft)**: además de la copia local
-  diaria, la copia se sube automáticamente a SharePoint/OneDrive (activable en
-  Automatizaciones → Microsoft 365), para no perder nada si falla el servidor.
-  Con la opción **«copias solo en SharePoint»** se borra la copia local tras
-  subirla, para no ocupar disco en el CRM (si la subida falla, la copia local se
-  conserva para no perderla).
+  diaria, la copia se sube automáticamente a SharePoint/OneDrive (**activado por
+  defecto** cuando Microsoft 365 está configurado), para no perder nada si falla
+  el disco. Los **adjuntos** (fotos de pasaporte/NIE, PDFs firmados) también se
+  sincronizan a SharePoint (no van en el `.gz`). Con **`BACKUP_ENCRYPTION_KEY`**
+  las copias se **cifran** en reposo. Con la opción **«copias solo en
+  SharePoint»** se borra la copia local tras subirla (si la subida falla, la
+  local se conserva).
+- **♻️ Restaurar desde la app**: el administrador puede **restaurar** cualquier
+  copia con un botón (antes se guarda automáticamente una copia del estado
+  actual por seguridad y el sistema se reinicia). No hace falta un técnico.
+- **🛡️ Resiliencia de datos**: si el fichero de datos se corrompe, el servidor
+  **no arranca en blanco**: preserva el fichero dañado, restaura la última copia
+  válida y avisa por Telegram. Cierre ordenado que **vuelca a disco** lo
+  pendiente en cada redespliegue (no se pierde la última acción), y avisos al
+  administrador ante fallos (copia fallida, disco casi lleno, error de guardado,
+  arranque tras caída).
+- **🗑️ Borrado completo del cliente (RGPD)**: al borrar un cliente se eliminan
+  **también sus documentos del disco** (pasaporte, NIE, PDFs firmados) y todos
+  sus registros (firmas, tareas…), no solo la ficha. Queda traza en la
+  auditoría. Y con **Conservación de datos** (Automatizaciones) el sistema avisa
+  de los clientes inactivos sin trámites abiertos para que revises su borrado.
 - **📊 Panel con gráficas**: mensajes por día (recibidos/enviados),
   expedientes por estado, mensajes de la semana y tiempo medio de primera
   respuesta de los últimos 30 días.
@@ -494,6 +510,7 @@ Pensado para datos sensibles (extranjería). Medidas aplicadas:
 | `CRM_USERS` | Varios usuarios: `nombre:clave,nombre2:clave2` (tiene prioridad sobre `CRM_USER`/`CRM_PASSWORD`) | *(vacío)* |
 | `CRM_ADMIN` | Usuario(s) administrador(es) — `usuario1,usuario2` — que pueden descargar copias de toda la base de datos y cambiar la configuración global. Con aislamiento, por defecto es el **primer** usuario de `CRM_USERS` | *(1º de `CRM_USERS`)* |
 | `CRM_ALLOW_UNSIGNED_WEBHOOK` | `1` acepta webhooks **sin firma** aunque WhatsApp esté configurado (solo para pruebas; en producción define `YCLOUD_WEBHOOK_SECRET` en su lugar) | *(vacío)* |
+| `BACKUP_ENCRYPTION_KEY` | Si se define, las copias de seguridad se **cifran** (AES-256-GCM) en reposo. Guárdala aparte: sin ella no se pueden restaurar las copias cifradas | *(vacío → copias sin cifrar)* |
 | `YCLOUD_API_KEY` | API key de YCloud (Developers → API Keys en su consola; máxima prioridad si está definida) | *(vacío)* |
 | `YCLOUD_WHATSAPP_FROM` | Número del negocio en YCloud, formato internacional (ej. `+34612345678`) | *(vacío)* |
 | `WHATSAPP_360DIALOG_API_KEY` | API key de 360dialog | *(vacío)* |

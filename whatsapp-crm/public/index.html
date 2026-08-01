@@ -572,6 +572,14 @@
         </div>
 
         <div class="auto-card">
+          <h3><label><input type="checkbox" id="auto-ret-enabled"> 🗓️ Conservación de datos (RGPD)</label></h3>
+          <p class="hint">Avisa al administrador (por Telegram, ~una vez al mes) de los clientes que llevan mucho tiempo <strong>inactivos y sin trámites abiertos</strong>, para que revises si procede borrarlos. <strong>Nunca borra solo</strong>: solo informa; el borrado lo haces tú desde la ficha del cliente (que ya elimina también sus documentos).</p>
+          <div class="auto-row">
+            <label>Considerar revisable tras … meses sin actividad <input type="number" id="auto-ret-months" min="1" max="240" style="max-width:120px"></label>
+          </div>
+        </div>
+
+        <div class="auto-card">
           <h3>📝 Consentimiento del cliente (RGPD + autorización)</h3>
           <p class="hint">Texto que el cliente acepta desde su página de seguimiento. Queda registrado con fecha y hora como prueba del consentimiento.</p>
           <textarea id="auto-legal-text" rows="5"></textarea>

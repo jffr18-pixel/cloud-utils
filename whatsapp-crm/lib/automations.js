@@ -188,6 +188,14 @@ const DEFAULTS = {
   transcription: {
     enabled: false,
   },
+  // Conservación de datos (RGPD): identifica clientes inactivos sin trámites
+  // abiertos que podrían revisarse para borrado. NO borra solo: avisa al
+  // administrador para que lo revise (el borrado se hace a mano desde la ficha,
+  // que ya elimina también los documentos). Solo informa; nunca elimina.
+  retention: {
+    enabled: false,
+    inactiveMonths: 24, // meses sin actividad para considerar a un cliente revisable
+  },
   // Textos legales para el consentimiento del cliente (RGPD + autorización de
   // representación). Se muestran en su página de seguimiento para que los acepte.
   legal: {
@@ -213,7 +221,10 @@ const DEFAULTS = {
     },
     // Copia de seguridad diaria subida a SharePoint (además de la copia local).
     backup: {
-      enabled: false,
+      // Activado por defecto: solo sube de verdad si Microsoft 365 está
+      // configurado. Así, en cuanto se conecta SharePoint, las copias salen del
+      // único disco automáticamente (protección de continuidad).
+      enabled: true,
       folderPath: 'Copias de seguridad CRM',
       // Si está activo, tras subir cada copia a SharePoint se borra la copia
       // local (ahorra disco en el CRM). Si la subida falla, la local se

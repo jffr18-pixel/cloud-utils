@@ -7,7 +7,8 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { load, save, newId, normalizePhone, DB_FILE } = require('./lib/store');
+const store = require('./lib/store');
+const { load, save, newId, normalizePhone, DB_FILE } = store;
 const wa = require('./lib/whatsapp');
 const auto = require('./lib/automations');
 const backup = require('./lib/backup');
@@ -981,6 +982,90 @@ async function uploadBackupToCloud(db, backupName) {
   });
 }
 
+// Sincroniza los adjuntos (data/uploads: fotos de pasaporte/NIE, PDFs firmados…)
+// a SharePoint, ya que NO entran en el .gz diario y viven en un único disco.
+// Sube solo lo que falta (por nombre) para no repetir trabajo. Best-effort.
+async function uploadsBackupToCloud(db) {
+  const ms = auto.getSettings(db).microsoft;
+  if (!ms.backup || !ms.backup.enabled || !msgraph.isConfigured()) return null;
+  if (!fs.existsSync(UPLOADS_DIR)) return null;
+  const folderPath = (ms.backup.folderPath || 'Copias de seguridad CRM') + '/adjuntos';
+  const files = fs.readdirSync(UPLOADS_DIR).filter((f) => {
+    try { return fs.statSync(path.join(UPLOADS_DIR, f)).isFile(); } catch { return false; }
+  });
+  if (!db.settings.uploadsSynced || typeof db.settings.uploadsSynced !== 'object') db.settings.uploadsSynced = {};
+  const synced = db.settings.uploadsSynced;
+  let done = 0;
+  for (const f of files) {
+    if (synced[f]) continue; // ya subido antes
+    try {
+      await msgraph.uploadToSharePoint({
+        hostname: ms.sharepoint.hostname,
+        sitePath: ms.sharepoint.sitePath,
+        folderPath,
+        filename: f,
+        data: fs.readFileSync(path.join(UPLOADS_DIR, f)),
+      });
+      synced[f] = Date.now();
+      done += 1;
+    } catch (err) {
+      console.error('No se pudo subir el adjunto', f, 'a SharePoint:', err.message);
+    }
+  }
+  if (done) save();
+  return { synced: done, total: files.length };
+}
+
+// Borrado COMPLETO de un cliente (derecho de supresión del RGPD): elimina
+// también los ficheros físicos (avatar, adjuntos de sus mensajes, PDFs de sus
+// firmas) y TODOS los registros que lo referencian (incluidas firmas y tareas),
+// no solo la ficha. Devuelve cuántos ficheros y registros se borraron.
+function purgeClientData(db, id) {
+  let filesRemoved = 0;
+  const rm = (p) => {
+    if (!p) return;
+    try { fs.rmSync(path.join(UPLOADS_DIR, path.basename(String(p))), { force: true }); filesRemoved += 1; } catch { /* noop */ }
+  };
+  const client = db.clients.find((c) => c.id === id);
+  if (client && client.avatarPath) rm(client.avatarPath);
+  for (const m of db.messages) {
+    if (m.clientId === id && m.media && m.media.localPath) rm(m.media.localPath);
+  }
+  for (const s of db.signatures) {
+    if (s.clientId === id && s.pdfPath) rm(s.pdfPath);
+  }
+  const n0 = db.messages.length + db.cases.length + db.reminders.length
+    + db.appointments.length + db.scheduledMessages.length + db.signatures.length + db.tasks.length;
+  db.clients = db.clients.filter((c) => c.id !== id);
+  db.messages = db.messages.filter((m) => m.clientId !== id);
+  db.cases = db.cases.filter((c) => c.clientId !== id);
+  db.reminders = db.reminders.filter((r) => r.clientId !== id);
+  db.appointments = db.appointments.filter((a) => a.clientId !== id);
+  db.scheduledMessages = db.scheduledMessages.filter((s) => s.clientId !== id);
+  db.signatures = db.signatures.filter((s) => s.clientId !== id);
+  db.tasks = db.tasks.filter((t) => t.clientId !== id);
+  const n1 = db.messages.length + db.cases.length + db.reminders.length
+    + db.appointments.length + db.scheduledMessages.length + db.signatures.length + db.tasks.length;
+  return { files: filesRemoved, records: n0 - n1 };
+}
+
+// Clientes candidatos a revisión por conservación (RGPD): sin trámites abiertos
+// y sin actividad desde hace más de N meses. Solo informa; nunca borra.
+function retentionCandidates(db, now = Date.now()) {
+  const s = auto.getSettings(db).retention || {};
+  const inactiveMs = (Number(s.inactiveMonths) || 24) * 30 * 24 * 3600 * 1000;
+  const monthMs = 30 * 24 * 3600 * 1000;
+  const out = [];
+  for (const c of db.clients) {
+    if (db.cases.some((k) => k.clientId === c.id && k.status !== 'completado')) continue; // trámite abierto
+    let last = c.createdAt || 0;
+    for (const m of db.messages) if (m.clientId === c.id && (m.timestamp || 0) > last) last = m.timestamp;
+    if (now - last < inactiveMs) continue;
+    out.push({ clientId: c.id, name: c.name, lastActivity: last, monthsInactive: Math.floor((now - last) / monthMs) });
+  }
+  return out.sort((a, b) => a.lastActivity - b.lastActivity);
+}
+
 // Vista de una solicitud de firma para la interfaz (sin el token secreto).
 function publicSignature(sig) {
   return {
@@ -1678,17 +1763,10 @@ async function handleApi(req, res, url) {
       return json(res, 200, client);
     }
     if (req.method === 'DELETE') {
-      if (client.avatarPath) {
-        try { fs.rmSync(path.join(UPLOADS_DIR, path.basename(client.avatarPath)), { force: true }); } catch { /* noop */ }
-      }
-      db.clients = db.clients.filter((c) => c.id !== id);
-      db.messages = db.messages.filter((m) => m.clientId !== id);
-      db.cases = db.cases.filter((c) => c.clientId !== id);
-      db.reminders = db.reminders.filter((r) => r.clientId !== id);
-      db.appointments = db.appointments.filter((a) => a.clientId !== id);
-      db.scheduledMessages = db.scheduledMessages.filter((s) => s.clientId !== id);
+      const removed = purgeClientData(db, id);
       save();
-      return json(res, 200, { ok: true });
+      security.audit('cliente_borrado', { clientId: id, user: sessionUser(req), ip: ipOf(req), ficheros: removed.files });
+      return json(res, 200, { ok: true, ...removed });
     }
   }
 
@@ -2939,16 +3017,54 @@ async function handleApi(req, res, url) {
       }
       return json(res, 201, b);
     }
+    // Restaurar una copia (solo admin): antes se guarda una copia de seguridad
+    // del estado actual, luego se reemplaza la base y se recarga.
+    if (req.method === 'POST' && id && parts[3] === 'restore') {
+      const data = backup.restoreData(id);
+      if (!data) return json(res, 400, { error: 'No se pudo leer la copia (¿cifrada sin BACKUP_ENCRYPTION_KEY, o dañada?)' });
+      let safety = null;
+      try { safety = backup.create(true); } catch { /* si falla, seguimos: la copia a restaurar es válida */ }
+      try {
+        // Copia de seguridad física del db.json actual y escritura de la nueva.
+        fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
+        if (fs.existsSync(DB_FILE)) fs.copyFileSync(DB_FILE, DB_FILE + '.pre-restore');
+        fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+      } catch (err) {
+        return json(res, 500, { error: 'No se pudo escribir la base restaurada: ' + err.message });
+      }
+      // Se descarta el estado en memoria para que el cierre NO sobrescriba el
+      // db.json recién restaurado con los datos antiguos.
+      store.reset();
+      security.audit('backup_restaurada', { user: sessionUser(req), ip: ipOf(req), name: id, safety: safety && safety.name });
+      notifyOwner(`♻️ Copia de seguridad restaurada (${id}) por ${sessionUser(req) || 'admin'}. Reiniciando…`);
+      // El estado en memoria ya no coincide con el disco: se reinicia el proceso
+      // para cargar limpio la base restaurada (Render lo levanta de nuevo).
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, restored: id, safetyBackup: safety && safety.name }));
+      setTimeout(() => process.exit(0), 200);
+      return undefined;
+    }
     if (req.method === 'GET' && id) {
-      const stream = backup.read(id);
-      if (!stream) return json(res, 404, { error: 'Copia no encontrada' });
+      const dl = backup.readDownload(id);
+      if (!dl) return json(res, 404, { error: 'Copia no encontrada' });
       security.audit('backup_descargada', { user: sessionUser(req), ip: ipOf(req), name: id });
       res.writeHead(200, {
         'Content-Type': 'application/gzip',
-        'Content-Disposition': `attachment; filename="${id}"`,
+        'Content-Disposition': `attachment; filename="${dl.filename}"`,
       });
-      return stream.pipe(res);
+      return res.end(dl.buffer);
     }
+  }
+
+  // --- Conservación de datos (RGPD): clientes revisables para borrado -------
+  if (resource === 'retention' && req.method === 'GET') {
+    if (!isAdmin(me)) return json(res, 403, { error: 'Solo un administrador puede ver esto' });
+    const s = auto.getSettings(db).retention || {};
+    return json(res, 200, {
+      enabled: !!s.enabled,
+      inactiveMonths: Number(s.inactiveMonths) || 24,
+      candidates: retentionCandidates(db),
+    });
   }
 
   // --- Búsqueda en conversaciones ------------------------------------------
@@ -3963,7 +4079,7 @@ setInterval(() => {
     const dayKey = `${nb.getFullYear()}${String(nb.getMonth() + 1).padStart(2, '0')}${String(nb.getDate()).padStart(2, '0')}`;
     if (!db.settings || typeof db.settings !== 'object') db.settings = {};
     if (db.settings.lastDailyBackup !== dayKey) {
-      const created = backup.create(false); // backup-AAAAMMDD.json.gz
+      const created = backup.create(false); // backup-AAAAMMDD.json.gz(.enc)
       db.settings.lastDailyBackup = dayKey;
       save();
       console.log(`Copia de seguridad diaria creada: ${created.name}`);
@@ -3977,11 +4093,28 @@ setInterval(() => {
             console.log(`Copia local eliminada (solo nube): ${created.name}`);
           }
         })
-        .catch((err) => console.error('No se pudo subir la copia a la nube:', err.message));
+        .catch((err) => {
+          console.error('No se pudo subir la copia a la nube:', err.message);
+          notifyOwner(`La copia de seguridad de hoy NO se pudo subir a SharePoint: ${err.message}. La copia local sí se hizo.`, 'backup_cloud_fail', 720);
+        });
+      // Sincroniza también los adjuntos (documentos) a la nube: no van en el .gz.
+      uploadsBackupToCloud(db).catch((err) => console.error('No se pudieron subir los adjuntos a la nube:', err.message));
     }
   } catch (err) {
     console.error('Error al crear la copia de seguridad:', err.message);
+    notifyOwner(`No se pudo crear la copia de seguridad diaria: ${err.message}.`, 'backup_fail', 720);
   }
+  checkDiskSpace();
+  // Conservación de datos (RGPD): recordatorio ~mensual si hay clientes que
+  // llevan mucho inactivos y sin trámites abiertos (para revisar su borrado).
+  try {
+    if (auto.getSettings(db).retention.enabled) {
+      const cand = retentionCandidates(db);
+      if (cand.length) {
+        notifyOwner(`🗓️ Conservación de datos: ${cand.length} cliente(s) llevan mucho tiempo inactivos y sin trámites abiertos. Revisa en el CRM si procede borrarlos (RGPD).`, 'retention', 30 * 24 * 60);
+      }
+    }
+  } catch (err) { console.error('Aviso de conservación:', err.message); }
 }, 5 * 60 * 1000);
 
 // Mensajes programados: se revisa cada minuto para enviarlos a la hora elegida.
@@ -4499,6 +4632,25 @@ async function notifyTelegramUsers(canSeeForUser, text) {
   }
 }
 
+// Aviso de SALUD DEL SISTEMA al administrador por Telegram (copia fallida,
+// error de disco, arranque tras caída, recuperación de datos…). Antirrebote por
+// tipo de aviso para no repetir el mismo problema en bucle. No lanza nunca.
+const ownerAlertAt = new Map();
+function notifyOwner(text, key = null, cooldownMin = 60) {
+  try {
+    if (key) {
+      const now = Date.now();
+      if (now - (ownerAlertAt.get(key) || 0) < cooldownMin * 60 * 1000) return;
+      ownerAlertAt.set(key, now);
+    }
+    if (!telegram.isConfigured() || !TG_ALLOWED.size) { console.error('[SALUD]', text); return; }
+    for (const [tgId, crmUser] of TG_ALLOWED) {
+      if (!isAdmin(crmUser)) continue;
+      telegram.sendMessage(Number(tgId), '🛠️ ' + text).catch(() => null);
+    }
+  } catch { /* un aviso no debe romper nada */ }
+}
+
 // Avisa de los WhatsApp entrantes nuevos, con antirrebote por cliente para no
 // mandar un aviso por cada mensaje de una ráfaga.
 async function notifyTelegramInbound(db, items) {
@@ -4594,7 +4746,23 @@ function buildTelegramDigest(db, crmUser, opts = {}) {
   }
   lines.push(sinResponder ? `💬 ${sinResponder} conversación(es) sin responder.` : '💬 Sin conversaciones pendientes.');
   if (pendiente) lines.push(`💶 Pendiente de cobro: ${eur(pendiente)}.`);
+  // Línea de salud del sistema, solo para el administrador.
+  if (isAdmin(crmUser)) lines.push('', systemHealthLine());
   return lines.join('\n');
+}
+
+// Resumen de salud del sistema para el administrador: última copia y disco.
+function systemHealthLine() {
+  const parts = [];
+  const latest = backup.latestName();
+  parts.push(latest ? `última copia ${latest.replace(/^backup-/, '').replace(/\.json\.gz(\.enc)?$/, '')}` : '⚠️ SIN copias');
+  try {
+    if (typeof fs.statfsSync === 'function') {
+      const st = fs.statfsSync(store.DATA_DIR);
+      parts.push(`disco libre ${Math.round((st.bavail * st.bsize) / (1024 * 1024))} MB`);
+    }
+  } catch { /* noop */ }
+  return '🩺 ' + parts.join(' · ');
 }
 
 async function maybeTelegramDigest(db) {
@@ -4634,6 +4802,90 @@ async function maybeTelegramDigest(db) {
     catch (err) { console.error('Resumen Telegram:', telegram.redact(err && err.message)); }
   }
 }
+
+// --- Resiliencia de datos (arranque y cierre) ----------------------------
+// Si el fichero de datos existe pero está corrupto, NO se arranca con base
+// vacía (eso lo sobrescribiría todo): se preserva el fichero dañado y se
+// restaura la última copia válida antes de continuar.
+function recoverDbIfCorrupt() {
+  if (!fs.existsSync(DB_FILE)) return; // primer arranque: normal, sin datos
+  try { JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); return; } // se lee bien
+  catch (err) {
+    console.error('⚠️  db.json ilegible/corrupto:', err.message);
+    const bad = `${DB_FILE}.corrupt-${Date.now()}`;
+    try { fs.renameSync(DB_FILE, bad); } catch { /* noop */ }
+    const latest = backup.latestName();
+    let msg;
+    if (latest) {
+      const data = backup.restoreData(latest);
+      if (data) {
+        try {
+          fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+          msg = `Base de datos corrupta: restaurada la última copia (${latest}). El fichero dañado se guardó como ${path.basename(bad)}.`;
+        } catch (e) { msg = `Base de datos corrupta y NO se pudo restaurar la copia (${e.message}). Fichero dañado: ${path.basename(bad)}.`; }
+      } else {
+        msg = `Base de datos corrupta y la última copia (${latest}) no se pudo leer (¿cifrada sin BACKUP_ENCRYPTION_KEY?). Fichero dañado: ${path.basename(bad)}.`;
+      }
+    } else {
+      msg = `Base de datos corrupta y NO hay copias para restaurar. Se arranca en blanco; el fichero dañado se guardó como ${path.basename(bad)}.`;
+    }
+    console.error('⚠️  ' + msg);
+    // El aviso se envía en cuanto arranque (Telegram aún puede no estar listo).
+    setTimeout(() => notifyOwner('⚠️ ' + msg, null), 4000);
+  }
+}
+recoverDbIfCorrupt();
+
+// Detección de parada no limpia (caída): se deja un fichero mientras el proceso
+// vive y se borra en el cierre ordenado. Si al arrancar sigue ahí, el proceso
+// anterior no salió bien.
+const RUNNING_MARKER = path.join(store.DATA_DIR, '.running');
+try {
+  if (fs.existsSync(RUNNING_MARKER)) {
+    setTimeout(() => notifyOwner('El servidor arrancó tras una parada no limpia (posible caída). Si se repite, avísame.', 'unclean_boot', 180), 5000);
+  }
+  fs.mkdirSync(store.DATA_DIR, { recursive: true });
+  fs.writeFileSync(RUNNING_MARKER, String(Date.now()));
+} catch { /* noop */ }
+
+// Aviso si el disco de datos se queda casi sin espacio (antes de que falle todo).
+function checkDiskSpace() {
+  try {
+    if (typeof fs.statfsSync !== 'function') return;
+    const st = fs.statfsSync(store.DATA_DIR);
+    const freeRatio = st.bavail / st.blocks;
+    const freeMB = Math.round((st.bavail * st.bsize) / (1024 * 1024));
+    if (freeRatio < 0.1 || freeMB < 200) {
+      notifyOwner(`El disco de datos está casi lleno (quedan ~${freeMB} MB). Libera espacio o amplía el disco en Render.`, 'disk_full', 240);
+    }
+  } catch { /* noop */ }
+}
+
+// Un error al guardar en disco avisa al administrador (no pasa desapercibido).
+store.setSaveErrorHandler((err) => notifyOwner(`No se pudo GUARDAR en disco: ${err.message}. Revisa el espacio del disco en Render.`, 'save_error', 30));
+
+// Cierre ordenado: volcar lo pendiente a disco antes de apagarse (Render manda
+// SIGTERM en cada redespliegue) para no perder la última acción confirmada.
+let shuttingDown = false;
+function gracefulExit(code) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  try { store.flush(); } catch { /* noop */ }
+  try { fs.rmSync(RUNNING_MARKER, { force: true }); } catch { /* noop */ }
+  process.exit(code);
+}
+process.on('SIGTERM', () => gracefulExit(0));
+process.on('SIGINT', () => gracefulExit(0));
+process.on('exit', () => { try { store.flush(); } catch { /* noop */ } });
+process.on('uncaughtException', (err) => {
+  console.error('Excepción no capturada:', err && err.stack ? err.stack : err);
+  notifyOwner(`Error inesperado en el servidor: ${err && err.message}. Se reinicia solo.`, 'uncaught', 15);
+  try { store.flush(); } catch { /* noop */ }
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('Promesa rechazada sin capturar:', reason);
+});
 
 ensureDefaultFichas(load());
 ensureDefaultKnowledge(load());

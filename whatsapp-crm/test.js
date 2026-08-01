@@ -92,7 +92,7 @@ async function testSignedWebhookServer() {
       'el mensaje firmado se procesó');
   } finally {
     server.kill();
-    fs.rmSync(sigDataDir, { recursive: true, force: true });
+    fs.rmSync(sigDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
 
@@ -137,7 +137,7 @@ async function testAuthServer() {
     assert(afterLogout.status === 401, 'tras cerrar sesión → 401');
   } finally {
     server.kill();
-    fs.rmSync(authDataDir, { recursive: true, force: true });
+    fs.rmSync(authDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 
   // Varios usuarios con CRM_USERS.
@@ -171,7 +171,7 @@ async function testAuthServer() {
     assert(cross.status === 401, 'la contraseña de un usuario no vale para otro');
   } finally {
     multiServer.kill();
-    fs.rmSync(multiDataDir, { recursive: true, force: true });
+    fs.rmSync(multiDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
 
@@ -220,7 +220,7 @@ async function testCaptchaServer() {
     assert(rightCapWrongPass.status === 401, 'CAPTCHA correcto pero contraseña mala → 401');
   } finally {
     server.kill();
-    fs.rmSync(capDataDir, { recursive: true, force: true });
+    fs.rmSync(capDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
 
@@ -354,6 +354,10 @@ async function testIsolationServer() {
       'un no-admin no puede cambiar la configuración global');
     assert((await as(carmen, 'PUT', '/api/automations', { empresa: { nombre: 'Burocracia Zero SLP' } })).status === 200,
       'el administrador sí puede cambiar la configuración');
+    // Conservación de datos y restauración de copias: solo administrador.
+    assert((await as(juan, 'GET', '/api/retention')).status === 403, 'un no-admin no puede ver la conservación de datos');
+    assert((await as(juan, 'POST', '/api/backups/backup-20260101.json.gz/restore')).status === 403,
+      'un no-admin no puede restaurar copias');
 
     // Panel de rendimiento por usuario: atribuye trámites al dueño del cliente.
     // Carmen creó 2 clientes y varios expedientes; Juan, 1 cliente y 0 expedientes.
@@ -375,7 +379,7 @@ async function testIsolationServer() {
       'un rango de fechas sin actividad devuelve todo a cero');
   } finally {
     server.kill();
-    fs.rmSync(isoDataDir, { recursive: true, force: true });
+    fs.rmSync(isoDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
 
@@ -590,7 +594,70 @@ async function testTelegramAssistant() {
   } finally {
     server.kill();
     mock.close();
-    fs.rmSync(tgDataDir, { recursive: true, force: true });
+    fs.rmSync(tgDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+}
+
+// Resiliencia del almacén (lib/store.js): un fichero corrupto NO vacía la base,
+// falta de fichero = primer arranque en blanco, y flush() vuelca a disco.
+function testStoreResilience() {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'crm-store-'));
+  const dbFile = path.join(tmp, 'db.json');
+  const prev = process.env.DATA_DIR;
+  const fresh = () => { delete require.cache[require.resolve('./lib/store')]; process.env.DATA_DIR = tmp; return require('./lib/store'); };
+  try {
+    let st = fresh();
+    const d = st.load();
+    assert(Array.isArray(d.clients) && d.clients.length === 0, 'store: sin fichero, base vacía (primer arranque)');
+    d.clients.push({ id: 'x1', name: 'Prueba' });
+    st.save();
+    assert(st.flush() === true && fs.existsSync(dbFile), 'store: flush() vuelca lo pendiente a disco');
+    assert(JSON.parse(fs.readFileSync(dbFile, 'utf8')).clients.length === 1, 'store: lo volcado contiene los datos');
+    // Fichero corrupto → load() falla ruidosamente (no continúa con base vacía).
+    fs.writeFileSync(dbFile, '{ esto no es json ');
+    st = fresh();
+    let threw = null;
+    try { st.load(); } catch (e) { threw = e; }
+    assert(threw && threw.code === 'DB_CORRUPT', 'store: un fichero corrupto hace fallar load() (no vacía la base)');
+  } finally {
+    if (prev === undefined) delete process.env.DATA_DIR; else process.env.DATA_DIR = prev;
+    for (const m of ['./lib/store', './lib/backup']) { try { delete require.cache[require.resolve(m)]; } catch { /* noop */ } }
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+}
+
+// Copias: creación/restauración y cifrado AES-GCM (lib/backup.js).
+function testBackupCrypto() {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'crm-bk-'));
+  const prevDir = process.env.DATA_DIR;
+  const prevKey = process.env.BACKUP_ENCRYPTION_KEY;
+  const fresh = () => { for (const m of ['./lib/store', './lib/backup']) delete require.cache[require.resolve(m)]; return require('./lib/backup'); };
+  try {
+    process.env.DATA_DIR = tmp;
+    delete process.env.BACKUP_ENCRYPTION_KEY;
+    let bk = fresh();
+    require('./lib/store').load().clients.push({ id: 'c1', name: 'Ana' });
+    require('./lib/store').flush();
+    const plain = bk.create(true);
+    assert(plain.name.endsWith('.json.gz') && !plain.encrypted, 'copia: sin clave, en claro');
+    assert(bk.restoreData(plain.name)?.clients?.some((c) => c.id === 'c1'), 'copia: restoreData recupera los datos');
+    // Con clave: la copia se cifra y sigue siendo restaurable con la clave.
+    process.env.BACKUP_ENCRYPTION_KEY = 'clave-de-prueba-123';
+    bk = fresh();
+    require('./lib/store').load().clients.push({ id: 'c1', name: 'Ana' });
+    require('./lib/store').flush();
+    const enc = bk.create(true);
+    assert(enc.name.endsWith('.json.gz.enc') && enc.encrypted, 'copia: con clave, cifrada (.enc)');
+    assert(bk.restoreData(enc.name)?.clients?.length >= 1, 'copia: con la clave, la cifrada se restaura');
+    // Sin la clave, una copia cifrada NO se puede leer.
+    delete process.env.BACKUP_ENCRYPTION_KEY;
+    bk = fresh();
+    assert(bk.restoreData(enc.name) === null, 'copia: sin la clave, la cifrada no se puede leer');
+  } finally {
+    if (prevDir === undefined) delete process.env.DATA_DIR; else process.env.DATA_DIR = prevDir;
+    if (prevKey === undefined) delete process.env.BACKUP_ENCRYPTION_KEY; else process.env.BACKUP_ENCRYPTION_KEY = prevKey;
+    for (const m of ['./lib/store', './lib/backup']) { try { delete require.cache[require.resolve(m)]; } catch { /* noop */ } }
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
 
@@ -652,7 +719,7 @@ async function testTelegramDigestInterval() {
   } finally {
     server.kill();
     mock.close();
-    fs.rmSync(tgDataDir, { recursive: true, force: true });
+    fs.rmSync(tgDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
 
@@ -717,6 +784,10 @@ async function main() {
   });
 
   try {
+    console.log('Resiliencia de datos y copias');
+    testStoreResilience();
+    testBackupCrypto();
+
     await waitForServer();
 
     console.log('Estado');
@@ -2151,13 +2222,33 @@ async function main() {
     await req('PUT', '/api/automations', { autoCollect: { enabled: false } });
     await req('DELETE', '/api/clients/' + acClient.data.id);
 
+    console.log('Conservación de datos (RGPD)');
+    const retResp = await req('GET', '/api/retention');
+    assert(retResp.status === 200 && Array.isArray(retResp.data.candidates), 'el endpoint de conservación responde con la lista de candidatos');
+    const retOn = await req('PUT', '/api/automations', { retention: { enabled: true, inactiveMonths: 1 } });
+    assert(retOn.data.retention.enabled === true, 'la conservación de datos se activa');
+    await req('PUT', '/api/automations', { retention: { enabled: false } });
+
+    console.log('Borrado completo del cliente (RGPD)');
+    const delCli = await req('POST', '/api/clients', { name: 'Borrar Test', phone: '600444555', nif: 'Z9999999R' });
+    await req('POST', '/api/cases', { clientId: delCli.data.id, title: 'Exp a borrar', type: 'otro' });
+    const delSig = await req('POST', '/api/signatures', { clientId: delCli.data.id, docType: 'rgpd' });
+    const delTask = await req('POST', '/api/tasks', { title: 'Tarea del cliente', clientId: delCli.data.id });
+    assert(delSig.status === 201 && delTask.status === 201, 'creados firma y tarea del cliente');
+    const delRes = await req('DELETE', '/api/clients/' + delCli.data.id);
+    assert(delRes.status === 200 && delRes.data.records >= 3, 'el borrado informa de los registros eliminados');
+    assert((await req('GET', '/api/signatures')).data.every((s) => s.clientId !== delCli.data.id),
+      'al borrar el cliente se eliminan también sus firmas (no quedan huérfanas)');
+    assert((await req('GET', '/api/tasks')).data.every((t) => t.clientId !== delCli.data.id),
+      'al borrar el cliente se eliminan también sus tareas');
+
     console.log('Borrado en cascada');
     await req('DELETE', `/api/clients/${clientId}`);
     const casesAfter = await req('GET', '/api/cases');
     assert(casesAfter.data.every((c) => c.clientId !== clientId), 'expedientes del cliente eliminados');
   } finally {
     server.kill();
-    fs.rmSync(dataDir, { recursive: true, force: true });
+    fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 
   console.log(`\n${passed} pruebas correctas, ${failed} fallidas.`);

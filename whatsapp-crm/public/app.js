@@ -3090,6 +3090,9 @@ async function renderAutomations() {
   $('#auto-hol-text').value = hol.message || '';
 
   $('#auto-tr-enabled').checked = s.transcription.enabled;
+  const ret = s.retention || {};
+  $('#auto-ret-enabled').checked = Boolean(ret.enabled);
+  $('#auto-ret-months').value = ret.inactiveMonths ?? 24;
   $('#auto-legal-text').value = s.legal.text;
 
   $('#auto-ms-cal').checked = s.microsoft.calendar.enabled;
@@ -3130,9 +3133,21 @@ async function renderBackups() {
   const fmtSize = (b) => (b > 1024 * 1024 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
   $('#backup-list').innerHTML = backups.map((b) => `
     <div class="row" style="cursor:default;padding:8px 14px">
-      <div class="grow"><div class="sub">💾 ${esc(b.name)} · ${fmtSize(b.size)} · ${new Date(b.createdAt).toLocaleString('es-ES')}</div></div>
+      <div class="grow"><div class="sub">💾 ${esc(b.name)}${b.encrypted ? ' 🔒' : ''} · ${fmtSize(b.size)} · ${new Date(b.createdAt).toLocaleString('es-ES')}</div></div>
       <a class="btn small" href="/api/backups/${encodeURIComponent(b.name)}">⬇ Descargar</a>
+      <button class="btn small danger backup-restore" data-name="${esc(b.name)}">♻️ Restaurar</button>
     </div>`).join('') || '<p class="hint">Aún no hay copias. La primera se creará automáticamente, o pulsa «Crear copia ahora».</p>';
+  $('#backup-list').querySelectorAll('.backup-restore').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const name = btn.dataset.name;
+      if (!confirm(`¿RESTAURAR la copia «${name}»?\n\nSe reemplazarán TODOS los datos actuales por los de esa copia. Antes se guardará automáticamente una copia del estado actual por seguridad, y el sistema se reiniciará.`)) return;
+      btn.disabled = true; btn.textContent = '⏳…';
+      try {
+        await api('backups/' + encodeURIComponent(name) + '/restore', { method: 'POST' });
+        alert('Copia restaurada. El sistema se está reiniciando; espera unos segundos y recarga la página.');
+      } catch (e) { alert('No se pudo restaurar: ' + e.message); btn.disabled = false; btn.textContent = '♻️ Restaurar'; }
+    });
+  });
 }
 
 $('#btn-backup-now').addEventListener('click', async () => {
@@ -3226,6 +3241,10 @@ $('#btn-auto-save').addEventListener('click', async () => {
           includeTax: $('#auto-collect-tax').checked,
         },
         transcription: { enabled: $('#auto-tr-enabled').checked },
+        retention: {
+          enabled: $('#auto-ret-enabled').checked,
+          inactiveMonths: Number($('#auto-ret-months').value) || 24,
+        },
         legal: { text: $('#auto-legal-text').value },
         microsoft: {
           calendar: {
