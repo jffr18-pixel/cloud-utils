@@ -321,6 +321,11 @@ El CRM puede sincronizarse con el Microsoft 365 de Burocracia Zero:
   `26 CLIENTES/26 PARTICULARES/26 NOMBRE/CRM WHATSAPP` (plantilla editable
   en Automatizaciones; `{aa}` = año en 2 cifras, `{cliente}` = nombre en
   mayúsculas). El mensaje muestra después un enlace «☁️ SharePoint».
+- **Asignación múltiple**: con el botón **☑️** de la cabecera del chat entras en
+  modo selección; marcas varios documentos de la conversación y, al pulsar
+  **«📁 Asignar a expediente»**, se vinculan todos de una vez al expediente
+  elegido y se suben a SharePoint automáticamente, sin ir documento por
+  documento.
 
 ### Alta de la aplicación en Microsoft (una sola vez)
 

@@ -155,6 +155,7 @@
                   <select id="conv-assign" title="Asignar a"><option value="">Sin asignar</option></select>
                   <button class="btn small btn-icon" id="btn-pin" title="Fijar conversación arriba">📌</button>
                   <button class="btn small btn-icon" id="btn-gallery" title="Galería: fotos y documentos de la conversación">🖼️</button>
+                  <button class="btn small btn-icon" id="btn-select-docs" title="Seleccionar varios documentos y asignarlos a un expediente">☑️</button>
                   <button class="btn small btn-icon" id="btn-notify" title="Avisos de mensajes nuevos">🔕</button>
                   <button class="btn small" id="btn-open-client">Ver ficha</button>
                 </div>
@@ -165,6 +166,11 @@
               </div>
               <div class="chat-messages" id="chat-messages"></div>
               <div id="chat-scheduled" class="chat-scheduled hidden"></div>
+              <div id="select-bar" class="select-bar hidden">
+                <span class="select-bar-count" id="select-bar-count">0 documentos seleccionados</span>
+                <button class="btn small primary" id="btn-assign-selected">📁 Asignar a expediente</button>
+                <button class="btn small" id="btn-cancel-select">Cancelar</button>
+              </div>
               <div id="reply-bar" class="reply-bar hidden">
                 <div class="reply-bar-body">
                   <span class="reply-bar-who" id="reply-bar-who"></span>

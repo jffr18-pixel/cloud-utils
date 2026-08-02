@@ -1332,6 +1332,40 @@ async function handleWebhookPayload(db, body) {
     .catch((err) => console.error('Aviso Telegram:', telegram.redact(err && err.message)));
 }
 
+// Sube a SharePoint el adjunto de un mensaje ya asignado a un expediente (si
+// SharePoint está configurado y aún no se había subido). Guarda la URL o el
+// error en el propio mensaje. No lanza: registra el fallo en msg.sharepointError.
+async function uploadMsgToSharePoint(db, msg) {
+  const msSp = auto.getSettings(db).microsoft.sharepoint;
+  if (!(msg.caseId && msg.media && !msg.sharepointUrl && msgraph.isConfigured() && msSp.enabled)) return;
+  try {
+    let data = null;
+    if (msg.media.localPath) {
+      data = fs.readFileSync(path.join(UPLOADS_DIR, path.basename(msg.media.localPath)));
+    } else {
+      const upstream = await wa.fetchInboundMedia(msg.media);
+      if (!upstream.ok) throw new Error(`descarga del adjunto: HTTP ${upstream.status}`);
+      data = Buffer.from(await upstream.arrayBuffer());
+    }
+    const client = db.clients.find((c) => c.id === msg.clientId);
+    // Carpeta vinculada al cliente si la tiene; si no, la de la plantilla.
+    const folderPath = client?.sharepointFolder?.path
+      || msgraph.buildFolderPath(msSp.folderTemplate, client || { name: 'SIN NOMBRE' });
+    const uploaded = await msgraph.uploadToSharePoint({
+      hostname: msSp.hostname,
+      sitePath: msSp.sitePath,
+      folderPath,
+      filename: msg.media.filename || `adjunto-${msg.id}`,
+      data,
+    });
+    msg.sharepointUrl = uploaded.webUrl;
+    delete msg.sharepointError;
+  } catch (err) {
+    msg.sharepointError = err.message;
+    console.error('No se pudo subir a SharePoint:', err.message);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Rutas de la API
 // ---------------------------------------------------------------------------
@@ -1876,6 +1910,32 @@ async function handleApi(req, res, url) {
       if (toMark.length) save();
       return json(res, 200, { marked: toMark.length });
     }
+    // Asignar VARIOS adjuntos a un expediente de una vez (y subirlos a
+    // SharePoint si procede). Body: { ids: [...msgId], caseId }.
+    if (req.method === 'POST' && id === 'assign-case') {
+      const b = await readBody(req);
+      const ids = Array.isArray(b.ids) ? b.ids.filter((x) => typeof x === 'string') : [];
+      if (!ids.length) return json(res, 400, { error: 'No has seleccionado ningún documento.' });
+      const kase = db.cases.find((c) => c.id === b.caseId);
+      if (!kase) return json(res, 404, { error: 'Expediente no encontrado' });
+      if (!canSeeCase(kase, me, db)) return json(res, 403, { error: 'Sin acceso a este expediente' });
+      let assigned = 0;
+      let uploaded = 0;
+      const errors = [];
+      for (const mid of ids) {
+        const msg = db.messages.find((m) => m.id === mid);
+        if (!msg || !msg.media) continue; // solo mensajes con adjunto
+        if (visIds && !visIds.has(msg.clientId)) continue; // respeta el aislamiento
+        const hadUrl = Boolean(msg.sharepointUrl);
+        msg.caseId = kase.id;
+        assigned += 1;
+        await uploadMsgToSharePoint(db, msg);
+        if (msg.sharepointUrl && !hadUrl) uploaded += 1;
+        else if (msg.sharepointError) errors.push(msg.media.filename || mid);
+      }
+      if (assigned) save();
+      return json(res, 200, { assigned, uploaded, errors });
+    }
     // Vincular un adjunto a un expediente (y subirlo a SharePoint si procede).
     if (req.method === 'PUT' && id) {
       const b = await readBody(req);
@@ -1890,34 +1950,7 @@ async function handleApi(req, res, url) {
           return json(res, 403, { error: 'Sin acceso a este expediente' });
         }
         msg.caseId = b.caseId || null;
-        const msSp = auto.getSettings(db).microsoft.sharepoint;
-        if (msg.caseId && msg.media && !msg.sharepointUrl && msgraph.isConfigured() && msSp.enabled) {
-          try {
-            let data = null;
-            if (msg.media.localPath) {
-              data = fs.readFileSync(path.join(UPLOADS_DIR, path.basename(msg.media.localPath)));
-            } else {
-              const upstream = await wa.fetchInboundMedia(msg.media);
-              if (!upstream.ok) throw new Error(`descarga del adjunto: HTTP ${upstream.status}`);
-              data = Buffer.from(await upstream.arrayBuffer());
-            }
-            const client = db.clients.find((c) => c.id === msg.clientId);
-            // Carpeta vinculada al cliente si la tiene; si no, la de la plantilla.
-            const folderPath = client?.sharepointFolder?.path
-              || msgraph.buildFolderPath(msSp.folderTemplate, client || { name: 'SIN NOMBRE' });
-            const uploaded = await msgraph.uploadToSharePoint({
-              hostname: msSp.hostname,
-              sitePath: msSp.sitePath,
-              folderPath,
-              filename: msg.media.filename || `adjunto-${msg.id}`,
-              data,
-            });
-            msg.sharepointUrl = uploaded.webUrl;
-          } catch (err) {
-            msg.sharepointError = err.message;
-            console.error('No se pudo subir a SharePoint:', err.message);
-          }
-        }
+        await uploadMsgToSharePoint(db, msg);
       }
       save();
       return json(res, 200, msg);

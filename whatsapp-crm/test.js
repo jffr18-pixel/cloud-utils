@@ -1830,6 +1830,23 @@ async function main() {
     const badLink = await req('PUT', `/api/messages/${fileMsg.data.id}`, { caseId: 'exp_inexistente' });
     assert(badLink.status === 404, 'vínculo a expediente inexistente rechazado');
 
+    // Asignación MÚLTIPLE: varios adjuntos a un expediente de una sola vez.
+    const doc1 = await req('POST', '/api/messages', {
+      clientId, text: 'Doc 1', file: { name: 'dni.pdf', mime: 'application/pdf', data: Buffer.from('DNI').toString('base64') },
+    });
+    const doc2 = await req('POST', '/api/messages', {
+      clientId, text: 'Doc 2', file: { name: 'contrato.pdf', mime: 'application/pdf', data: Buffer.from('CONTRATO').toString('base64') },
+    });
+    const noAssign = await req('POST', '/api/messages/assign-case', { ids: [], caseId: kase.data.id });
+    assert(noAssign.status === 400, 'asignar sin documentos seleccionados se rechaza');
+    const badCase = await req('POST', '/api/messages/assign-case', { ids: [doc1.data.id], caseId: 'exp_inexistente' });
+    assert(badCase.status === 404, 'asignación múltiple a expediente inexistente rechazada');
+    const bulkLink = await req('POST', '/api/messages/assign-case', { ids: [doc1.data.id, doc2.data.id], caseId: kase.data.id });
+    assert(bulkLink.status === 200 && bulkLink.data.assigned === 2, 'asignación múltiple vincula los dos adjuntos');
+    const filesAfter = await req('GET', `/api/cases/${kase.data.id}/files`);
+    assert(filesAfter.data.some((f) => f.filename === 'dni.pdf') && filesAfter.data.some((f) => f.filename === 'contrato.pdf'),
+      'el expediente lista los documentos asignados en bloque');
+
     console.log('Fichas de trámite');
     const fichas = await req('GET', '/api/fichas');
     assert(fichas.status === 200 && fichas.data.length >= 32, 'fichas predefinidas precargadas (todos los packs)');

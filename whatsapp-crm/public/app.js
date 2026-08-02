@@ -184,6 +184,8 @@ const state = {
   noteMode: false,
   lastMessageCount: 0,
   convOrder: [],
+  selectMode: false,
+  selectedMsgIds: new Set(),
 };
 
 function showView(name) {
@@ -618,6 +620,7 @@ function renderChatHeader(client, msgs) {
 }
 
 async function openConversation(clientId) {
+  if (state.selectMode) exitSelectMode();
   state.activeClientId = clientId;
   // En móvil, el chat ocupa la pantalla y la lista se oculta.
   if (window.innerWidth <= 760) document.querySelector('.inbox').classList.add('mobile-chat');
@@ -829,6 +832,96 @@ function openGallery() {
     });
   }
   $('#gallery-modal').classList.remove('hidden');
+}
+
+// --- Selección múltiple de documentos para asignarlos a un expediente ---
+// El usuario pulsa ☑️, marca varios adjuntos del chat y los asigna de una vez
+// a un expediente (subiéndolos a SharePoint automáticamente si está activado).
+// Al tocar un adjunto en modo selección, alterna su marca (en fase de captura,
+// para que no se abra la imagen/PDF ni se disparen otras acciones del mensaje).
+function onSelectClick(e) {
+  if (!state.selectMode) return;
+  const bubble = e.currentTarget;
+  e.preventDefault();
+  e.stopPropagation();
+  const mid = bubble.dataset.mid;
+  const now = !state.selectedMsgIds.has(mid);
+  if (now) state.selectedMsgIds.add(mid); else state.selectedMsgIds.delete(mid);
+  const input = bubble.querySelector('.msg-select input');
+  if (input) input.checked = now;
+  bubble.classList.toggle('selected', now);
+  updateSelectBar();
+}
+
+function toggleSelectMode() {
+  if (state.selectMode) { exitSelectMode(); return; }
+  const box = $('#chat-messages');
+  // Solo tiene sentido si hay algún adjunto en la conversación.
+  const attachments = box.querySelectorAll('.msg .msg-link-case');
+  if (!attachments.length) { alert('No hay documentos en esta conversación para asignar.'); return; }
+  state.selectMode = true;
+  state.selectedMsgIds = new Set();
+  box.classList.add('select-mode');
+  attachments.forEach((btn) => {
+    const bubble = btn.closest('.msg');
+    if (!bubble || bubble.dataset.selBound) return;
+    bubble.dataset.selBound = '1';
+    const cb = document.createElement('label');
+    cb.className = 'msg-select';
+    cb.innerHTML = '<input type="checkbox" tabindex="-1" aria-label="Seleccionar documento">';
+    bubble.appendChild(cb);
+    bubble.addEventListener('click', onSelectClick, true); // captura: intercepta antes que la imagen/PDF
+  });
+  $('#btn-select-docs').classList.add('active');
+  $('#select-bar').classList.remove('hidden');
+  updateSelectBar();
+}
+
+function exitSelectMode() {
+  state.selectMode = false;
+  state.selectedMsgIds = new Set();
+  const box = $('#chat-messages');
+  box.classList.remove('select-mode');
+  box.querySelectorAll('.msg.selected').forEach((b) => b.classList.remove('selected'));
+  box.querySelectorAll('.msg[data-sel-bound]').forEach((b) => {
+    b.removeEventListener('click', onSelectClick, true);
+    delete b.dataset.selBound;
+  });
+  box.querySelectorAll('.msg-select').forEach((c) => c.remove());
+  const btn = $('#btn-select-docs');
+  if (btn) btn.classList.remove('active');
+  const bar = $('#select-bar');
+  if (bar) bar.classList.add('hidden');
+}
+
+function updateSelectBar() {
+  const n = state.selectedMsgIds.size;
+  $('#select-bar-count').textContent = n === 1 ? '1 documento seleccionado' : `${n} documentos seleccionados`;
+  $('#btn-assign-selected').disabled = n === 0;
+}
+
+async function assignSelectedToCase() {
+  const ids = [...state.selectedMsgIds];
+  if (!ids.length) return;
+  const clientId = state.activeClientId;
+  const cases = await api('cases?clientId=' + encodeURIComponent(clientId));
+  if (!cases.length) return alert('Este cliente no tiene expedientes. Crea uno primero.');
+  openDialog(`Asignar ${ids.length} documento(s) a expediente`, [{
+    name: 'caseId', label: 'Expediente', type: 'select',
+    options: cases.map((c) => [c.id, c.title]),
+  }], async (v) => {
+    let r;
+    try {
+      r = await api('messages/assign-case', { method: 'POST', body: { ids, caseId: v.caseId } });
+    } catch (err) {
+      return alert('No se pudieron asignar los documentos: ' + err.message);
+    }
+    exitSelectMode();
+    await openConversation(clientId);
+    if (r.errors && r.errors.length) {
+      alert(`${r.assigned} documento(s) asignados al expediente.\n\n⚠️ No se pudieron subir a SharePoint: ${r.errors.join(', ')}`);
+    }
+  });
 }
 
 // --- Notas de voz salientes (grabar con el micro y enviar) ---
@@ -1058,6 +1151,9 @@ $('#btn-suggest').addEventListener('click', suggestReply);
 $('#rec-cancel').addEventListener('click', () => stopVoiceRecording(false));
 $('#rec-send').addEventListener('click', () => stopVoiceRecording(true));
 $('#btn-gallery').addEventListener('click', openGallery);
+$('#btn-select-docs').addEventListener('click', toggleSelectMode);
+$('#btn-assign-selected').addEventListener('click', assignSelectedToCase);
+$('#btn-cancel-select').addEventListener('click', exitSelectMode);
 $('#gallery-close').addEventListener('click', () => $('#gallery-modal').classList.add('hidden'));
 $('#gallery-modal').addEventListener('mousedown', (e) => { if (e.target.id === 'gallery-modal') $('#gallery-modal').classList.add('hidden'); });
 $('#lightbox-close').addEventListener('click', closeLightbox);
@@ -3560,7 +3656,9 @@ setInterval(async () => {
       bindConvTags($('#conv-list'));
       const clr2 = $('#tag-clear');
       if (clr2) clr2.addEventListener('click', () => { state.tagFilter = ''; renderInbox(); });
-      if (state.activeClientId) {
+      // Durante la selección múltiple no se refresca el chat para no perder lo
+      // que el usuario está marcando.
+      if (state.activeClientId && !state.selectMode) {
         const msgs = await api('messages?clientId=' + encodeURIComponent(state.activeClientId));
         if (msgs.length !== state.lastMessageCount) {
           await openConversation(state.activeClientId);
