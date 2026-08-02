@@ -25,6 +25,10 @@ const EMPTY_DB = {
   tasks: [], // tareas del equipo: [{ id, title, assignee, status, dueDate, clientId }]
   signatures: [], // solicitudes de firma: [{ id, clientId, caseId, title, status, token }]
   knowledge: [], // base de conocimiento: [{ id, title, area, keywords, fee, tax, docs, notes }]
+  // Reservas de cita pendientes de pago (SumUp o transferencia). El hueco se
+  // retiene hasta que el pago se confirma (entonces pasa a db.appointments) o
+  // hasta que caduca: [{ id, clientId, date, time, method, amount, status, checkoutId, ... }]
+  pendingBookings: [],
 };
 
 // db.settings es un objeto (configuración de automatizaciones, etc.).

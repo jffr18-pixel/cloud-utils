@@ -245,6 +245,16 @@ async function updateUnreadBadge() {
   } catch { /* ignore */ }
   await updateTaskBadge();
   await updateCobrosBadge();
+  await updatePendingBookBadge();
+}
+
+// Insignia de «Citas»: reservas pendientes de pago por transferencia.
+async function updatePendingBookBadge() {
+  try {
+    const list = await api('pending-bookings');
+    const b = $('#nav-pending-book');
+    if (b) { if (list.length) { b.textContent = list.length; b.classList.remove('hidden'); } else b.classList.add('hidden'); }
+  } catch { /* sin conexión */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -3083,7 +3093,45 @@ document.querySelectorAll('#cal-range .chip').forEach((chip) => {
   });
 });
 
+async function renderPendingBookings() {
+  const box = $('#pending-bookings');
+  if (!box) return;
+  let list = [];
+  try { list = await api('pending-bookings'); } catch { list = []; }
+  if (!list.length) { box.innerHTML = ''; return; }
+  const fmtDay = (iso) => {
+    const d = new Date(iso + 'T12:00');
+    const l = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+    return l.charAt(0).toUpperCase() + l.slice(1);
+  };
+  box.innerHTML = `<div class="pending-book-card">
+    <div class="pending-book-head">🏦 Reservas pendientes de pago por transferencia (${list.length})</div>
+    ${list.map((p) => `<div class="pending-book-row" data-id="${esc(p.id)}">
+      <div class="grow">
+        <div class="title">${esc(p.clientName || 'Cliente')} · ${esc(eur(p.amount))}</div>
+        <div class="sub">${esc(fmtDay(p.date))} a las ${esc(p.time)} · ${esc(p.concept || 'Cita')}</div>
+      </div>
+      <button class="btn small primary pb-confirm" data-id="${esc(p.id)}" title="He recibido la transferencia: confirmar la cita y meterla en Outlook">✓ Confirmar pago</button>
+      <button class="btn small pb-cancel" data-id="${esc(p.id)}" title="Liberar el hueco (no se pagó)">✕</button>
+    </div>`).join('')}
+  </div>`;
+  box.querySelectorAll('.pb-confirm').forEach((btn) => btn.addEventListener('click', async () => {
+    if (!confirm('¿Confirmas que has recibido la transferencia? Se creará la cita y se meterá en Outlook.')) return;
+    btn.disabled = true;
+    try {
+      await api('pending-bookings/' + btn.dataset.id + '/confirm', { method: 'POST', body: {} });
+    } catch (err) { alert('No se pudo confirmar: ' + err.message); btn.disabled = false; return; }
+    await renderAppointments();
+  }));
+  box.querySelectorAll('.pb-cancel').forEach((btn) => btn.addEventListener('click', async () => {
+    if (!confirm('¿Liberar este hueco? La reserva pendiente se eliminará.')) return;
+    try { await api('pending-bookings/' + btn.dataset.id + '/cancel', { method: 'POST', body: {} }); } catch (err) { alert(err.message); }
+    await renderAppointments();
+  }));
+}
+
 async function renderAppointments() {
+  await renderPendingBookings();
   const [appts, clients] = await Promise.all([api('appointments'), api('clients')]);
   state.clients = clients;
   const nameOf = (id) => clients.find((c) => c.id === id)?.name || '(cliente eliminado)';
@@ -3282,6 +3330,24 @@ async function renderAutomations() {
   $('#auto-book-horizon').value = s.booking.horizonDays;
   $('#auto-book-max').value = s.booking.maxPerDay;
 
+  const bpay = s.booking.pay || {};
+  $('#auto-bookpay-enabled').checked = Boolean(bpay.enabled);
+  $('#auto-bookpay-price').value = bpay.price ?? 40;
+  $('#auto-bookpay-concept').value = bpay.concept || '';
+  $('#auto-bookpay-card').checked = bpay.allowCard !== false;
+  $('#auto-bookpay-transfer').checked = bpay.allowTransfer !== false;
+  $('#auto-bookpay-iban').value = bpay.iban || '';
+  $('#auto-bookpay-beneficiary').value = bpay.beneficiary || '';
+  $('#auto-bookpay-transferhold').value = bpay.transferHoldHours ?? 48;
+  // Aviso de si SumUp está configurado (claves en Render).
+  try {
+    const st = await api('status');
+    const el = $('#sumup-status');
+    if (el) el.innerHTML = st.sumupConfigured
+      ? '✅ SumUp conectado (pagos con tarjeta activos).'
+      : '⚠️ SumUp aún no está conectado: añade <code>SUMUP_API_KEY</code> y <code>SUMUP_MERCHANT_CODE</code> en Render para cobrar con tarjeta.';
+  } catch { /* ignore */ }
+
   $('#auto-pay-enabled').checked = s.payments.enabled;
   $('#auto-pay-days').value = s.payments.daysAfter;
   $('#auto-pay-completed').checked = s.payments.onlyCompleted;
@@ -3435,6 +3501,16 @@ $('#btn-auto-save').addEventListener('click', async () => {
           slotMinutes: Number($('#auto-book-slot').value) || 30,
           horizonDays: Number($('#auto-book-horizon').value) || 14,
           maxPerDay: Number($('#auto-book-max').value) || 12,
+          pay: {
+            enabled: $('#auto-bookpay-enabled').checked,
+            price: Number($('#auto-bookpay-price').value) || 0,
+            concept: $('#auto-bookpay-concept').value.trim(),
+            allowCard: $('#auto-bookpay-card').checked,
+            allowTransfer: $('#auto-bookpay-transfer').checked,
+            iban: $('#auto-bookpay-iban').value.trim(),
+            beneficiary: $('#auto-bookpay-beneficiary').value.trim(),
+            transferHoldHours: Number($('#auto-bookpay-transferhold').value) || 48,
+          },
         },
         payments: {
           enabled: $('#auto-pay-enabled').checked,

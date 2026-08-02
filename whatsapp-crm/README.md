@@ -109,6 +109,17 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   tengas y —si Outlook está activado— lo que tengas ocupado en tu calendario de
   Outlook, para que nunca se ofrezca una hora en la que estás pillado. Se activa
   en Automatizaciones → «Reserva de cita online».
+- **💳 Cobro de la cita al reservar (SumUp)**: opcionalmente, el cliente **paga
+  la asesoría al reservar**. Con **tarjeta** paga en la página segura de SumUp
+  (el CRM no toca los datos de tarjeta); al confirmarse el pago, la cita queda
+  reservada y en Outlook **automáticamente**. Con **transferencia**, el hueco se
+  aparta como «pendiente de pago» (con tu IBAN y concepto) y tú lo confirmas a
+  mano en **Citas → Reservas pendientes de pago** cuando veas el ingreso; si no
+  se paga a tiempo, el hueco se libera solo. El precio, el IBAN y las formas de
+  pago admitidas se configuran en Automatizaciones → «Cobrar la cita al
+  reservar». Requiere las variables `SUMUP_API_KEY` y `SUMUP_MERCHANT_CODE`
+  (y `PUBLIC_BASE_URL` para las vueltas de pago); sin ellas, el cobro con
+  tarjeta se desactiva solo y el resto del CRM funciona igual.
 - **🗓️ Calendario de Outlook**: pestaña que muestra, dentro del CRM, los
   eventos del calendario compartido de Outlook (el mismo donde se crean las
   citas), incluidos los que se crean directamente en Outlook. Solo lectura,
@@ -541,6 +552,9 @@ Pensado para datos sensibles (extranjería). Medidas aplicadas:
 | `WEBHOOK_VERIFY_TOKEN` | Token que verifica el webhook de Meta | `gestoria-crm` |
 | `WHATSAPP_GRAPH_VERSION` | Versión de la Graph API | `v20.0` |
 | `MS_TENANT_ID` / `MS_CLIENT_ID` / `MS_CLIENT_SECRET` | Credenciales de la app de Entra ID para Outlook y SharePoint (vacías → sin sincronización) | *(vacío)* |
+| `SUMUP_API_KEY` | Clave secreta de la API de SumUp (`sup_sk_…`) para cobrar las citas con tarjeta. Vacía → cobro con tarjeta desactivado | *(vacío)* |
+| `SUMUP_MERCHANT_CODE` | Código de comercio de tu cuenta SumUp | *(vacío)* |
+| `PUBLIC_BASE_URL` | URL pública del CRM (p. ej. `https://burocracia-zero-crm.onrender.com`). La usan las vueltas de pago de SumUp; si falta, se deduce de la petición | *(vacío)* |
 | `ANTHROPIC_API_KEY` | Clave de Claude (Anthropic). Si está, el asistente y las respuestas sugeridas usan Claude (tiene prioridad sobre OpenAI) | *(vacío)* |
 | `ANTHROPIC_MODEL` | Modelo de Claude para el asistente (sube a `claude-opus-5` si quieres más capacidad) | `claude-haiku-4-5` |
 | `OPENAI_API_KEY` | Clave de OpenAI (o compatible). Transcribe notas de voz (Whisper) **y**, si no hay clave de Claude, mueve el asistente y las respuestas sugeridas | *(vacío)* |

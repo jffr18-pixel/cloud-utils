@@ -18,6 +18,7 @@ const transcribe = require('./lib/transcribe');
 const pdfsign = require('./lib/pdfsign');
 const documentos = require('./lib/documentos');
 const telegram = require('./lib/telegram');
+const sumup = require('./lib/sumup');
 const assistant = require('./lib/assistant');
 
 const PORT = Number(process.env.PORT || 3000);
@@ -1544,6 +1545,7 @@ async function handleApi(req, res, url) {
       whatsappConfigured: wa.isConfigured(),
       provider: wa.provider(),
       verifyToken: wa.config().verifyToken,
+      sumupConfigured: sumup.isConfigured(),
     });
   }
 
@@ -2676,6 +2678,38 @@ async function handleApi(req, res, url) {
     }
   }
 
+  // --- Reservas pendientes de pago (transferencias por confirmar) -----------
+  if (resource === 'pending-bookings') {
+    expirePendingBookings(db);
+    if (req.method === 'GET' && !id) {
+      // Solo las que esperan acción de la gestoría: transferencias pendientes.
+      const list = db.pendingBookings
+        .filter((p) => p.status === 'pending' && p.method === 'transferencia'
+          && (!visIds || visIds.has(p.clientId)))
+        .map((p) => ({ ...p, clientName: (db.clients.find((c) => c.id === p.clientId) || {}).name || '' }))
+        .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+      return json(res, 200, list);
+    }
+    const booking = db.pendingBookings.find((p) => p.id === id);
+    if (!booking) return json(res, 404, { error: 'Reserva no encontrada' });
+    if (visIds && !visIds.has(booking.clientId)) return json(res, 403, { error: 'Sin acceso a esta reserva' });
+    // Confirmar el pago (transferencia recibida) → crea la cita en firme.
+    if (req.method === 'POST' && parts[3] === 'confirm') {
+      if (booking.status !== 'pending') return json(res, 400, { error: 'Esta reserva ya no está pendiente' });
+      const appt = await finalizeBooking(db, booking, { method: 'transferencia' });
+      if (!appt) return json(res, 500, { error: 'No se pudo confirmar la cita' });
+      security.audit('cita_transferencia_confirmada', { bookingId: booking.id, clientId: booking.clientId, amount: booking.amount, user: sessionUser(req) });
+      return json(res, 200, { ok: true, appointmentId: appt.id });
+    }
+    // Rechazar/cancelar la reserva pendiente → libera el hueco.
+    if (req.method === 'POST' && parts[3] === 'cancel') {
+      db.pendingBookings = db.pendingBookings.filter((p) => p.id !== booking.id);
+      save();
+      return json(res, 200, { ok: true });
+    }
+    return json(res, 404, { error: 'Acción no válida' });
+  }
+
   // --- Usuarios del equipo (para asignar conversaciones) --------------------
   if (req.method === 'GET' && resource === 'users') {
     return json(res, 200, [...authUsers().keys()]);
@@ -3789,7 +3823,26 @@ const PAGE_I18N = {
   ar: { bookCta: '📅 احجز موعداً', bookTitle: 'احجز موعدك يا {name}', bookLead: 'اختر اليوم والوقت المناسب لك.', bookNone: 'لا توجد مواعيد متاحة حالياً. راسلنا على واتساب وسنجد لك موعداً.', bookOkTitle: 'تم حجز الموعد!', bookOkBody: 'ننتظرك يوم {date} الساعة {time}. أرسلنا لك التأكيد على واتساب.', bookBack: 'عرض معاملاتي', bookTaken: 'لقد حُجز هذا الموعد للتو. من فضلك اختر موعداً آخر.', consentTitle: 'حماية البيانات والتفويض', consentAccept: 'قرأت وأوافق', consentDone: '✓ تمت الموافقة بتاريخ {date}' },
   ro: { bookCta: '📅 Programează o întâlnire', bookTitle: 'Rezervă-ți programarea, {name}', bookLead: 'Alege ziua și ora care ți se potrivesc.', bookNone: 'Momentan nu există intervale libere. Scrie-ne pe WhatsApp și găsim unul.', bookOkTitle: 'Programare rezervată!', bookOkBody: 'Te așteptăm pe {date} la ora {time}. Ți-am trimis confirmarea pe WhatsApp.', bookBack: 'Vezi dosarele mele', bookTaken: 'Acel interval tocmai a fost ocupat. Te rugăm alege altul.', consentTitle: 'Protecția datelor și autorizare', consentAccept: 'Am citit și accept', consentDone: '✓ Consimțământ acceptat la {date}' },
 };
-function pT(lang) { return PAGE_I18N[lang] || PAGE_I18N.es; }
+// Cadenas de pago de la cita (por ahora en español; se muestran igual en
+// cualquier idioma hasta que se traduzcan).
+const PAY_I18N = {
+  payTitle: 'Reserva y pago de tu asesoría',
+  payLead: 'Has elegido el {date} a las {time}. Para confirmar la cita hay que abonar {amount}.',
+  payChoose: 'Elige cómo quieres pagar:',
+  payCard: '💳 Pagar con tarjeta',
+  payTransfer: '🏦 Pagar por transferencia',
+  payNoMethods: 'El pago online no está disponible ahora mismo. Escríbenos por WhatsApp y te damos cita.',
+  payFailedTitle: 'El pago no se completó',
+  payFailedBody: 'No hemos podido confirmar el pago, así que el hueco sigue libre. Puedes intentarlo de nuevo.',
+  payRetry: 'Volver a elegir hueco',
+  payThanksPaid: 'Te esperamos el {date} a las {time}. El pago se ha registrado correctamente y te hemos enviado la confirmación por WhatsApp.',
+  transferTitle: 'Hueco apartado · pendiente de pago',
+  transferBody: 'Hemos apartado tu cita del {date} a las {time}. Para confirmarla, haz una transferencia de {amount} a estos datos:',
+  transferConcept: 'Concepto (ponlo en la transferencia)',
+  transferBeneficiary: 'Titular',
+  transferHold: 'Guardamos tu hueco durante {hours} h. En cuanto veamos el pago te confirmamos la cita por WhatsApp.',
+};
+function pT(lang) { return { ...PAGE_I18N.es, ...PAY_I18N, ...(PAGE_I18N[lang] || {}) }; }
 
 const pad2 = (n) => String(n).padStart(2, '0');
 const isoDay = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
@@ -3831,6 +3884,18 @@ async function outlookBusyByDate(s, fromDate, toDate) {
   return byDate;
 }
 
+// Elimina las reservas pendientes de pago que ya han caducado (el pago con
+// tarjeta no se completó a tiempo, o la transferencia no llegó), liberando el
+// hueco. Devuelve cuántas ha caducado.
+function expirePendingBookings(db, now = Date.now()) {
+  const before = db.pendingBookings.length;
+  db.pendingBookings = db.pendingBookings.filter((p) => {
+    if (p.status !== 'pending') return false; // ya finalizada o cancelada: se retira
+    return (p.expiresAt || 0) > now;
+  });
+  return before - db.pendingBookings.length;
+}
+
 async function availableSlots(db, s, now = new Date()) {
   const bh = s.businessHours || { days: [1, 2, 3, 4, 5], open: '09:00', close: '18:00' };
   const bk = s.booking || {};
@@ -3843,6 +3908,14 @@ async function availableSlots(db, s, now = new Date()) {
     if (a.status === 'cancelada') continue;
     (taken[a.date] = taken[a.date] || new Set()).add(a.time);
     countByDay[a.date] = (countByDay[a.date] || 0) + 1;
+  }
+  // Huecos retenidos por reservas pendientes de pago (aún sin caducar): no se
+  // ofrecen a otro cliente mientras uno está pagando o pendiente de transferencia.
+  expirePendingBookings(db, now.getTime());
+  for (const p of db.pendingBookings) {
+    if (p.status !== 'pending') continue;
+    (taken[p.date] = taken[p.date] || new Set()).add(p.time);
+    countByDay[p.date] = (countByDay[p.date] || 0) + 1;
   }
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const today = isoDay(now);
@@ -3873,11 +3946,13 @@ async function availableSlots(db, s, now = new Date()) {
 
 // Crea una cita (reutilizada por la API, la reserva online y el asistente):
 // avisa al cliente por WhatsApp y la sincroniza con Outlook si está activado.
-async function createAppointment(db, client, { date, time, reason, notes } = {}) {
+async function createAppointment(db, client, { date, time, reason, notes, payment } = {}) {
   const appt = {
     id: newId('cit'), clientId: client.id, date, time,
     reason: String(reason || '').trim(), notes: notes || '', status: 'activa',
     confirmationSentAt: null, remindedAt: null, createdAt: Date.now(),
+    // Pago de la cita (si se cobró al reservar): { amount, method, status, ref }.
+    payment: payment || null,
   };
   db.appointments.push(appt);
   save();
@@ -3888,6 +3963,30 @@ async function createAppointment(db, client, { date, time, reason, notes } = {})
     catch (err) { console.error('No se pudo crear el evento en Outlook:', err.message); }
   }
   save();
+  return appt;
+}
+
+// Convierte una reserva pendiente ya pagada en una cita en firme (Outlook +
+// aviso al cliente). Idempotente: si ya se finalizó, devuelve la cita creada.
+async function finalizeBooking(db, booking, { method } = {}) {
+  if (booking.status === 'confirmed' && booking.appointmentId) {
+    return db.appointments.find((a) => a.id === booking.appointmentId) || null;
+  }
+  const client = db.clients.find((c) => c.id === booking.clientId);
+  if (!client) return null;
+  const payMethod = method || booking.method || 'tarjeta';
+  const appt = await createAppointment(db, client, {
+    date: booking.date, time: booking.time, reason: booking.reason,
+    payment: {
+      amount: money2(booking.amount), method: payMethod, status: 'paid',
+      ref: booking.checkoutId || booking.id, at: Date.now(), concept: booking.concept || '',
+    },
+  });
+  booking.status = 'confirmed';
+  booking.appointmentId = appt.id;
+  booking.confirmedAt = Date.now();
+  save();
+  security.audit('cita_pagada', { bookingId: booking.id, clientId: client.id, amount: booking.amount, method: payMethod });
   return appt;
 }
 
@@ -3904,12 +4003,64 @@ async function renderBookingPage(db, client, lang, s, note) {
   return statusPageShell(`Burocracia Zero · ${client.name}`, head + body, lang, client.statusToken || '', '/reservar/');
 }
 
-function renderBookingConfirmed(client, lang, date, time) {
+function renderBookingConfirmed(client, lang, date, time, paid) {
   const p = pT(lang);
   const body = `<div class="ok-card"><div class="ok-check">✓</div>
     <h1>${escHtml(p.bookOkTitle)}</h1>
-    <p class="lead">${p.bookOkBody.replace('{date}', escHtml(fmtDateLoc(date, lang))).replace('{time}', escHtml(time))}</p>
+    <p class="lead">${(paid ? p.payThanksPaid : p.bookOkBody).replace('{date}', escHtml(fmtDateLoc(date, lang))).replace('{time}', escHtml(time))}</p>
     <a class="up-btn" href="/estado/${escHtml(client.statusToken)}?lang=${lang}">${escHtml(p.bookBack)}</a></div>`;
+  return statusPageShell(`Burocracia Zero · ${client.name}`, body, lang, client.statusToken || '', '/reservar/');
+}
+
+const eurLoc = (n) => (Math.round((Number(n) || 0) * 100) / 100)
+  .toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+
+// Pantalla de elección de forma de pago para el hueco elegido.
+function renderPaymentChoice(client, lang, s, date, time) {
+  const p = pT(lang);
+  const pay = (s.booking && s.booking.pay) || {};
+  const amount = eurLoc(pay.price);
+  const lead = p.payLead.replace('{date}', escHtml(fmtDateLoc(date, lang)))
+    .replace('{time}', escHtml(time)).replace('{amount}', escHtml(amount));
+  const slot = `${date}T${time}`;
+  const cardBtn = (pay.allowCard && sumup.isConfigured())
+    ? `<button class="book-cta" type="submit" name="method" value="tarjeta">${escHtml(p.payCard)}</button>` : '';
+  const transferBtn = (pay.allowTransfer && pay.iban)
+    ? `<button class="bk-slot" type="submit" name="method" value="transferencia">${escHtml(p.payTransfer)}</button>` : '';
+  const buttons = (cardBtn || transferBtn)
+    ? `<form method="post"><input type="hidden" name="slot" value="${escHtml(slot)}">
+        <p class="lead">${escHtml(p.payChoose)}</p>
+        <div class="bk-slots" style="align-items:center">${cardBtn} ${transferBtn}</div></form>`
+    : `<div class="empty">${escHtml(p.payNoMethods)}</div>`;
+  const head = `<h1>${escHtml(p.payTitle)}</h1><p class="lead">${lead}</p>`;
+  return statusPageShell(`Burocracia Zero · ${client.name}`, head + buttons, lang, client.statusToken || '', '/reservar/');
+}
+
+// Instrucciones de transferencia (el hueco queda apartado hasta que se confirme).
+function renderTransferInstructions(client, lang, s, booking) {
+  const p = pT(lang);
+  const pay = (s.booking && s.booking.pay) || {};
+  const hours = Math.max(1, Number(pay.transferHoldHours) || 48);
+  const body = `<div class="book">
+    <h1>${escHtml(p.transferTitle)}</h1>
+    <p class="lead">${p.transferBody.replace('{date}', escHtml(fmtDateLoc(booking.date, lang))).replace('{time}', escHtml(booking.time)).replace('{amount}', escHtml(eurLoc(booking.amount)))}</p>
+    <div class="book-note" style="text-align:left">
+      <div><strong>IBAN:</strong> ${escHtml(pay.iban)}</div>
+      ${pay.beneficiary ? `<div><strong>${escHtml(p.transferBeneficiary)}:</strong> ${escHtml(pay.beneficiary)}</div>` : ''}
+      <div><strong>${escHtml(p.transferConcept)}:</strong> ${escHtml((booking.concept || 'Cita') + ' ' + booking.id.slice(-6))}</div>
+      <div><strong>Importe:</strong> ${escHtml(eurLoc(booking.amount))}</div>
+    </div>
+    <p class="lead">${escHtml(p.transferHold.replace('{hours}', hours))}</p>
+    <a class="up-btn" href="/estado/${escHtml(client.statusToken)}?lang=${lang}">${escHtml(p.bookBack)}</a></div>`;
+  return statusPageShell(`Burocracia Zero · ${client.name}`, body, lang, client.statusToken || '', '/reservar/');
+}
+
+function renderPaymentFailed(client, lang) {
+  const p = pT(lang);
+  const body = `<div class="ok-card"><div class="ok-check" style="background:#c0392b">✕</div>
+    <h1>${escHtml(p.payFailedTitle)}</h1>
+    <p class="lead">${escHtml(p.payFailedBody)}</p>
+    <a class="up-btn" href="/reservar/${escHtml(client.statusToken)}?lang=${lang}">${escHtml(p.payRetry)}</a></div>`;
   return statusPageShell(`Burocracia Zero · ${client.name}`, body, lang, client.statusToken || '', '/reservar/');
 }
 
@@ -4100,6 +4251,29 @@ const server = http.createServer(async (req, res) => {
       return res.end(renderStatusPage(db, client, lang));
     }
 
+    // Webhook de SumUp: aviso de cambio de estado de un cobro. Se verifica el
+    // estado real contra la API (no se confía en el cuerpo recibido) y, si está
+    // pagado, se confirma la cita. Idempotente.
+    if (url.pathname === '/pago-sumup') {
+      if (req.method !== 'POST') { res.writeHead(405); return res.end(); }
+      let body = {};
+      try { const raw = await readRawBody(req, 100_000); body = raw ? JSON.parse(raw) : {}; } catch { body = {}; }
+      // SumUp puede enviar el id del checkout y/o la referencia (nuestra reserva).
+      const checkoutId = body.id || body.checkout_id || (body.payload && body.payload.id) || '';
+      const reference = body.checkout_reference || body.reference || (body.payload && body.payload.checkout_reference) || '';
+      const db = load();
+      const booking = db.pendingBookings.find((x) => x.status === 'pending'
+        && ((checkoutId && x.checkoutId === checkoutId) || (reference && x.id === reference)));
+      if (booking && booking.checkoutId && sumup.isConfigured()) {
+        try {
+          const chk = await sumup.getCheckout(booking.checkoutId);
+          if (sumup.isPaid(chk.status)) await finalizeBooking(db, booking, { method: 'tarjeta' });
+        } catch (err) { console.error('Webhook SumUp:', sumup.redact(err.message)); }
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end('{"ok":true}');
+    }
+
     // Reserva de cita online (enlace privado por cliente).
     if (url.pathname.startsWith('/reservar/')) {
       if (!security.rateLimit(`reservar:${ipOf(req)}`, Number(process.env.RATE_LIMIT_API || 600))) {
@@ -4107,6 +4281,7 @@ const server = http.createServer(async (req, res) => {
         return res.end('Demasiadas peticiones');
       }
       const token = url.pathname.slice('/reservar/'.length).split('/')[0];
+      const rest = url.pathname.slice(('/reservar/' + token).length); // '' | '/pagado'
       const db = load();
       const lang = pickLang(url, req);
       const client = token && token.length >= 16 ? db.clients.find((c) => c.statusToken === token) : null;
@@ -4116,9 +4291,36 @@ const server = http.createServer(async (req, res) => {
         return res.end(statusPageShell((I18N[lang] || I18N.es).notFoundTitle,
           `<div class="empty">${escHtml((I18N[lang] || I18N.es).notFound)}</div>`, lang, ''));
       }
+      const pay = (s.booking.pay) || {};
+      const payOn = Boolean(pay.enabled) && (Number(pay.price) || 0) > 0;
+
+      // Vuelta desde la página de pago de SumUp: se verifica el estado real.
+      if (rest === '/pagado') {
+        const bookingId = url.searchParams.get('b') || '';
+        const booking = db.pendingBookings.find((x) => x.id === bookingId && x.clientId === client.id);
+        if (booking && booking.status === 'confirmed') {
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          return res.end(renderBookingConfirmed(client, lang, booking.date, booking.time, true));
+        }
+        if (booking && booking.status === 'pending' && booking.checkoutId) {
+          try {
+            const chk = await sumup.getCheckout(booking.checkoutId);
+            if (sumup.isPaid(chk.status)) {
+              await finalizeBooking(db, booking, { method: 'tarjeta' });
+              res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+              return res.end(renderBookingConfirmed(client, lang, booking.date, booking.time, true));
+            }
+          } catch (err) { console.error('Verificar pago SumUp:', sumup.redact(err.message)); }
+        }
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        return res.end(renderPaymentFailed(client, lang));
+      }
+
       if (req.method === 'POST') {
         const raw = await readRawBody(req, 100_000);
-        const slot = new URLSearchParams(raw).get('slot') || '';
+        const form = new URLSearchParams(raw);
+        const slot = form.get('slot') || '';
+        const method = form.get('method') || '';
         const [date, time] = slot.split('T');
         const slots = await availableSlots(db, s);
         const free = slots.some((d) => d.date === date && d.slots.includes(time));
@@ -4126,9 +4328,62 @@ const server = http.createServer(async (req, res) => {
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
           return res.end(await renderBookingPage(db, client, lang, s, pT(lang).bookTaken));
         }
-        await createAppointment(db, client, { date, time, reason: s.booking.reason });
+        // Sin cobro: se reserva directamente (comportamiento clásico).
+        if (!payOn) {
+          await createAppointment(db, client, { date, time, reason: s.booking.reason });
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          return res.end(renderBookingConfirmed(client, lang, date, time));
+        }
+        // Con cobro: primero se elige la forma de pago.
+        if (method !== 'tarjeta' && method !== 'transferencia') {
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          return res.end(renderPaymentChoice(client, lang, s, date, time));
+        }
+        // Se crea la reserva pendiente (retiene el hueco).
+        const now = Date.now();
+        const isCard = method === 'tarjeta';
+        const holdMs = isCard
+          ? Math.max(10, Number(pay.holdMinutes) || 30) * 60_000
+          : Math.max(1, Number(pay.transferHoldHours) || 48) * 3_600_000;
+        const booking = {
+          id: newId('pb'), clientId: client.id, date, time, reason: s.booking.reason,
+          amount: money2(pay.price), currency: pay.currency || 'EUR', concept: pay.concept || 'Cita',
+          method, status: 'pending', checkoutId: null,
+          createdAt: now, expiresAt: now + holdMs, appointmentId: null,
+        };
+        if (isCard) {
+          if (!(pay.allowCard && sumup.isConfigured())) {
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+            return res.end(renderPaymentChoice(client, lang, s, date, time));
+          }
+          try {
+            const base = publicBase(req);
+            const checkout = await sumup.createHostedCheckout({
+              amount: booking.amount, currency: booking.currency, reference: booking.id,
+              description: `${booking.concept} · ${client.name}`,
+              returnUrl: `${base}/pago-sumup`,
+              redirectUrl: `${base}/reservar/${client.statusToken}/pagado?b=${booking.id}&lang=${lang}`,
+            });
+            booking.checkoutId = checkout.id;
+            db.pendingBookings.push(booking);
+            save();
+            res.writeHead(303, { Location: checkout.url });
+            return res.end();
+          } catch (err) {
+            console.error('Crear checkout SumUp:', sumup.redact(err.message));
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+            return res.end(renderPaymentChoice(client, lang, s, date, time));
+          }
+        }
+        // Transferencia: se aparta el hueco y se muestran los datos bancarios.
+        if (!(pay.allowTransfer && pay.iban)) {
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          return res.end(renderPaymentChoice(client, lang, s, date, time));
+        }
+        db.pendingBookings.push(booking);
+        save();
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        return res.end(renderBookingConfirmed(client, lang, date, time));
+        return res.end(renderTransferInstructions(client, lang, s, booking));
       }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       return res.end(await renderBookingPage(db, client, lang, s));

@@ -157,6 +157,20 @@ const DEFAULTS = {
     horizonDays: 14,       // cuántos días hacia delante se ofrecen
     maxPerDay: 12,         // tope de citas por día
     reason: 'Consulta',    // motivo por defecto de la cita reservada
+    // Cobro de la cita al reservar. Las credenciales de SumUp van por variables
+    // de entorno (SUMUP_API_KEY / SUMUP_MERCHANT_CODE), nunca aquí.
+    pay: {
+      enabled: false,               // exigir pago para reservar la cita
+      price: 40,                    // precio de la asesoría (€)
+      currency: 'EUR',
+      concept: 'Asesoría · Burocracia Zero', // concepto que ve el cliente y aparece en el cobro
+      allowCard: true,              // permitir pago con tarjeta (SumUp, confirmación automática)
+      allowTransfer: true,          // permitir transferencia (reserva pendiente, se confirma a mano)
+      iban: '',                     // IBAN para las transferencias
+      beneficiary: 'Burocracia Zero SLP', // titular de la cuenta
+      holdMinutes: 30,              // minutos que se retiene el hueco esperando el pago con tarjeta
+      transferHoldHours: 48,        // horas que se retiene el hueco esperando la transferencia
+    },
   },
   // Pedir reseña en Google al completar un trámite. Cuando un expediente pasa a
   // «completado», se envía al cliente (una vez) un WhatsApp con el enlace de

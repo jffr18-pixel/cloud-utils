@@ -59,7 +59,7 @@
       <button class="nav-btn" data-view="inbox"><svg class="nav-ico"><use href="#ico-whatsapp"/></svg> <span class="nav-label">WhatsApp</span> <span class="badge hidden" id="nav-unread"></span></button>
       <button class="nav-btn" data-view="clients"><svg class="nav-ico"><use href="#ico-clients"/></svg> <span class="nav-label">Clientes</span></button>
       <button class="nav-btn" data-view="cases"><svg class="nav-ico"><use href="#ico-cases"/></svg> <span class="nav-label">Expedientes</span></button>
-      <button class="nav-btn" data-view="appointments"><svg class="nav-ico"><use href="#ico-appointments"/></svg> <span class="nav-label">Citas</span></button>
+      <button class="nav-btn" data-view="appointments"><svg class="nav-ico"><use href="#ico-appointments"/></svg> <span class="nav-label">Citas</span> <span class="badge hidden" id="nav-pending-book"></span></button>
       <button class="nav-btn" data-view="calendar"><svg class="nav-ico"><use href="#ico-cal"/></svg> <span class="nav-label">Calendario</span></button>
       <button class="nav-btn" data-view="agenda"><svg class="nav-ico"><use href="#ico-agenda"/></svg> <span class="nav-label">Agenda</span> <span class="badge hidden" id="nav-agenda"></span></button>
       <button class="nav-btn" data-view="templates"><svg class="nav-ico"><use href="#ico-templates"/></svg> <span class="nav-label">Plantillas</span></button>
@@ -376,6 +376,7 @@
           <h1>Citas</h1>
           <button class="btn primary" id="btn-new-appt">＋ Nueva cita</button>
         </div>
+        <div id="pending-bookings"></div>
         <div class="filters" id="appt-filters">
           <button class="chip active" data-appt="proximas">Próximas</button>
           <button class="chip" data-appt="pasadas">Pasadas</button>
@@ -542,6 +543,23 @@
           <input type="number" id="auto-book-horizon" min="1" max="60" style="max-width:120px">
           <label style="margin-top:8px">Máximo de citas por día</label>
           <input type="number" id="auto-book-max" min="1" max="50" style="max-width:120px">
+
+          <div class="auto-sub" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+            <h4><label><input type="checkbox" id="auto-bookpay-enabled"> 💳 Cobrar la cita al reservar</label></h4>
+            <p class="hint">El cliente paga la asesoría al reservar. Con <b>tarjeta</b> (SumUp) la cita queda confirmada y en Outlook automáticamente. Con <b>transferencia</b>, el hueco se aparta como «pendiente de pago» y tú lo confirmas a mano cuando veas el ingreso. <span id="sumup-status" class="hint"></span></p>
+            <label>Precio de la asesoría (€)</label>
+            <input type="number" id="auto-bookpay-price" min="0" step="0.01" style="max-width:120px">
+            <label style="margin-top:8px">Concepto (lo ve el cliente en el pago)</label>
+            <input type="text" id="auto-bookpay-concept" maxlength="80">
+            <label style="margin-top:8px"><input type="checkbox" id="auto-bookpay-card"> Permitir pago con tarjeta (SumUp)</label>
+            <label><input type="checkbox" id="auto-bookpay-transfer"> Permitir pago por transferencia</label>
+            <label style="margin-top:8px">IBAN para transferencias</label>
+            <input type="text" id="auto-bookpay-iban" placeholder="ES00 0000 0000 0000 0000 0000" maxlength="40">
+            <label style="margin-top:8px">Titular de la cuenta</label>
+            <input type="text" id="auto-bookpay-beneficiary" maxlength="80">
+            <label style="margin-top:8px">Horas que se aparta el hueco esperando la transferencia</label>
+            <input type="number" id="auto-bookpay-transferhold" min="1" max="168" style="max-width:120px">
+          </div>
         </div>
 
         <div class="auto-card">

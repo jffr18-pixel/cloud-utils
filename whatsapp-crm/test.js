@@ -1660,6 +1660,71 @@ async function main() {
     assert(/track-cta/.test(subPage2) && /sede\.administracion\.gob\.es/.test(subPage2),
       'la web de seguimiento muestra el botón de seguimiento en la administración');
 
+    console.log('Reserva de cita con cobro (SumUp / transferencia)');
+    const sumupLib = require('./lib/sumup');
+    assert(sumupLib.isConfigured() === false, 'SumUp sin variables de entorno no está configurado');
+    assert(sumupLib.isPaid('PAID') === true && sumupLib.isPaid('PENDING') === false, 'isPaid solo es cierto con PAID');
+    let sumupThrew = false;
+    try { await sumupLib.createHostedCheckout({ amount: 10, reference: 'x' }); } catch { sumupThrew = true; }
+    assert(sumupThrew, 'crear un checkout sin configurar SumUp falla de forma controlada');
+
+    const formPost = (path, body) => fetch(`${BASE}${path}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body,
+    });
+    const firstSlot = async () => {
+      const html = await (await fetch(`${BASE}/reservar/${token}`)).text();
+      const m = html.match(/name="slot" value="([^"]+)"/);
+      return m ? m[1] : null;
+    };
+    // Sin cobro: la reserva funciona como siempre (cita directa).
+    await req('PUT', '/api/automations', { booking: { enabled: true, pay: { enabled: false } } });
+    const slot1 = await firstSlot();
+    assert(slot1, 'hay huecos libres para reservar');
+    const book1 = await formPost(`/reservar/${token}`, `slot=${encodeURIComponent(slot1)}`);
+    const book1Html = await book1.text();
+    assert(book1.status === 200 && /reservada/i.test(book1Html), 'sin cobro, la cita se reserva directamente');
+
+    // Con cobro: primero se elige forma de pago; la transferencia deja la reserva
+    // pendiente (aparta el hueco) hasta que la gestoría la confirma.
+    await req('PUT', '/api/automations', { booking: { enabled: true, pay: {
+      enabled: true, price: 40, allowCard: true, allowTransfer: true,
+      iban: 'ES9121000418450200051332', beneficiary: 'Burocracia Zero SLP', concept: 'Asesoría',
+    } } });
+    const slot2 = await firstSlot();
+    assert(slot2 && slot2 !== slot1, 'queda otro hueco tras la primera reserva');
+    const choice = await (await formPost(`/reservar/${token}`, `slot=${encodeURIComponent(slot2)}`)).text();
+    assert(/Pagar con tarjeta|Pagar por transferencia|forma de pago/i.test(choice), 'con cobro se pide elegir forma de pago');
+    const transfer = await (await formPost(`/reservar/${token}`, `slot=${encodeURIComponent(slot2)}&method=transferencia`)).text();
+    assert(/IBAN/i.test(transfer) && /ES9121000418450200051332/.test(transfer), 'la transferencia muestra los datos bancarios');
+    const pend = await req('GET', '/api/pending-bookings');
+    assert(pend.data.length === 1 && pend.data[0].method === 'transferencia' && pend.data[0].amount === 40,
+      'la reserva por transferencia queda pendiente de pago');
+    const pbId = pend.data[0].id;
+    const slot3 = await firstSlot();
+    assert(slot3 !== slot2, 'el hueco apartado por la reserva pendiente ya no se ofrece');
+    const pbConfirm = await req('POST', `/api/pending-bookings/${pbId}/confirm`, {});
+    assert(pbConfirm.status === 200 && pbConfirm.data.appointmentId, 'confirmar la transferencia crea la cita');
+    const bkApptsAfter = await req('GET', '/api/appointments');
+    const paidAppt = bkApptsAfter.data.find((a) => a.id === pbConfirm.data.appointmentId);
+    assert(paidAppt && paidAppt.payment && paidAppt.payment.method === 'transferencia' && paidAppt.payment.amount === 40,
+      'la cita creada guarda el pago (40 € por transferencia)');
+    const pend2 = await req('GET', '/api/pending-bookings');
+    assert(pend2.data.length === 0, 'tras confirmar, no quedan reservas pendientes');
+    // Cancelar una reserva pendiente libera el hueco.
+    const slot4 = await firstSlot();
+    await formPost(`/reservar/${token}`, `slot=${encodeURIComponent(slot4)}&method=transferencia`);
+    const pend3 = await req('GET', '/api/pending-bookings');
+    assert(pend3.data.length === 1, 'nueva reserva pendiente creada');
+    const cancelPb = await req('POST', `/api/pending-bookings/${pend3.data[0].id}/cancel`, {});
+    assert(cancelPb.status === 200, 'se puede cancelar una reserva pendiente');
+    const pend4 = await req('GET', '/api/pending-bookings');
+    assert(pend4.data.length === 0, 'tras cancelar, el hueco se libera');
+    // El webhook de SumUp no falla ante un aviso desconocido.
+    const sumupHook = await formPost('/pago-sumup', JSON.stringify({ id: 'desconocido' }));
+    assert(sumupHook.status === 200, 'el webhook de SumUp responde 200 aunque no reconozca el aviso');
+    // Se deja la reserva desactivada para no afectar a otras pruebas.
+    await req('PUT', '/api/automations', { booking: { enabled: false, pay: { enabled: false } } });
+
     console.log('Dossier del cliente (PDF)');
     const dossier = await fetch(`${BASE}/api/clients/${clientId}/dossier`);
     const dossierBuf = Buffer.from(await dossier.arrayBuffer());
