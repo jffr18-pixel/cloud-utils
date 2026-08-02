@@ -1194,6 +1194,14 @@ async function transcribeInbound(msgId, media) {
 
 async function handleWebhookPayload(db, body) {
   const { incoming, echoes, statuses, reads } = wa.parseWebhook(body);
+  // Diagnóstico (sin datos personales): permite comprobar en los logs de Render
+  // si el proveedor manda avisos de "leído desde el móvil" (Coexistence). Si al
+  // leer un WhatsApp en el teléfono no aparece aquí `reads=1+`, es que YCloud no
+  // reenvía esos avisos y hay que sincronizar la lectura de otra forma.
+  try {
+    const evType = (body && typeof body.type === 'string') ? body.type : 'meta';
+    console.log(`[webhook] type=${evType} incoming=${incoming.length} echoes=${echoes.length} statuses=${statuses.length} reads=${reads.length}`);
+  } catch { /* noop */ }
   const freshIncoming = [];
   for (const inMsg of incoming) {
     if (db.messages.some((m) => m.waMessageId && m.waMessageId === inMsg.waMessageId)) continue;
@@ -1844,11 +1852,23 @@ async function handleApi(req, res, url) {
     }
     if (req.method === 'POST' && id === 'read') {
       const b = await readBody(req);
-      if (visIds && !visIds.has(b.clientId)) return json(res, 403, { error: 'Sin acceso a esta conversación' });
-      const toMark = db.messages.filter((m) => m.clientId === b.clientId && m.direction === 'in' && !m.read);
+      // Marcar TODO como leído: útil cuando ya has leído los WhatsApp en el
+      // teléfono y el CRM sigue mostrándolos como pendientes (WhatsApp no
+      // siempre avisa de las lecturas hechas desde el móvil).
+      let toMark;
+      if (b.all) {
+        toMark = db.messages.filter((m) => m.direction === 'in' && !m.read
+          && (!visIds || visIds.has(m.clientId)));
+      } else {
+        if (visIds && !visIds.has(b.clientId)) return json(res, 403, { error: 'Sin acceso a esta conversación' });
+        toMark = db.messages.filter((m) => m.clientId === b.clientId && m.direction === 'in' && !m.read);
+      }
+      // WhatsApp rechaza los acuses de lectura de mensajes antiguos, así que solo
+      // se reenvían los de las últimas 48 h (el resto se marca solo en el CRM).
+      const recentCutoff = Date.now() - 48 * 3600 * 1000;
       for (const m of toMark) {
         m.read = true;
-        wa.markAsRead({ waMessageId: m.waMessageId, ycloudId: m.ycloudId });
+        if (m.timestamp >= recentCutoff) wa.markAsRead({ waMessageId: m.waMessageId, ycloudId: m.ycloudId });
       }
       if (toMark.length) save();
       return json(res, 200, { marked: toMark.length });

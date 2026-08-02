@@ -892,6 +892,17 @@ async function main() {
     const markRead = await req('POST', '/api/messages/read', { clientId: pedro.clientId });
     assert(markRead.data.marked === 1, 'marcar conversación como leída');
 
+    // Marcar TODO como leído: deja el CRM sin pendientes de un solo golpe (útil
+    // cuando ya se han leído los WhatsApp en el móvil).
+    await req('POST', '/api/simulate-incoming', { phone: '699 88 77 66', name: 'Pedro García', text: 'Otra pregunta' });
+    await req('POST', '/api/simulate-incoming', { phone: '699 88 77 66', name: 'Pedro García', text: 'Y una más' });
+    const before = await req('GET', '/api/conversations');
+    assert(before.data.some((c) => c.unread > 0), 'hay conversaciones sin leer antes de marcar todo');
+    const readAll = await req('POST', '/api/messages/read', { all: true });
+    assert(readAll.data.marked >= 2, 'marcar todo como leído marca todos los pendientes');
+    const after = await req('GET', '/api/conversations');
+    assert(after.data.every((c) => !c.unread), 'tras marcar todo, ninguna conversación queda sin leer');
+
     console.log('Nota fija del cliente');
     const withNote = await req('PUT', '/api/clients/' + clientId, { pinnedNote: 'Habla poco español, llamar por las tardes' });
     assert(withNote.data.pinnedNote === 'Habla poco español, llamar por las tardes', 'se guarda la nota fija');

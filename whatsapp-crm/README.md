@@ -15,7 +15,10 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   cliente desde la app de WhatsApp del móvil, el CRM da por leídos sus mensajes
   anteriores; y si el proveedor lo notifica, también se marcan al leerlos en el
   móvil sin responder. Así el contador de «sin leer» del CRM no se descuadra
-  con lo que ya has visto en el teléfono.
+  con lo que ya has visto en el teléfono. **Nota:** WhatsApp no siempre reenvía
+  el aviso de las lecturas hechas *sin responder* desde el móvil; para esos
+  casos hay un botón **«✓ Marcar todo leído»** en la cabecera de WhatsApp que
+  pone al día el contador de un solo clic.
 - **🔐 Acceso con contraseña**: definiendo `CRM_PASSWORD` la interfaz exige
   iniciar sesión (usuario `admin` por defecto, configurable con `CRM_USER`).
   Sesiones de 30 días y bloqueo tras 10 intentos fallidos. **Imprescindible

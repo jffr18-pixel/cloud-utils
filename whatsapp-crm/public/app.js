@@ -1371,6 +1371,20 @@ $('#btn-simulate').addEventListener('click', () => {
   });
 });
 
+// Marcar TODAS las conversaciones como leídas (p. ej. si ya las leíste en el móvil).
+const btnReadAll = $('#btn-read-all');
+if (btnReadAll) btnReadAll.addEventListener('click', async () => {
+  if (!confirm('¿Marcar como leídas todas las conversaciones?')) return;
+  try {
+    const r = await api('messages/read', { method: 'POST', body: { all: true } });
+    await renderInbox();
+    await updateUnreadBadge();
+    if (!r.marked) alert('No había mensajes sin leer.');
+  } catch (err) {
+    alert('No se pudo marcar como leído: ' + err.message);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Clientes
 // ---------------------------------------------------------------------------
