@@ -4519,15 +4519,29 @@ let tgOffset = 0;
 const TG_HELP = [
   '👋 Soy tu asistente de Burocracia Zero. Dime qué necesitas por texto o por nota de voz. Ejemplos:',
   '',
+  '📲 WhatsApp y citas:',
   '• «Manda por WhatsApp a Juan que su cita es mañana a las 10».',
   '• «Ponme una cita con María el jueves a las 12 por la renovación del NIE».',
-  '• «Recuérdame el lunes llamar a la asesoría».',
-  '• «Cóbrale a Pedro en efectivo» · «Marca el expediente de María como completado».',
+  '• «Cancela la cita de Pedro del viernes».',
+  '',
+  '📁 Clientes y expedientes:',
   '• «Da de alta a Ana López, 600112233».',
-  '• «¿Qué tengo hoy?» · «¿Quién me debe dinero?» · «Busca a Ahmed».',
+  '• «Crea un expediente de Arraigo social para Ahmed, 300 €».',
+  '• «Marca el expediente de María como completado».',
+  '• «¿Qué trámites tiene Pedro?» · «¿Qué me ha dicho Ahmed?».',
+  '',
+  '💶 Cobros:',
+  '• «Cóbrale a Pedro en efectivo» · «Cóbrale 200 € a cuenta a María por transferencia».',
+  '• «¿Quién me debe dinero?».',
+  '',
+  '🗒️ Organización:',
+  '• «Recuérdame el lunes llamar a la asesoría» (aviso personal).',
+  '• «Crea una tarea: preparar documentación de Ana para el viernes».',
+  '• «¿Qué tengo hoy?» · «Búscame a Ahmed».',
+  '',
   '• Envíame una foto o un PDF con el nombre del cliente en el pie y se lo mando por WhatsApp.',
   '',
-  'Antes de enviar cualquier WhatsApp o de crear/cambiar algo te pediré que lo confirmes.',
+  'Antes de enviar cualquier WhatsApp o de crear/cambiar/cancelar algo te pediré que lo confirmes.',
 ].join('\n');
 
 function tgToday() {
@@ -4763,18 +4777,23 @@ async function routeTgTool(fromId, chatId, crmUser, tool, args) {
     if (r.blocked) { await telegram.sendMessage(chatId, 'Ese contacto pertenece a otro usuario.'); return; }
     if (r.none || r.phone) { await telegram.sendMessage(chatId, `No encuentro al cliente «${args.cliente}».`); return; }
     const includeTax = Boolean(args.incluir_tasas);
-    let honor = 0;
+    let feeDueTotal = 0;
     let tasas = 0;
     for (const c of db.cases) {
       if (c.clientId !== r.client.id || !canSeeCase(c, crmUser, db)) continue;
-      if ((Number(c.fee) || 0) > 0 && !c.paid) honor += Number(c.fee) || 0;
+      feeDueTotal += feeDueOf(c);
       if (includeTax && (Number(c.taxAmount) || 0) > 0 && !c.taxPaid) tasas += Number(c.taxAmount) || 0;
     }
-    if (!honor && !tasas) { await telegram.sendMessage(chatId, `${r.client.name} no tiene importes pendientes.`); return; }
+    feeDueTotal = money2(feeDueTotal);
+    if (!feeDueTotal && !tasas) { await telegram.sendMessage(chatId, `${r.client.name} no tiene importes pendientes.`); return; }
+    // Adelanto / pago parcial: solo si el importe indicado es menor que lo debido.
+    const askAmount = Number(args.importe) > 0 ? money2(args.importe) : 0;
+    const honor = askAmount > 0 ? Math.min(askAmount, feeDueTotal) : feeDueTotal;
+    const partial = honor > 0 && honor < feeDueTotal;
     const parts = [];
-    if (honor) parts.push(`honorarios ${honor.toLocaleString('es-ES')} €`);
+    if (honor) parts.push(`honorarios ${honor.toLocaleString('es-ES')} €${partial ? ` (adelanto; quedan ${money2(feeDueTotal - honor).toLocaleString('es-ES')} €)` : ''}`);
     if (tasas) parts.push(`tasas ${tasas.toLocaleString('es-ES')} €`);
-    const token = tgStash(fromId, chatId, crmUser, { type: 'cobro', clientId: r.client.id, method, includeTax });
+    const token = tgStash(fromId, chatId, crmUser, { type: 'cobro', clientId: r.client.id, method, includeTax, amount: askAmount || null });
     await telegram.sendMessage(chatId, `💶 Voy a registrar el cobro de ${r.client.name}: ${parts.join(' + ')} (${method}).\n\n¿Lo confirmas?`,
       { replyMarkup: telegram.confirmKeyboard(token) });
     return;
@@ -4822,6 +4841,126 @@ async function routeTgTool(fromId, chatId, crmUser, tool, args) {
     }
     const token = tgStash(fromId, chatId, crmUser, { type: 'cliente', name: nombre, phone });
     await telegram.sendMessage(chatId, `👤 Voy a dar de alta a ${nombre} (+${phone}).\n\n¿Lo confirmas?`,
+      { replyMarkup: telegram.confirmKeyboard(token) });
+    return;
+  }
+
+  if (tool === 'resumen_hoy') {
+    const today = tgToday();
+    const soon = new Date(); soon.setDate(soon.getDate() + 7);
+    const soonIso = `${soon.getFullYear()}-${String(soon.getMonth() + 1).padStart(2, '0')}-${String(soon.getDate()).padStart(2, '0')}`;
+    const nameOf = (id) => (db.clients.find((c) => c.id === id) || {}).name || '(cliente)';
+    const citas = db.appointments
+      .filter((a) => a.date === today && a.status !== 'cancelada' && visible(db.clients.find((c) => c.id === a.clientId)))
+      .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+    const venc = db.cases.filter((c) => c.status !== 'completado' && c.dueDate && c.dueDate <= soonIso
+      && visible(db.clients.find((x) => x.id === c.clientId)))
+      .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
+    const cad = db.cases.filter((c) => c.expiryDate && c.expiryDate <= soonIso
+      && visible(db.clients.find((x) => x.id === c.clientId)));
+    const sinResp = conversationSummaries(db)
+      .filter((c) => c.unread > 0 && visible(db.clients.find((x) => x.id === c.clientId))).length;
+    let pend = 0;
+    for (const c of db.cases) {
+      const cl = db.clients.find((x) => x.id === c.clientId);
+      if (!cl || !visible(cl)) continue;
+      pend += feeDueOf(c) + ((Number(c.taxAmount) || 0) > 0 && !c.taxPaid ? Number(c.taxAmount) : 0);
+    }
+    const lines = [`📋 Resumen de hoy (${today}):`, ''];
+    if (citas.length) {
+      lines.push(`📅 Citas (${citas.length}):`);
+      for (const a of citas.slice(0, 12)) lines.push(`  • ${a.time} — ${nameOf(a.clientId)}${a.reason ? ` (${a.reason})` : ''}`);
+    } else lines.push('📅 Sin citas hoy.');
+    if (venc.length) lines.push('', `⏳ Vencimientos próximos (7 días): ${venc.length}` + venc.slice(0, 6).map((c) => `\n  • ${c.dueDate} — ${c.title} (${nameOf(c.clientId)})`).join(''));
+    if (cad.length) lines.push('', `📆 Caducidades próximas: ${cad.length}`);
+    lines.push('', sinResp ? `💬 ${sinResp} conversación(es) sin responder.` : '💬 Todo respondido.');
+    lines.push(pend > 0 ? `💶 Pendiente de cobro: ${money2(pend).toLocaleString('es-ES')} €.` : '💶 Nada pendiente de cobro.');
+    await telegram.sendMessage(chatId, lines.join('\n'));
+    return;
+  }
+
+  if (tool === 'ver_conversacion') {
+    const r = assistant.resolveClient(db, args.cliente, visible);
+    if (r.ambiguous) { await telegram.sendMessage(chatId, `Hay varios clientes que coinciden con «${args.cliente}». Dime cuál.`); return; }
+    if (r.blocked) { await telegram.sendMessage(chatId, 'Ese contacto pertenece a otro usuario.'); return; }
+    if (r.none || r.phone) { await telegram.sendMessage(chatId, `No encuentro al cliente «${args.cliente}».`); return; }
+    const msgs = db.messages.filter((m) => m.clientId === r.client.id && (m.direction === 'in' || m.direction === 'out'))
+      .sort((a, b) => a.timestamp - b.timestamp).slice(-8);
+    if (!msgs.length) { await telegram.sendMessage(chatId, `No hay mensajes de WhatsApp con ${r.client.name} todavía.`); return; }
+    const line = (m) => {
+      const who = m.direction === 'in' ? r.client.name.split(' ')[0] : 'Tú';
+      const body = m.text || (m.media ? `[${m.media.kind || 'adjunto'}]` : '');
+      return `• ${who}: ${String(body).slice(0, 200)}`;
+    };
+    await telegram.sendMessage(chatId, `💬 Últimos mensajes con ${r.client.name}:\n${msgs.map(line).join('\n')}`);
+    return;
+  }
+
+  if (tool === 'listar_expedientes') {
+    const r = assistant.resolveClient(db, args.cliente, visible);
+    if (r.ambiguous) { await telegram.sendMessage(chatId, `Hay varios clientes que coinciden con «${args.cliente}». Dime cuál.`); return; }
+    if (r.blocked) { await telegram.sendMessage(chatId, 'Ese contacto pertenece a otro usuario.'); return; }
+    if (r.none || r.phone) { await telegram.sendMessage(chatId, `No encuentro al cliente «${args.cliente}».`); return; }
+    const cases = db.cases.filter((c) => c.clientId === r.client.id && canSeeCase(c, crmUser, db))
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    if (!cases.length) { await telegram.sendMessage(chatId, `${r.client.name} no tiene expedientes.`); return; }
+    const STATES = { pendiente: 'Pendiente', en_curso: 'En curso', esperando_documentacion: 'Esperando docs', completado: 'Completado' };
+    const lines = cases.slice(0, 12).map((c) => {
+      const fee = Number(c.fee) || 0;
+      const due = feeDueOf(c);
+      const cobro = fee ? (due <= 0 ? ' · cobrado' : (feePaidOf(c) > 0 ? ` · adelanto (quedan ${due.toLocaleString('es-ES')} €)` : ` · pendiente ${fee.toLocaleString('es-ES')} €`)) : '';
+      return `• ${c.title} — ${STATES[c.status] || c.status}${cobro}`;
+    });
+    await telegram.sendMessage(chatId, `📁 Expedientes de ${r.client.name}:\n${lines.join('\n')}`);
+    return;
+  }
+
+  if (tool === 'crear_expediente') {
+    const titulo = String(args.titulo || '').trim();
+    if (!titulo) { await telegram.sendMessage(chatId, '¿Qué trámite quieres dar de alta? Dime el título.'); return; }
+    const r = assistant.resolveClient(db, args.cliente, visible);
+    if (r.ambiguous) { await telegram.sendMessage(chatId, `Hay varios clientes que coinciden con «${args.cliente}». Dime cuál.`); return; }
+    if (r.blocked) { await telegram.sendMessage(chatId, 'Ese contacto pertenece a otro usuario.'); return; }
+    if (r.none || r.phone) { await telegram.sendMessage(chatId, `No encuentro al cliente «${args.cliente}». Créalo primero.`); return; }
+    const TIPOS = ['extranjeria', 'fiscal', 'laboral', 'contabilidad', 'vehiculos', 'otro'];
+    const tipo = TIPOS.includes(args.tipo) ? args.tipo : 'otro';
+    const fee = Number(args.honorario) > 0 ? money2(args.honorario) : 0;
+    const token = tgStash(fromId, chatId, crmUser, { type: 'expediente', clientId: r.client.id, title: titulo, tipo, fee });
+    await telegram.sendMessage(chatId,
+      `📁 Voy a crear el expediente «${titulo}» para ${r.client.name}${fee ? ` (honorario ${fee.toLocaleString('es-ES')} €)` : ''}.\n\n¿Lo confirmas?`,
+      { replyMarkup: telegram.confirmKeyboard(token) });
+    return;
+  }
+
+  if (tool === 'cancelar_cita') {
+    const r = assistant.resolveClient(db, args.cliente, visible);
+    if (r.ambiguous) { await telegram.sendMessage(chatId, `Hay varios clientes que coinciden con «${args.cliente}». Dime cuál.`); return; }
+    if (r.blocked) { await telegram.sendMessage(chatId, 'Ese contacto pertenece a otro usuario.'); return; }
+    if (r.none || r.phone) { await telegram.sendMessage(chatId, `No encuentro al cliente «${args.cliente}».`); return; }
+    let citas = db.appointments.filter((a) => a.clientId === r.client.id && a.status !== 'cancelada');
+    if (assistant.validDate(args.fecha)) citas = citas.filter((a) => a.date === args.fecha);
+    citas = citas.sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+    if (!citas.length) { await telegram.sendMessage(chatId, `${r.client.name} no tiene citas activas${args.fecha ? ` el ${args.fecha}` : ''}.`); return; }
+    if (citas.length > 1) {
+      await telegram.sendMessage(chatId, `${r.client.name} tiene varias citas:\n`
+        + citas.slice(0, 8).map((a) => `• ${a.date} a las ${a.time}${a.reason ? ` (${a.reason})` : ''}`).join('\n')
+        + '\nDime la fecha de la que quieres cancelar.');
+      return;
+    }
+    const cita = citas[0];
+    const token = tgStash(fromId, chatId, crmUser, { type: 'cancelar_cita', apptId: cita.id });
+    await telegram.sendMessage(chatId, `🗑️ Voy a cancelar la cita de ${r.client.name} del ${cita.date} a las ${cita.time}${cita.msEventId ? ' (también en Outlook)' : ''}.\n\n¿Lo confirmas?`,
+      { replyMarkup: telegram.confirmKeyboard(token) });
+    return;
+  }
+
+  if (tool === 'crear_tarea') {
+    const titulo = String(args.titulo || '').trim();
+    if (!titulo) { await telegram.sendMessage(chatId, '¿Qué tarea quieres crear?'); return; }
+    const fecha = assistant.validDate(args.fecha) ? args.fecha : null;
+    const responsable = String(args.responsable || '').trim();
+    const token = tgStash(fromId, chatId, crmUser, { type: 'tarea', title: titulo, assignee: responsable, dueDate: fecha });
+    await telegram.sendMessage(chatId, `✅ Voy a crear la tarea «${titulo}»${responsable ? ` para ${responsable}` : ''}${fecha ? ` (para el ${fecha})` : ''}.\n\n¿La guardo?`,
       { replyMarkup: telegram.confirmKeyboard(token) });
     return;
   }
@@ -4897,12 +5036,31 @@ async function executeTgAction(crmUser, action) {
     return `Recordatorio guardado${action.date ? ` para el ${action.date}` : ''}.`;
   }
   if (action.type === 'cobro') {
+    // Expedientes con honorarios pendientes, del más antiguo al más nuevo (un
+    // adelanto se imputa primero a los más viejos), respetando el aislamiento.
+    const feeCases = db.cases
+      .filter((c) => c.clientId === action.clientId && canSeeCase(c, crmUser, db) && feeDueOf(c) > 0)
+      .sort((a, c) => (a.createdAt || 0) - (c.createdAt || 0));
+    const totalDue = money2(feeCases.reduce((s, c) => s + feeDueOf(c), 0));
+    let remaining = action.amount > 0 ? Math.min(money2(action.amount), totalDue) : totalDue;
     let honor = 0;
+    for (const c of feeCases) {
+      if (remaining <= 0) break;
+      const applied = money2(Math.min(feeDueOf(c), remaining));
+      c.paidAmount = money2(feePaidOf(c) + applied);
+      c.payMethod = action.method;
+      c.paidAt = Date.now();
+      c.paid = feeDueOf(c) <= 0;
+      c.updatedAt = Date.now();
+      honor = money2(honor + applied);
+      remaining = money2(remaining - applied);
+    }
     let tasas = 0;
-    for (const c of db.cases) {
-      if (c.clientId !== action.clientId || !canSeeCase(c, crmUser, db)) continue;
-      if ((Number(c.fee) || 0) > 0 && !c.paid) { c.paid = true; c.payMethod = action.method; c.paidAt = Date.now(); honor += Number(c.fee) || 0; c.updatedAt = Date.now(); }
-      if (action.includeTax && (Number(c.taxAmount) || 0) > 0 && !c.taxPaid) { c.taxPaid = true; tasas += Number(c.taxAmount) || 0; c.updatedAt = Date.now(); }
+    if (action.includeTax) {
+      for (const c of db.cases) {
+        if (c.clientId !== action.clientId || !canSeeCase(c, crmUser, db)) continue;
+        if ((Number(c.taxAmount) || 0) > 0 && !c.taxPaid) { c.taxPaid = true; tasas = money2(tasas + (Number(c.taxAmount) || 0)); c.updatedAt = Date.now(); }
+      }
     }
     if (!honor && !tasas) throw new Error('ya no había importes pendientes');
     save();
@@ -4911,7 +5069,8 @@ async function executeTgAction(crmUser, action) {
     const parts = [];
     if (honor) parts.push(`${honor.toLocaleString('es-ES')} € de honorarios`);
     if (tasas) parts.push(`${tasas.toLocaleString('es-ES')} € de tasas`);
-    return `Cobro registrado a ${client.name || 'cliente'}: ${parts.join(' + ')} (${action.method}).`;
+    const left = money2(totalDue - honor);
+    return `Cobro registrado a ${client.name || 'cliente'}: ${parts.join(' + ')} (${action.method}).${left > 0 ? ` Quedan ${left.toLocaleString('es-ES')} € pendientes.` : ''}`;
   }
   if (action.type === 'estado') {
     const kase = db.cases.find((c) => c.id === action.caseId);
@@ -4947,6 +5106,43 @@ async function executeTgAction(crmUser, action) {
     const msg = await sendMediaToClient(db, client, buf, { filename: action.filename, mime: action.mime, caption: action.caption || '' });
     if (msg.status === 'error') throw new Error(msg.error || 'WhatsApp rechazó el envío');
     return `Documento enviado a ${client.name}.${msg.status === 'demo' ? ' (Modo demo: no ha salido de verdad.)' : ''}`;
+  }
+  if (action.type === 'expediente') {
+    const client = db.clients.find((c) => c.id === action.clientId);
+    if (!client) throw new Error('no encuentro al cliente');
+    if (!canSeeClient(client, crmUser)) throw new Error('no tienes acceso a ese cliente');
+    const item = {
+      id: newId('exp'), clientId: client.id, title: action.title, type: action.tipo || 'otro',
+      status: 'pendiente', dueDate: null, submittedDate: null, registryNumber: '', trackingUrl: '',
+      expiryDate: null, docs: '', fee: money2(action.fee), paid: false, paidAmount: 0, paidAt: null,
+      payMethod: '', taxModel: '', taxAmount: 0, taxPaid: false, taxPaidAt: null, checklist: [],
+      sharedWith: [], notes: '', createdAt: Date.now(), updatedAt: Date.now(),
+    };
+    db.cases.push(item);
+    save();
+    return `Expediente «${item.title}» creado para ${client.name}${item.fee ? ` (honorario ${item.fee.toLocaleString('es-ES')} €)` : ''}.`;
+  }
+  if (action.type === 'cancelar_cita') {
+    const appt = db.appointments.find((a) => a.id === action.apptId);
+    if (!appt) throw new Error('no encuentro la cita');
+    if (!canSeeClient(db.clients.find((c) => c.id === appt.clientId) || {}, crmUser)) throw new Error('no tienes acceso a esa cita');
+    appt.status = 'cancelada';
+    const msCal = auto.getSettings(db).microsoft.calendar;
+    if (msgraph.isConfigured() && msCal.enabled && msCal.user && appt.msEventId) {
+      try { await msgraph.deleteCalendarEvent(msCal.user, appt.msEventId); appt.msEventId = null; }
+      catch (err) { console.error('No se pudo borrar el evento en Outlook:', err.message); }
+    }
+    save();
+    return `Cita del ${appt.date} a las ${appt.time} cancelada.`;
+  }
+  if (action.type === 'tarea') {
+    db.tasks.push({
+      id: newId('task'), title: action.title, assignee: action.assignee || '',
+      status: 'por_hacer', dueDate: action.dueDate || null, clientId: null, caseId: null,
+      notes: '', createdAt: Date.now(), updatedAt: Date.now(), createdBy: crmUser || 'equipo',
+    });
+    save();
+    return `Tarea «${action.title}» creada${action.assignee ? ` para ${action.assignee}` : ''}${action.dueDate ? ` (para el ${action.dueDate})` : ''}.`;
   }
   throw new Error('acción desconocida');
 }

@@ -445,14 +445,23 @@ le mandas una **nota de voz** en lenguaje natural y ejecuta la acción:
   y envía (tras tu confirmación).
 - «Ponme una cita con María el jueves a las 12 por la renovación del NIE» →
   crea la cita y avisa al cliente por WhatsApp.
+- «Cancela la cita de Pedro del viernes» → anula la cita (también en Outlook).
 - «Recuérdame el lunes llamar a la asesoría» → recordatorio interno.
+- «Crea una tarea: preparar documentación de Ana para el viernes» → la añade al
+  tablero de tareas del equipo (distinto del recordatorio personal).
 - «Cóbrale a Pedro en efectivo» → marca sus honorarios pendientes como cobrados.
+  «Cóbrale 200 € a cuenta a María por transferencia» → registra un **adelanto**
+  y deja el resto pendiente.
+- «Crea un expediente de Arraigo social para Ahmed, 300 €» → da de alta el
+  trámite con su honorario.
 - «Marca el expediente de María como completado» → cambia el estado (y avisa al
   cliente si procede).
 - «Da de alta a Ana López, 600112233» → crea el cliente.
 - Envía una **foto o un PDF** con el nombre del cliente en el pie y el bot se lo
   manda a ese cliente por WhatsApp.
-- «¿Qué tengo hoy?», «¿Quién me debe dinero?», «Busca a Ahmed» → consultas.
+- **Consultas:** «¿Qué tengo hoy?» (resumen del día), «¿Qué trámites tiene
+  Pedro?», «¿Qué me ha dicho Ahmed?» (últimos mensajes), «¿Quién me debe
+  dinero?», «Busca a Ahmed».
 
 **Antes de enviar cualquier WhatsApp o crear algo, el bot te pide confirmar con
 botones ✅/❌.** Nada sale sin tu visto bueno.

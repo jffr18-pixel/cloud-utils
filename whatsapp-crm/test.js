@@ -570,6 +570,60 @@ async function testTelegramAssistant() {
     const ana = (await (await fetch(TG_BASE + '/api/clients')).json()).find((c) => c.phone === '34600112233');
     assert(ana && ana.name === 'Ana López', 'el cliente nuevo queda dado de alta');
 
+    // Consulta de solo lectura (sin confirmación): responde directamente.
+    const askTool = async (text, reply, re) => {
+      toolReply = reply;
+      updates.push({ update_id: uid, message: { message_id: uid, chat: priv(555), from: { id: 555 }, text } });
+      uid += 1;
+      return waitFor(() => sent.find((s) => !s.reply_markup && re.test(s.text || '')));
+    };
+    // resumen_hoy
+    const hoy = await askTool('¿qué tengo hoy?',
+      { choices: [{ message: { tool_calls: [{ id: 'r1', type: 'function', function: { name: 'resumen_hoy', arguments: '{}' } }] } }] },
+      /Resumen de hoy/i);
+    assert(hoy, 'resumen_hoy responde con el resumen del día');
+    // listar_expedientes de Pedro
+    const listExp = await askTool('¿qué trámites tiene Pedro?',
+      { choices: [{ message: { tool_calls: [{ id: 'r2', type: 'function', function: { name: 'listar_expedientes', arguments: JSON.stringify({ cliente: 'Pedro' }) } }] } }] },
+      /Expedientes de Pedro/i);
+    assert(listExp && /Renovaci/.test(listExp.text), 'listar_expedientes muestra los trámites del cliente');
+    // ver_conversacion de Pedro (ya hay un mensaje saliente)
+    const verConv = await askTool('¿qué le dije a Pedro?',
+      { choices: [{ message: { tool_calls: [{ id: 'r3', type: 'function', function: { name: 'ver_conversacion', arguments: JSON.stringify({ cliente: 'Pedro' }) } }] } }] },
+      /mensajes con Pedro/i);
+    assert(verConv && /llega 10 minutos antes/.test(verConv.text), 'ver_conversacion muestra los últimos mensajes');
+
+    // crear_expediente para Ana (con honorario).
+    await runTool('crea un expediente de Arraigo para Ana',
+      { choices: [{ message: { tool_calls: [{ id: 'e1', type: 'function', function: { name: 'crear_expediente', arguments: JSON.stringify({ cliente: 'Ana López', titulo: 'Arraigo social', tipo: 'extranjeria', honorario: 400 }) } }] } }] },
+      /crear el expediente/i);
+    const anaCases = await (await fetch(TG_BASE + '/api/cases?clientId=' + ana.id)).json();
+    const arraigo = anaCases.find((c) => c.title === 'Arraigo social');
+    assert(arraigo && arraigo.fee === 400 && arraigo.type === 'extranjeria', 'crear_expediente da de alta el trámite con su honorario');
+
+    // registrar_cobro parcial (adelanto de 200 de 400) para Ana.
+    const advConf = await runTool('cóbrale 200 a cuenta a Ana por transferencia',
+      { choices: [{ message: { tool_calls: [{ id: 'e2', type: 'function', function: { name: 'registrar_cobro', arguments: JSON.stringify({ cliente: 'Ana López', forma_pago: 'transferencia', importe: 200 }) } }] } }] },
+      /cobro de Ana/i);
+    assert(advConf && /adelanto/i.test(advConf.text), 'registrar_cobro con importe propone un adelanto');
+    const arraigoAfter = (await (await fetch(TG_BASE + '/api/cases?clientId=' + ana.id)).json()).find((c) => c.id === arraigo.id);
+    assert(arraigoAfter.paidAmount === 200 && arraigoAfter.paid === false, 'el adelanto queda registrado (200 de 400, sin saldar del todo)');
+
+    // crear_tarea (tablero de tareas del equipo).
+    await runTool('crea una tarea: preparar documentación de Ana',
+      { choices: [{ message: { tool_calls: [{ id: 'e3', type: 'function', function: { name: 'crear_tarea', arguments: JSON.stringify({ titulo: 'Preparar documentación de Ana', fecha: '2026-12-20' }) } }] } }] },
+      /crear la tarea/i);
+    const tareas = await (await fetch(TG_BASE + '/api/tasks')).json();
+    assert(tareas.some((t) => t.title === 'Preparar documentación de Ana' && t.dueDate === '2026-12-20'), 'crear_tarea añade la tarea al tablero');
+
+    // cancelar_cita: se crea una cita y se cancela por Telegram.
+    const citaPedro = await post('/api/appointments', { clientId: pedro.id, date: '2026-12-15', time: '10:00', reason: 'Consulta' });
+    await runTool('cancela la cita de Pedro del 15 de diciembre',
+      { choices: [{ message: { tool_calls: [{ id: 'e4', type: 'function', function: { name: 'cancelar_cita', arguments: JSON.stringify({ cliente: 'Pedro', fecha: '2026-12-15' }) } }] } }] },
+      /cancelar la cita/i);
+    const citaAfter = (await (await fetch(TG_BASE + '/api/appointments?clientId=' + pedro.id)).json()).find((a) => a.id === citaPedro.id);
+    assert(citaAfter && citaAfter.status === 'cancelada', 'cancelar_cita anula la cita del cliente');
+
     // Enviar un documento por WhatsApp poniendo el nombre del cliente en el pie.
     updates.push({ update_id: uid, message: { message_id: uid, chat: priv(555), from: { id: 555 },
       caption: 'Pedro Ramírez', document: { file_id: 'FID1', file_name: 'justificante.pdf', mime_type: 'application/pdf' } } });

@@ -177,12 +177,13 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'registrar_cobro',
-      description: 'Registrar que un cliente ha pagado sus honorarios pendientes, indicando la forma de cobro.',
+      description: 'Registrar que un cliente ha pagado sus honorarios pendientes, indicando la forma de cobro. Admite pagos parciales/adelantos con «importe».',
       parameters: {
         type: 'object',
         properties: {
           cliente: { type: 'string', description: 'Nombre del cliente o número de teléfono.' },
           forma_pago: { type: 'string', enum: ['efectivo', 'transferencia', 'tarjeta'], description: 'Cómo ha pagado.' },
+          importe: { type: 'number', description: 'Importe cobrado en euros. Úsalo solo si es un pago parcial/adelanto (p. ej. «200 a cuenta»). Si no se indica, se cobra todo lo pendiente.' },
           incluir_tasas: { type: 'boolean', description: 'Marcar también como pagadas las tasas oficiales pendientes.' },
         },
         required: ['cliente', 'forma_pago'],
@@ -220,16 +221,107 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'resumen_hoy',
+      description: 'Resumen del día: citas de hoy, vencimientos/caducidades próximas, conversaciones sin responder e importes pendientes de cobro. Úsalo para «¿qué tengo hoy?», «¿cómo va el día?», «resúmeme el día».',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'ver_conversacion',
+      description: 'Ver los últimos mensajes de WhatsApp con un cliente. Úsalo para «¿qué me ha dicho X?», «léeme el chat de X», «¿de qué hablé con X?».',
+      parameters: {
+        type: 'object',
+        properties: {
+          cliente: { type: 'string', description: 'Nombre del cliente o número de teléfono.' },
+        },
+        required: ['cliente'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_expedientes',
+      description: 'Listar los expedientes/trámites de un cliente con su estado y cobro. Úsalo para «¿qué trámites tiene X?», «¿cómo va el expediente de X?».',
+      parameters: {
+        type: 'object',
+        properties: {
+          cliente: { type: 'string', description: 'Nombre del cliente o número de teléfono.' },
+        },
+        required: ['cliente'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'crear_expediente',
+      description: 'Dar de alta un expediente/trámite para un cliente (con honorario opcional).',
+      parameters: {
+        type: 'object',
+        properties: {
+          cliente: { type: 'string', description: 'Nombre del cliente o número de teléfono.' },
+          titulo: { type: 'string', description: 'Título del trámite (p. ej. «Arraigo social», «Renovación NIE»).' },
+          tipo: { type: 'string', enum: ['extranjeria', 'fiscal', 'laboral', 'contabilidad', 'vehiculos', 'otro'], description: 'Área del trámite (opcional).' },
+          honorario: { type: 'number', description: 'Honorario de la gestoría en euros (opcional).' },
+        },
+        required: ['cliente', 'titulo'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'cancelar_cita',
+      description: 'Cancelar/anular una cita de un cliente. Si tiene varias, se puede acotar por fecha.',
+      parameters: {
+        type: 'object',
+        properties: {
+          cliente: { type: 'string', description: 'Nombre del cliente o número de teléfono.' },
+          fecha: { type: 'string', description: 'Fecha de la cita a cancelar en formato YYYY-MM-DD (opcional).' },
+        },
+        required: ['cliente'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'crear_tarea',
+      description: 'Crear una tarea interna para el equipo (no se envía al cliente). Distíntala del recordatorio: la tarea va al tablero de tareas del CRM.',
+      parameters: {
+        type: 'object',
+        properties: {
+          titulo: { type: 'string', description: 'Qué hay que hacer.' },
+          responsable: { type: 'string', description: 'Persona del equipo a la que se asigna (opcional).' },
+          fecha: { type: 'string', description: 'Fecha límite en formato YYYY-MM-DD (opcional).' },
+        },
+        required: ['titulo'],
+      },
+    },
+  },
 ];
 
 // Instrucciones del sistema para el asistente (comunes a ambos proveedores).
 function agentSystemPrompt(today) {
   return [
-    'Eres el asistente de una gestoría española («Burocracia Zero»). Ayudas al gestor a manejar su CRM por Telegram.',
-    `La fecha de hoy es ${today || ''}. Convierte expresiones como «mañana», «el jueves» o «la semana que viene» a fechas concretas en formato YYYY-MM-DD a partir de hoy.`,
-    'Cuando la persona pida una acción (mandar un WhatsApp, crear una cita o un recordatorio, registrar un cobro, cambiar el estado de un expediente, dar de alta un cliente, o hacer una consulta), llama a la herramienta adecuada.',
+    'Eres el asistente de una gestoría española («Burocracia Zero»). Ayudas al gestor a manejar su CRM por Telegram, por texto o por nota de voz.',
+    `La fecha de hoy es ${today || ''}. Convierte expresiones como «mañana», «el jueves», «pasado mañana» o «la semana que viene» a fechas concretas en formato YYYY-MM-DD a partir de hoy. Las horas, en formato HH:MM de 24 horas («las 5 de la tarde» → 17:00).`,
+    'Elige SIEMPRE la herramienta que mejor encaje con lo que pide la persona; no respondas con texto si hay una herramienta adecuada. Guía rápida de intenciones:',
+    '- Mandar/escribir/decir algo a un cliente por WhatsApp → enviar_whatsapp.',
+    '- Poner/agendar una cita → crear_cita. Anular/quitar una cita → cancelar_cita.',
+    '- Recordarme algo (aviso personal) → crear_recordatorio. Tarea del equipo/tablero → crear_tarea.',
+    '- Cobrar / registrar un pago → registrar_cobro (usa «importe» solo si es un adelanto o pago parcial, p. ej. «200 a cuenta»).',
+    '- Cambiar el estado de un trámite → cambiar_estado_expediente. Dar de alta un trámite → crear_expediente.',
+    '- Alta de cliente → crear_cliente.',
+    '- Consultas: «¿qué tengo hoy?»/«cómo va el día» → resumen_hoy; ver citas de un día → consultar_agenda; buscar un cliente → buscar_cliente; ver trámites de un cliente → listar_expedientes; leer el chat de un cliente («¿qué me ha dicho X?») → ver_conversacion; quién debe dinero → pendientes_cobro.',
     'Estados de expediente posibles: «pendiente», «en_curso», «esperando_documentacion» y «completado». Mapea lo que diga la persona (p. ej. «en trámite» → en_curso, «presentado» o «terminado» → completado, «le faltan papeles» → esperando_documentacion).',
-    'No inventes nombres de clientes, teléfonos ni datos: usa exactamente lo que diga la persona. Si falta algún dato imprescindible (por ejemplo la hora de una cita), pídelo en un mensaje breve en español en lugar de llamar a una herramienta.',
+    'No inventes nombres de clientes, teléfonos ni datos: usa exactamente lo que diga la persona. Si falta algún dato imprescindible (por ejemplo la hora de una cita), pídelo en un mensaje breve en español en lugar de llamar a una herramienta. Si la orden es ambigua entre dos acciones, elige la más probable.',
     'Responde siempre en español, de forma breve y cercana.',
   ].join(' ');
 }
