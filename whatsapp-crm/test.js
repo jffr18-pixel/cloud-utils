@@ -871,14 +871,15 @@ async function main() {
     });
     assert(voice.status === 201 && voice.data.media && voice.data.media.kind === 'audio',
       'la nota de voz se guarda como adjunto de audio');
-    // Nota de voz grabada en el navegador (asVoice): se envía como ARCHIVO
-    // (documento) para que WhatsApp no la rechace por formato.
-    const voiceWav = await req('POST', '/api/messages', {
-      clientId, asVoice: true,
-      file: { data: Buffer.from('RIFF....WAVEfake').toString('base64'), mime: 'audio/wav', name: 'nota-voz.wav' },
+    // Nota de voz grabada en el navegador: el cliente la convierte a MP3
+    // (audio/mpeg) antes de enviarla, formato aceptado por WhatsApp, y se guarda
+    // como adjunto de audio.
+    const voiceMp3 = await req('POST', '/api/messages', {
+      clientId,
+      file: { data: Buffer.from('ID3fake-mp3-bytes').toString('base64'), mime: 'audio/mpeg', name: 'nota-voz.mp3' },
     });
-    assert(voiceWav.status === 201 && voiceWav.data.media && voiceWav.data.media.kind === 'document',
-      'una nota de voz del navegador (asVoice) se envía como archivo/documento');
+    assert(voiceMp3.status === 201 && voiceMp3.data.media && voiceMp3.data.media.kind === 'audio',
+      'una nota de voz del navegador (MP3) se envía como adjunto de audio');
 
     const sim = await req('POST', '/api/simulate-incoming', {
       phone: '699 88 77 66', name: 'Pedro García', text: '¿Cómo va mi trámite?',

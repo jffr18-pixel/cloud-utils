@@ -126,8 +126,12 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
 - **⚡ Envío instantáneo**: al pulsar Enter el mensaje aparece al momento en la
   conversación (envío optimista), sin esperar a recargar toda la charla.
 - **🎤 Notas de voz salientes**: graba una nota de voz con el micrófono desde el
-  propio chat y envíala al cliente (botón 🎤). Se graba en el formato más
-  compatible con WhatsApp que ofrezca el navegador.
+  propio chat y envíala al cliente (botón 🎤). Cualquiera que sea el formato que
+  grabe el navegador (webm/opus, mp4/aac, ogg), el CRM la convierte en el propio
+  navegador a **MP3 mono 16 kHz** (`audio/mpeg`) antes de enviarla —un formato
+  que WhatsApp acepta de forma fiable y que reproduce cualquier móvil—. La
+  conversión usa la librería `lamejs` incluida localmente en
+  `public/vendor/lame.min.js` (sin dependencias externas ni CDN).
 - **🔔 Avisos de mensajes nuevos**: notificación de escritorio, un pitido y el
   título de la pestaña parpadeando cuando entra un WhatsApp, aunque estés en
   otra sección. Se activa/silencia con la campana de la cabecera del chat.
