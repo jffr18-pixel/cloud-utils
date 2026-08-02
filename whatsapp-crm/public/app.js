@@ -883,23 +883,85 @@ function updateRecUI(recording) {
   $('#btn-voice').classList.toggle('recording', recording);
   if (!recording) $('#rec-time').textContent = '00:00';
 }
+// Codifica muestras PCM (Float32, mono) en un Blob WAV de 16 bits.
+function encodeWav(samples, sampleRate) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  const wr = (o, s) => { for (let i = 0; i < s.length; i += 1) view.setUint8(o + i, s.charCodeAt(i)); };
+  wr(0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true); wr(8, 'WAVE');
+  wr(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  wr(36, 'data'); view.setUint32(40, samples.length * 2, true);
+  let off = 44;
+  for (let i = 0; i < samples.length; i += 1) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true); off += 2;
+  }
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+// Convierte cualquier grabación del navegador (webm/opus, mp4/aac, ogg) a WAV
+// mono 16 kHz: un formato que WhatsApp/YCloud aceptan y que reproduce cualquier
+// móvil, sea cual sea el navegador que grabó. Lanza si el navegador no puede.
+async function blobToWav(blob) {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) throw new Error('sin AudioContext');
+  const arr = await blob.arrayBuffer();
+  const ctx = new AC();
+  const decoded = await new Promise((resolve, reject) => {
+    const p = ctx.decodeAudioData(arr, resolve, reject);
+    if (p && p.then) p.then(resolve, reject);
+  });
+  const chs = decoded.numberOfChannels;
+  const len = decoded.length;
+  const mono = new Float32Array(len);
+  for (let c = 0; c < chs; c += 1) {
+    const d = decoded.getChannelData(c);
+    for (let i = 0; i < len; i += 1) mono[i] += d[i] / chs;
+  }
+  const target = 16000;
+  const ratio = decoded.sampleRate / target;
+  const outLen = Math.max(1, Math.floor(len / ratio));
+  const out = new Float32Array(outLen);
+  for (let i = 0; i < outLen; i += 1) {
+    const idx = i * ratio;
+    const i0 = Math.floor(idx);
+    const i1 = Math.min(i0 + 1, len - 1);
+    const f = idx - i0;
+    out[i] = mono[i0] * (1 - f) + mono[i1] * f;
+  }
+  try { ctx.close(); } catch { /* noop */ }
+  return encodeWav(out, target);
+}
+
 async function sendVoiceNote(blob) {
   const clientId = state.activeClientId;
-  const ext = /ogg/.test(blob.type) ? 'ogg' : /mp4/.test(blob.type) ? 'm4a' : 'webm';
+  // Se intenta convertir a WAV (universal). Si el navegador no puede, se envía
+  // la grabación original tal cual (mejor eso que nada).
+  let outBlob = blob;
+  let name = `nota-voz.${/ogg/.test(blob.type) ? 'ogg' : /mp4/.test(blob.type) ? 'm4a' : 'webm'}`;
+  let converted = false;
+  try {
+    const wav = await blobToWav(blob);
+    if (wav && wav.size > 44) { outBlob = wav; name = 'nota-voz.wav'; converted = true; }
+  } catch { /* se envía el original */ }
   const dataUrl = await new Promise((resolve) => {
     const r = new FileReader();
     r.onload = () => resolve(r.result);
-    r.readAsDataURL(blob);
+    r.readAsDataURL(outBlob);
   });
   const base64 = String(dataUrl).split(',')[1] || '';
   try {
     await api('messages', {
       method: 'POST',
-      body: { clientId, file: { data: base64, mime: blob.type || 'audio/webm', name: `nota-voz.${ext}` } },
+      // asVoice: el servidor lo envía como archivo (documento) para que WhatsApp
+      // no lo rechace por formato y el cliente pueda reproducirlo en cualquier móvil.
+      body: { clientId, file: { data: base64, mime: outBlob.type || 'audio/wav', name }, asVoice: true },
     });
     if (state.activeClientId === clientId) await openConversation(clientId);
   } catch (err) {
-    alert(err.message);
+    alert((converted ? '' : 'No se pudo convertir el audio. ') + err.message);
   }
 }
 

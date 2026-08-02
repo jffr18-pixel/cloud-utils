@@ -66,8 +66,11 @@ async function sendText(toPhone, text, opts = {}) {
 // mensaje. `data` es un Buffer.
 async function uploadMedia(data, filename, mime) {
   const c = config();
+  // Se quita el parámetro «;codecs=...» del tipo: algunos proveedores lo
+  // detectan como application/octet-stream y rechazan la subida.
+  const cleanMime = String(mime || '').split(';')[0].trim() || 'application/octet-stream';
   const form = new FormData();
-  form.append('file', new Blob([data], { type: mime || 'application/octet-stream' }), filename || 'archivo');
+  form.append('file', new Blob([data], { type: cleanMime }), filename || 'archivo');
   let url;
   let headers;
   if (provider() === 'ycloud') {

@@ -1989,16 +1989,24 @@ async function handleApi(req, res, url) {
         if (data.length > 16_000_000) return json(res, 400, { error: 'El archivo supera los 16 MB de WhatsApp' });
         const mime = b.file.mime || 'application/octet-stream';
         const filename = path.basename(b.file.name || 'archivo');
-        const kind = mime.startsWith('image/') && mime !== 'image/svg+xml' ? 'image'
-          : mime.startsWith('video/') ? 'video'
-            : mime.startsWith('audio/') ? 'audio' : 'document';
+        // Notas de voz grabadas en el navegador: se envían como ARCHIVO
+        // (documento) y se suben con tipo neutro. Así WhatsApp no las rechaza
+        // por formato (el error «uploaded as audio/mp4 … application/octet-stream»
+        // ocurría al mandarlas como audio) y el cliente puede reproducirlas.
+        const asVoice = Boolean(b.asVoice);
+        const kind = asVoice ? 'document'
+          : mime.startsWith('image/') && mime !== 'image/svg+xml' ? 'image'
+            : mime.startsWith('video/') ? 'video'
+              : mime.startsWith('audio/') ? 'audio' : 'document';
         fs.mkdirSync(UPLOADS_DIR, { recursive: true });
         const localName = `${newId('up')}_${filename.replace(/[^\w.\-]+/g, '_')}`;
         fs.writeFileSync(path.join(UPLOADS_DIR, localName), data);
         let mediaId = null;
         if (wa.isConfigured()) {
           try {
-            mediaId = await wa.uploadMedia(data, filename, mime);
+            // Con asVoice se sube con tipo neutro para evitar el rechazo por
+            // desajuste de mimetype en el proveedor.
+            mediaId = await wa.uploadMedia(data, filename, asVoice ? 'application/octet-stream' : mime);
           } catch (err) {
             return json(res, 502, { error: err.message });
           }

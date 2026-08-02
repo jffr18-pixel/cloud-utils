@@ -21,6 +21,20 @@ function assert(cond, label) {
   else { failed += 1; console.error(`  ✘ ${label}`); }
 }
 
+// Mata un proceso hijo y espera a que termine del todo antes de limpiar su
+// directorio: el servidor vuelca a disco en SIGTERM (cierre ordenado), así que
+// borrar el temporal antes de que salga provoca carreras (ENOTEMPTY).
+function killAndWait(child, ms = 4000) {
+  return new Promise((resolve) => {
+    if (!child || child.exitCode !== null || child.signalCode !== null) { try { child.kill(); } catch { /* noop */ } return resolve(); }
+    let done = false;
+    const fin = () => { if (!done) { done = true; resolve(); } };
+    child.once('exit', fin);
+    try { child.kill(); } catch { /* noop */ }
+    setTimeout(fin, ms);
+  });
+}
+
 async function req(method, pathName, body) {
   const res = await fetch(BASE + pathName, {
     method,
@@ -91,7 +105,7 @@ async function testSignedWebhookServer() {
     assert(convs.length === 1 && convs[0].lastMessage === 'Mensaje firmado',
       'el mensaje firmado se procesó');
   } finally {
-    server.kill();
+    await killAndWait(server);
     fs.rmSync(sigDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
@@ -136,7 +150,7 @@ async function testAuthServer() {
     const afterLogout = await fetch(AUTH_BASE + '/api/clients', { headers: { Cookie: cookie } });
     assert(afterLogout.status === 401, 'tras cerrar sesión → 401');
   } finally {
-    server.kill();
+    await killAndWait(server);
     fs.rmSync(authDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 
@@ -170,7 +184,7 @@ async function testAuthServer() {
     });
     assert(cross.status === 401, 'la contraseña de un usuario no vale para otro');
   } finally {
-    multiServer.kill();
+    await killAndWait(multiServer);
     fs.rmSync(multiDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
@@ -219,7 +233,7 @@ async function testCaptchaServer() {
     const rightCapWrongPass = await post({ user: 'admin', password: 'mala', captchaId: cap4.id, captcha: cap4.answer });
     assert(rightCapWrongPass.status === 401, 'CAPTCHA correcto pero contraseña mala → 401');
   } finally {
-    server.kill();
+    await killAndWait(server);
     fs.rmSync(capDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
@@ -378,7 +392,7 @@ async function testIsolationServer() {
     assert(perfPast.users.every((u) => u.tramitesTotal === 0 && u.clientesNuevos === 0),
       'un rango de fechas sin actividad devuelve todo a cero');
   } finally {
-    server.kill();
+    await killAndWait(server);
     fs.rmSync(isoDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
@@ -592,7 +606,7 @@ async function testTelegramAssistant() {
     })).json();
     assert(sug.suggestion && /en trámite/.test(sug.suggestion), 'el CRM sugiere una respuesta con IA a partir del hilo');
   } finally {
-    server.kill();
+    await killAndWait(server);
     mock.close();
     fs.rmSync(tgDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
@@ -717,7 +731,7 @@ async function testTelegramDigestInterval() {
     assert(!sent.some((s) => /Nuevo WhatsApp/.test(s.text || '')),
       'con resumen periódico activo, un WhatsApp entrante NO dispara aviso por mensaje');
   } finally {
-    server.kill();
+    await killAndWait(server);
     mock.close();
     fs.rmSync(tgDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
@@ -857,6 +871,14 @@ async function main() {
     });
     assert(voice.status === 201 && voice.data.media && voice.data.media.kind === 'audio',
       'la nota de voz se guarda como adjunto de audio');
+    // Nota de voz grabada en el navegador (asVoice): se envía como ARCHIVO
+    // (documento) para que WhatsApp no la rechace por formato.
+    const voiceWav = await req('POST', '/api/messages', {
+      clientId, asVoice: true,
+      file: { data: Buffer.from('RIFF....WAVEfake').toString('base64'), mime: 'audio/wav', name: 'nota-voz.wav' },
+    });
+    assert(voiceWav.status === 201 && voiceWav.data.media && voiceWav.data.media.kind === 'document',
+      'una nota de voz del navegador (asVoice) se envía como archivo/documento');
 
     const sim = await req('POST', '/api/simulate-incoming', {
       phone: '699 88 77 66', name: 'Pedro García', text: '¿Cómo va mi trámite?',
@@ -2247,7 +2269,7 @@ async function main() {
     const casesAfter = await req('GET', '/api/cases');
     assert(casesAfter.data.every((c) => c.clientId !== clientId), 'expedientes del cliente eliminados');
   } finally {
-    server.kill();
+    await killAndWait(server);
     fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 
