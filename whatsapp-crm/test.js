@@ -2024,6 +2024,17 @@ async function main() {
     assert(todayResp.data.citas.some((c) => c.time === '10:00'), 'el panel Hoy incluye las citas de hoy');
     assert(Array.isArray(todayResp.data.sinResponder) && Array.isArray(todayResp.data.vencimientos),
       'el panel Hoy agrupa vencimientos y chats sin responder');
+    // «Sin responder» depende de la lectura: un entrante sin leer cuenta como
+    // pendiente; al marcarlo leído deja de contar (se maneja en el móvil).
+    await req('POST', '/api/simulate-incoming', { phone: '699 88 77 66', name: 'Pedro García', text: '¿Alguna novedad?' });
+    const pedroConv = (await req('GET', '/api/conversations')).data.find((c) => c.clientName === 'Pedro García');
+    const todayPending = await req('GET', '/api/today');
+    assert(todayPending.data.sinResponder.some((c) => c.clientId === pedroConv.clientId),
+      'un entrante sin leer aparece en «sin responder»');
+    await req('POST', '/api/messages/read', { all: true });
+    const todayCleared = await req('GET', '/api/today');
+    assert(!todayCleared.data.sinResponder.some((c) => c.clientId === pedroConv.clientId),
+      'tras marcar leído, la conversación sale de «sin responder»');
 
     console.log('Fijar conversaciones');
     const pinned = await req('PUT', `/api/clients/${clientId}`, { pinned: true });

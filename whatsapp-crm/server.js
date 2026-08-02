@@ -1558,8 +1558,11 @@ async function handleApi(req, res, url) {
       .filter((c) => c.expiryDate && c.expiryDate <= soonIso)
       .sort((a, b) => String(a.expiryDate).localeCompare(String(b.expiryDate)))
       .map((c) => ({ id: c.id, title: c.title, who: nameOf(c.clientId), expiryDate: c.expiryDate, expired: c.expiryDate < today }));
+    // «Sin responder» = el cliente escribió lo último Y aún no lo has leído. Al
+    // marcar como leídos (aquí o en el móvil) dejan de contar como pendientes,
+    // igual que en el resumen diario de Telegram.
     const sinResponder = convSummV()
-      .filter((c) => c.lastDirection === 'in')
+      .filter((c) => c.lastDirection === 'in' && c.unread > 0)
       .map((c) => ({ clientId: c.clientId, who: c.clientName, lastMessage: c.lastMessage, unread: c.unread }));
     return json(res, 200, { date: today, citas, recordatorios, vencimientos, docs, caducidades, sinResponder });
   }

@@ -463,7 +463,7 @@ function bindConvRows(container, jumpToInbox) {
 function filterConvs(convs) {
   let list = convs;
   const f = state.inboxFilter;
-  if (f === 'unanswered') list = list.filter((c) => c.lastDirection === 'in');
+  if (f === 'unanswered') list = list.filter((c) => c.lastDirection === 'in' && c.unread > 0);
   else if (f === 'pendiente') list = list.filter((c) => c.convStatus === 'pendiente');
   else if (f === 'resuelta') list = list.filter((c) => c.convStatus === 'resuelta');
   if (state.tagFilter) list = list.filter((c) => (c.tags || []).includes(state.tagFilter));

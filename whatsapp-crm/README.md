@@ -18,7 +18,10 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   con lo que ya has visto en el teléfono. **Nota:** WhatsApp no siempre reenvía
   el aviso de las lecturas hechas *sin responder* desde el móvil; para esos
   casos hay un botón **«✓ Marcar todo leído»** en la cabecera de WhatsApp que
-  pone al día el contador de un solo clic.
+  pone al día el contador de un solo clic. Los avisos de **«sin responder»** (en
+  el panel «Hoy» y en el filtro de la bandeja) también dependen de la lectura:
+  una conversación deja de contar como pendiente en cuanto la marcas leída, de
+  modo que «Marcar todo leído» limpia a la vez el «sin leer» y el «sin responder».
 - **🔐 Acceso con contraseña**: definiendo `CRM_PASSWORD` la interfaz exige
   iniciar sesión (usuario `admin` por defecto, configurable con `CRM_USER`).
   Sesiones de 30 días y bloqueo tras 10 intentos fallidos. **Imprescindible
