@@ -4519,10 +4519,14 @@ let tgOffset = 0;
 const TG_HELP = [
   '👋 Soy tu asistente de Burocracia Zero. Dime qué necesitas por texto o por nota de voz. Ejemplos:',
   '',
-  '📲 WhatsApp y citas:',
-  '• «Manda por WhatsApp a Juan que su cita es mañana a las 10».',
+  '📅 Citas:',
   '• «Ponme una cita con María el jueves a las 12 por la renovación del NIE».',
-  '• «Cancela la cita de Pedro del viernes».',
+  '• «Cita con Fatima el lunes a las 10, su teléfono es 611222333» (la da de alta y le pone la cita).',
+  '• «Cambia la cita de Pedro al viernes a las 5» · «Cancela la cita de Pedro del viernes».',
+  '• «¿Qué tengo hoy?» · «¿Qué citas tengo esta semana?» · «¿Qué citas hay el jueves?».',
+  '',
+  '📲 WhatsApp:',
+  '• «Manda por WhatsApp a Juan que su cita es mañana a las 10».',
   '',
   '📁 Clientes y expedientes:',
   '• «Da de alta a Ana López, 600112233».',
@@ -4678,10 +4682,10 @@ async function routeTgTool(fromId, chatId, crmUser, tool, args) {
     const citas = db.appointments
       .filter((a) => a.date === fecha && a.status !== 'cancelada' && visible(db.clients.find((c) => c.id === a.clientId)))
       .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
-    if (!citas.length) { await telegram.sendMessage(chatId, `📅 No tienes citas para el ${fecha}.`); return; }
+    if (!citas.length) { await telegram.sendMessage(chatId, `📅 No tienes citas para el ${fmtDayLoc(fecha, 'es')}.`); return; }
     const nameOf = (id) => (db.clients.find((c) => c.id === id) || {}).name || '(cliente)';
     const lines = citas.map((a) => `• ${a.time} — ${nameOf(a.clientId)}${a.reason ? ` (${a.reason})` : ''}`);
-    await telegram.sendMessage(chatId, `📅 Citas del ${fecha}:\n${lines.join('\n')}`);
+    await telegram.sendMessage(chatId, `📅 Citas del ${fmtDayLoc(fecha, 'es')}:\n${lines.join('\n')}`);
     return;
   }
 
@@ -4749,12 +4753,76 @@ async function routeTgTool(fromId, chatId, crmUser, tool, args) {
       return;
     }
     if (r.blocked) { await telegram.sendMessage(chatId, 'Ese contacto pertenece a otro usuario.'); return; }
-    if (r.none || r.phone) { await telegram.sendMessage(chatId, `No encuentro al cliente «${args.cliente}». Créalo primero en el CRM o dime un cliente existente.`); return; }
-    const action = { type: 'cita', clientId: r.client.id, date: args.fecha, time: args.hora, reason: String(args.motivo || '').trim() };
+    const reason = String(args.motivo || '').trim();
+    let action;
+    let quien;
+    if (r.client) {
+      action = { type: 'cita', clientId: r.client.id, date: args.fecha, time: args.hora, reason };
+      quien = r.client.name;
+    } else {
+      // Cliente nuevo: se necesita un teléfono (dado en «telefono» o como cliente).
+      const rawPhone = assistant.looksLikePhone(args.telefono) ? args.telefono : (r.phone ? args.cliente : '');
+      if (!assistant.looksLikePhone(rawPhone) && !r.phone) {
+        await telegram.sendMessage(chatId, `No encuentro al cliente «${args.cliente}». Si es nuevo, dime su teléfono y le creo la ficha y la cita.`);
+        return;
+      }
+      const phone = normalizePhone(assistant.looksLikePhone(args.telefono) ? args.telefono : r.phone);
+      if (db.clients.some((c) => c.phone === phone) && !visible(db.clients.find((c) => c.phone === phone))) {
+        await telegram.sendMessage(chatId, 'Ese teléfono pertenece a otro usuario.'); return;
+      }
+      const nombre = assistant.looksLikePhone(args.cliente) ? `+${phone}` : String(args.cliente).trim();
+      action = { type: 'cita', newClient: { name: nombre, phone }, date: args.fecha, time: args.hora, reason };
+      quien = `${nombre} (nuevo · +${phone})`;
+    }
     const token = tgStash(fromId, chatId, crmUser, action);
     await telegram.sendMessage(chatId,
-      `📅 Voy a crear una cita con ${r.client.name} el ${args.fecha} a las ${args.hora}${action.reason ? ` · ${action.reason}` : ''}.\nSe le enviará la confirmación por WhatsApp.\n\n¿Lo confirmas?`,
+      `📅 Voy a crear una cita con ${quien} el ${fmtDayLoc(args.fecha, 'es')} a las ${args.hora}${reason ? ` · ${reason}` : ''}.\nSe le enviará la confirmación por WhatsApp.\n\n¿Lo confirmas?`,
       { replyMarkup: telegram.confirmKeyboard(token) });
+    return;
+  }
+
+  if (tool === 'reprogramar_cita') {
+    const r = assistant.resolveClient(db, args.cliente, visible);
+    if (r.ambiguous) { await telegram.sendMessage(chatId, `Hay varios clientes que coinciden con «${args.cliente}». Dime cuál.`); return; }
+    if (r.blocked) { await telegram.sendMessage(chatId, 'Ese contacto pertenece a otro usuario.'); return; }
+    if (r.none || r.phone) { await telegram.sendMessage(chatId, `No encuentro al cliente «${args.cliente}».`); return; }
+    let citas = db.appointments.filter((a) => a.clientId === r.client.id && a.status !== 'cancelada');
+    if (assistant.validDate(args.fecha_actual)) citas = citas.filter((a) => a.date === args.fecha_actual);
+    citas = citas.sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+    if (!citas.length) { await telegram.sendMessage(chatId, `${r.client.name} no tiene citas activas${args.fecha_actual ? ` el ${args.fecha_actual}` : ''}.`); return; }
+    if (citas.length > 1) {
+      await telegram.sendMessage(chatId, `${r.client.name} tiene varias citas:\n`
+        + citas.slice(0, 8).map((a) => `• ${fmtDayLoc(a.date, 'es')} a las ${a.time}`).join('\n')
+        + '\nDime la fecha de la que quieres mover.');
+      return;
+    }
+    const cita = citas[0];
+    const newDate = assistant.validDate(args.nueva_fecha) ? args.nueva_fecha : cita.date;
+    const newTime = assistant.validTime(args.nueva_hora) ? args.nueva_hora : cita.time;
+    if (newDate === cita.date && newTime === cita.time) { await telegram.sendMessage(chatId, '¿A qué fecha u hora quieres mover la cita?'); return; }
+    const token = tgStash(fromId, chatId, crmUser, { type: 'reprogramar_cita', apptId: cita.id, date: newDate, time: newTime });
+    await telegram.sendMessage(chatId,
+      `🔄 Voy a mover la cita de ${r.client.name} del ${fmtDayLoc(cita.date, 'es')} (${cita.time}) al ${fmtDayLoc(newDate, 'es')} a las ${newTime}.\nSe le avisará por WhatsApp${cita.msEventId ? ' y se actualizará en Outlook' : ''}.\n\n¿Lo confirmas?`,
+      { replyMarkup: telegram.confirmKeyboard(token) });
+    return;
+  }
+
+  if (tool === 'proximas_citas') {
+    const dias = Math.max(1, Math.min(60, Number(args.dias) || 7));
+    const today = tgToday();
+    const end = new Date(); end.setDate(end.getDate() + dias);
+    const endIso = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+    const nameOf = (id) => (db.clients.find((c) => c.id === id) || {}).name || '(cliente)';
+    const citas = db.appointments
+      .filter((a) => a.status !== 'cancelada' && a.date >= today && a.date <= endIso
+        && visible(db.clients.find((c) => c.id === a.clientId)))
+      .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+    if (!citas.length) { await telegram.sendMessage(chatId, `📅 No tienes citas en los próximos ${dias} días.`); return; }
+    const byDay = new Map();
+    for (const a of citas) { const l = byDay.get(a.date) || []; l.push(a); byDay.set(a.date, l); }
+    const blocks = [...byDay.entries()].map(([d, items]) => `📆 ${fmtDayLoc(d, 'es')}:\n`
+      + items.map((a) => `  • ${a.time} — ${nameOf(a.clientId)}${a.reason ? ` (${a.reason})` : ''}`).join('\n'));
+    await telegram.sendMessage(chatId, `Próximas citas (${dias} días):\n\n${blocks.join('\n\n')}`);
     return;
   }
 
@@ -5019,11 +5087,42 @@ async function executeTgAction(crmUser, action) {
     return `Mensaje enviado a ${client.name}.${msg.status === 'demo' ? ' (Modo demo: no ha salido de verdad.)' : ''}`;
   }
   if (action.type === 'cita') {
-    const client = db.clients.find((c) => c.id === action.clientId);
+    let client = action.clientId ? db.clients.find((c) => c.id === action.clientId) : null;
+    // Cliente nuevo: se da de alta al confirmar (con su teléfono).
+    if (!client && action.newClient) {
+      if (db.clients.some((c) => c.phone === action.newClient.phone)) {
+        client = db.clients.find((c) => c.phone === action.newClient.phone);
+      } else {
+        client = ensureClientForPhone(db, action.newClient.phone, action.newClient.name);
+        client.name = action.newClient.name;
+        if (isolationOn() && !client.owner) { client.owner = crmUser; client.sharedWith = []; }
+        save();
+      }
+    }
     if (!client) throw new Error('no encuentro al cliente');
     if (!canSeeClient(client, crmUser)) throw new Error('no tienes acceso a ese cliente');
     await createAppointment(db, client, { date: action.date, time: action.time, reason: action.reason });
-    return `Cita creada con ${client.name} el ${action.date} a las ${action.time}.`;
+    return `Cita creada con ${client.name} el ${fmtDayLoc(action.date, 'es')} a las ${action.time}.`;
+  }
+  if (action.type === 'reprogramar_cita') {
+    const appt = db.appointments.find((a) => a.id === action.apptId);
+    if (!appt) throw new Error('no encuentro la cita');
+    const client = db.clients.find((c) => c.id === appt.clientId);
+    if (!canSeeClient(client || {}, crmUser)) throw new Error('no tienes acceso a esa cita');
+    appt.date = action.date;
+    appt.time = action.time;
+    // Se rearma el aviso: se volverá a confirmar y a recordar con la nueva fecha.
+    appt.confirmationSentAt = null;
+    appt.remindedAt = null;
+    save();
+    const msCal = auto.getSettings(db).microsoft.calendar;
+    if (msgraph.isConfigured() && msCal.enabled && msCal.user && appt.msEventId && client) {
+      try { await msgraph.updateCalendarEvent(msCal.user, appt.msEventId, appt, client); }
+      catch (err) { console.error('No se pudo mover el evento en Outlook:', err.message); }
+    }
+    // Avisa al cliente de la nueva fecha (misma lógica que una cita nueva).
+    if (client) { await auto.onAppointmentCreated(db, appt, client, autoSender(db)); save(); }
+    return `Cita de ${client ? client.name : 'cliente'} movida al ${fmtDayLoc(action.date, 'es')} a las ${action.time}.`;
   }
   if (action.type === 'recordatorio') {
     db.reminders.push({

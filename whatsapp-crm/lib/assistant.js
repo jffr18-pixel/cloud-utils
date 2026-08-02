@@ -110,16 +110,47 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'crear_cita',
-      description: 'Crear una cita en la agenda con un cliente.',
+      description: 'Crear una cita en la agenda con un cliente. Si el cliente es nuevo y la persona da su teléfono, se puede indicar en «telefono» para darlo de alta y crear la cita a la vez.',
       parameters: {
         type: 'object',
         properties: {
           cliente: { type: 'string', description: 'Nombre del cliente o número de teléfono.' },
+          telefono: { type: 'string', description: 'Teléfono del cliente si es nuevo y aún no está en el CRM (opcional).' },
           fecha: { type: 'string', description: 'Fecha en formato YYYY-MM-DD.' },
           hora: { type: 'string', description: 'Hora en formato HH:MM (24 h).' },
           motivo: { type: 'string', description: 'Motivo o asunto de la cita (opcional).' },
         },
         required: ['cliente', 'fecha', 'hora'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'reprogramar_cita',
+      description: 'Cambiar (mover) una cita ya existente de un cliente a otra fecha y/u hora. Úsalo para «cambia/mueve/pasa la cita de X al…».',
+      parameters: {
+        type: 'object',
+        properties: {
+          cliente: { type: 'string', description: 'Nombre del cliente o número de teléfono.' },
+          fecha_actual: { type: 'string', description: 'Fecha actual de la cita a mover, en formato YYYY-MM-DD (opcional, para desambiguar si tiene varias).' },
+          nueva_fecha: { type: 'string', description: 'Nueva fecha en formato YYYY-MM-DD. Si no cambia el día, repite el actual.' },
+          nueva_hora: { type: 'string', description: 'Nueva hora en formato HH:MM (24 h). Si no cambia la hora, repite la actual.' },
+        },
+        required: ['cliente'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'proximas_citas',
+      description: 'Ver las próximas citas de la agenda (de todos los clientes) en los próximos días. Úsalo para «mis próximas citas», «¿qué citas tengo esta semana?».',
+      parameters: {
+        type: 'object',
+        properties: {
+          dias: { type: 'number', description: 'Cuántos días hacia delante mirar (por defecto 7).' },
+        },
       },
     },
   },
@@ -314,7 +345,8 @@ function agentSystemPrompt(today) {
     `La fecha de hoy es ${today || ''}. Convierte expresiones como «mañana», «el jueves», «pasado mañana» o «la semana que viene» a fechas concretas en formato YYYY-MM-DD a partir de hoy. Las horas, en formato HH:MM de 24 horas («las 5 de la tarde» → 17:00).`,
     'Elige SIEMPRE la herramienta que mejor encaje con lo que pide la persona; no respondas con texto si hay una herramienta adecuada. Guía rápida de intenciones:',
     '- Mandar/escribir/decir algo a un cliente por WhatsApp → enviar_whatsapp.',
-    '- Poner/agendar una cita → crear_cita. Anular/quitar una cita → cancelar_cita.',
+    '- Poner/agendar una cita → crear_cita (si el cliente es nuevo y dan su teléfono, pásalo en «telefono»). Mover/cambiar/pasar una cita a otra hora o día → reprogramar_cita. Anular/quitar una cita → cancelar_cita.',
+    '- Ver la agenda: un día concreto → consultar_agenda; «esta semana»/«mis próximas citas» → proximas_citas.',
     '- Recordarme algo (aviso personal) → crear_recordatorio. Tarea del equipo/tablero → crear_tarea.',
     '- Cobrar / registrar un pago → registrar_cobro (usa «importe» solo si es un adelanto o pago parcial, p. ej. «200 a cuenta»).',
     '- Cambiar el estado de un trámite → cambiar_estado_expediente. Dar de alta un trámite → crear_expediente.',

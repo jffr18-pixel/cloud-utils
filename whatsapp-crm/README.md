@@ -445,7 +445,13 @@ le mandas una **nota de voz** en lenguaje natural y ejecuta la acción:
   y envía (tras tu confirmación).
 - «Ponme una cita con María el jueves a las 12 por la renovación del NIE» →
   crea la cita y avisa al cliente por WhatsApp.
+- «Cita con Fatima el lunes a las 10, su teléfono es 611222333» → si el cliente
+  es nuevo, lo da de alta y le crea la cita en un solo paso.
+- «Cambia la cita de Pedro al viernes a las 5» → mueve la cita (avisa al cliente
+  y la actualiza en Outlook).
 - «Cancela la cita de Pedro del viernes» → anula la cita (también en Outlook).
+- «¿Qué citas tengo esta semana?» / «mis próximas citas» → agenda de los
+  próximos días; «¿qué citas hay el jueves?» → las de un día concreto.
 - «Recuérdame el lunes llamar a la asesoría» → recordatorio interno.
 - «Crea una tarea: preparar documentación de Ana para el viernes» → la añade al
   tablero de tareas del equipo (distinto del recordatorio personal).

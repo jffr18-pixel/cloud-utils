@@ -624,6 +624,32 @@ async function testTelegramAssistant() {
     const citaAfter = (await (await fetch(TG_BASE + '/api/appointments?clientId=' + pedro.id)).json()).find((a) => a.id === citaPedro.id);
     assert(citaAfter && citaAfter.status === 'cancelada', 'cancelar_cita anula la cita del cliente');
 
+    // crear_cita a un cliente NUEVO dando su teléfono (alta + cita en un paso).
+    await runTool('ponme una cita con Fatima el 17 de diciembre a las 10, su teléfono es 611222333',
+      { choices: [{ message: { tool_calls: [{ id: 'e5', type: 'function', function: { name: 'crear_cita', arguments: JSON.stringify({ cliente: 'Fatima', telefono: '611222333', fecha: '2026-12-17', hora: '10:00' }) } }] } }] },
+      /cita con Fatima/i);
+    const fatima = (await (await fetch(TG_BASE + '/api/clients')).json()).find((c) => c.phone === '34611222333');
+    assert(fatima && fatima.name === 'Fatima', 'crear_cita da de alta al cliente nuevo con su teléfono');
+    const fatimaCitas = await (await fetch(TG_BASE + '/api/appointments?clientId=' + fatima.id)).json();
+    assert(fatimaCitas.some((a) => a.date === '2026-12-17' && a.time === '10:00'), 'y le crea la cita');
+
+    // reprogramar_cita: mover una cita existente de Pedro a otra fecha/hora.
+    const citaMove = await post('/api/appointments', { clientId: pedro.id, date: '2026-12-16', time: '09:00', reason: 'Revisión' });
+    await runTool('cambia la cita de Pedro al 18 de diciembre a las 11:30',
+      { choices: [{ message: { tool_calls: [{ id: 'e6', type: 'function', function: { name: 'reprogramar_cita', arguments: JSON.stringify({ cliente: 'Pedro', nueva_fecha: '2026-12-18', nueva_hora: '11:30' }) } }] } }] },
+      /mover la cita de Pedro/i);
+    const citaMoved = (await (await fetch(TG_BASE + '/api/appointments?clientId=' + pedro.id)).json()).find((a) => a.id === citaMove.id);
+    assert(citaMoved && citaMoved.date === '2026-12-18' && citaMoved.time === '11:30', 'reprogramar_cita mueve la cita a la nueva fecha y hora');
+
+    // proximas_citas: consulta de solo lectura de la agenda próxima (7 días).
+    const soon = new Date(); soon.setDate(soon.getDate() + 3);
+    const soonIso = `${soon.getFullYear()}-${String(soon.getMonth() + 1).padStart(2, '0')}-${String(soon.getDate()).padStart(2, '0')}`;
+    await post('/api/appointments', { clientId: pedro.id, date: soonIso, time: '12:00', reason: 'Próxima' });
+    const prox = await askTool('¿qué citas tengo esta semana?',
+      { choices: [{ message: { tool_calls: [{ id: 'e7', type: 'function', function: { name: 'proximas_citas', arguments: JSON.stringify({ dias: 7 }) } }] } }] },
+      /Próximas citas/i);
+    assert(prox && /Pedro Ramírez/.test(prox.text), 'proximas_citas lista las citas próximas de la agenda');
+
     // Enviar un documento por WhatsApp poniendo el nombre del cliente en el pie.
     updates.push({ update_id: uid, message: { message_id: uid, chat: priv(555), from: { id: 555 },
       caption: 'Pedro Ramírez', document: { file_id: 'FID1', file_name: 'justificante.pdf', mime_type: 'application/pdf' } } });
