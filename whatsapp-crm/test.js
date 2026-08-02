@@ -1566,6 +1566,14 @@ async function main() {
     const keepSaved = await req('PUT', `/api/cases/${keepCase.data.id}`, { paid: false, notes: 'Cambio cualquiera' });
     assert(keepSaved.data.paidAmount === 100 && keepSaved.data.paid === false,
       'guardar la ficha con «pendiente» conserva el adelanto ya cobrado');
+    // Fijar el adelanto directamente en la ficha del expediente (paidAmount).
+    const setAdv = await req('PUT', `/api/cases/${keepCase.data.id}`, { paid: false, paidAmount: 250, payMethod: 'tarjeta' });
+    assert(setAdv.data.paidAmount === 250 && setAdv.data.paid === false && setAdv.data.payMethod === 'tarjeta',
+      'se puede fijar un adelanto (y su forma de cobro) desde la ficha del expediente');
+    // Crear un expediente ya con adelanto.
+    const advCreate = await req('POST', '/api/cases', { clientId: keepClient.data.id, title: 'Con adelanto', type: 'otro', fee: 500, paid: false, paidAmount: 150 });
+    assert(advCreate.data.paidAmount === 150 && advCreate.data.paid === false,
+      'un expediente nuevo puede crearse con un adelanto ya cobrado');
     await req('DELETE', '/api/clients/' + keepClient.data.id);
 
     // Exportación CSV del informe.

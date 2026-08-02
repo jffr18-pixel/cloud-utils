@@ -1842,6 +1842,13 @@ function caseFields(item = {}, clients = [], fichas = []) {
       options: [['', '— Sin especificar —'], ...PAY_METHOD_OPTIONS,
         ...(item.payMethod === 'banco' ? [['banco', '🏦 Banco']] : [])],
     },
+    {
+      // Pagos a plazos: lo ya cobrado a cuenta cuando el honorario NO está cobrado
+      // del todo. El resto queda pendiente en «Por cobrar».
+      name: 'paidAmount', label: 'Cobrado a cuenta / adelanto (€) · para pagos a plazos (el resto queda en «Por cobrar»)',
+      type: 'number', step: '0.01', min: 0,
+      value: (!item.paid && Number(item.paidAmount) > 0) ? item.paidAmount : '',
+    },
     { name: 'taxModel', label: 'Tasa oficial · modelo (ej. «790 cód. 012», «Tasa 052»)', value: item.taxModel || '' },
     { name: 'taxAmount', label: 'Tasa oficial · importe (€)', type: 'number', step: '0.01', min: 0, value: item.taxAmount || '' },
     {
@@ -1973,12 +1980,22 @@ function checklistField(item = {}, fichas = []) {
 // Normaliza los valores del formulario de expediente antes de enviarlos.
 function caseBody(v) {
   const paid = v.paid === 'si';
-  return {
+  const adelanto = (!paid && v.paidAmount !== undefined && v.paidAmount !== '') ? Number(v.paidAmount) : 0;
+  const body = {
     ...v,
     fee: Number(v.fee) || 0, paid,
-    payMethod: paid ? (v.payMethod || '') : '', // sin cobro no hay forma de cobro
+    // Hay forma de cobro si está cobrado del todo o si hay un adelanto.
+    payMethod: (paid || adelanto > 0) ? (v.payMethod || '') : '',
     taxAmount: Number(v.taxAmount) || 0, taxPaid: v.taxPaid === 'si',
   };
+  if (paid) {
+    // Cobrado del todo: el importe cobrado es el total; se ignora el adelanto.
+    delete body.paidAmount;
+  } else {
+    // Pendiente: se guarda lo cobrado a cuenta (adelanto), 0 si se deja vacío.
+    body.paidAmount = adelanto;
+  }
+  return body;
 }
 
 async function renderCases() {
