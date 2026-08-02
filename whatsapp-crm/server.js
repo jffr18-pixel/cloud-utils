@@ -853,6 +853,20 @@ function money2(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 
+// Honorarios ya cobrados de un expediente (admite adelantos/pagos a plazos).
+// Compatibilidad con datos antiguos: si no hay `paidAmount`, se deduce del
+// booleano `paid` (todo cobrado o nada).
+function feePaidOf(c) {
+  const fee = Number(c.fee) || 0;
+  const paid = typeof c.paidAmount === 'number' ? c.paidAmount : (c.paid ? fee : 0);
+  return money2(Math.max(0, Math.min(paid, fee)));
+}
+
+// Honorarios que quedan por cobrar de un expediente.
+function feeDueOf(c) {
+  return money2((Number(c.fee) || 0) - feePaidOf(c));
+}
+
 function longDate(d = new Date()) {
   const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
     'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -1119,8 +1133,14 @@ function buildDossierLines(db, client) {
     if (c.expiryDate) lines.push({ t: `Caducidad / renovación: ${d(c.expiryDate)}` });
     const fee = Number(c.fee) || 0;
     if (fee) {
-      const via = c.paid && PAY[c.payMethod] ? ` (${PAY[c.payMethod]})` : '';
-      lines.push({ t: `Honorarios: ${eur(fee)} — ${c.paid ? 'cobrado' + via : 'PENDIENTE de cobro'}` });
+      const via = PAY[c.payMethod] ? ` (${PAY[c.payMethod]})` : '';
+      const paid = feePaidOf(c);
+      const due = feeDueOf(c);
+      let estado;
+      if (due <= 0) estado = 'cobrado' + via;
+      else if (paid > 0) estado = `cobrado ${eur(paid)}${via} · quedan ${eur(due)}`; // adelanto/pago parcial
+      else estado = 'PENDIENTE de cobro';
+      lines.push({ t: `Honorarios: ${eur(fee)} — ${estado}` });
     }
     const tax = Number(c.taxAmount) || 0;
     if (tax || c.taxModel) {
@@ -2398,8 +2418,11 @@ async function handleApi(req, res, url) {
         expiryDate: b.expiryDate || null,
         docs: b.docs || '', // documentación necesaria (para la automatización)
         fee: money2(b.fee), // honorario del trámite (€, con céntimos)
-        paid: Boolean(b.paid), // cobrado o pendiente
-        paidAt: b.paid ? Date.now() : null, // fecha de cobro (para el libro de ingresos)
+        paid: Boolean(b.paid), // cobrado del todo o pendiente
+        // Honorarios cobrados hasta ahora (admite adelantos/pagos a plazos).
+        paidAmount: Boolean(b.paid) ? money2(b.fee)
+          : Math.max(0, Math.min(money2(b.paidAmount), money2(b.fee))),
+        paidAt: (b.paid || Number(b.paidAmount) > 0) ? Date.now() : null, // fecha de cobro (para el libro de ingresos)
         payMethod: PAY_METHODS.includes(b.payMethod) ? b.payMethod : '', // forma de cobro: caja | banco
         // Tasa oficial del trámite, separada de los honorarios de la gestoría.
         taxModel: b.taxModel ? String(b.taxModel).trim().slice(0, 60) : '', // ej. «790 cód. 012»
@@ -2432,8 +2455,9 @@ async function handleApi(req, res, url) {
     // Recibo/justificante de pago del honorario en PDF. Asigna un número de
     // recibo persistente la primera vez (para que las reimpresiones coincidan).
     if (parts[3] === 'recibo' && req.method === 'GET') {
-      const amount = Number(item.fee) || 0;
-      if (amount <= 0) return json(res, 400, { error: 'Este expediente no tiene honorario que justificar' });
+      // El recibo justifica lo realmente cobrado (incluidos los adelantos).
+      const amount = feePaidOf(item);
+      if (amount <= 0) return json(res, 400, { error: 'Este expediente aún no tiene ningún honorario cobrado que justificar' });
       if (!item.reciboNumber) {
         if (!db.settings || typeof db.settings !== 'object') db.settings = {};
         const seq = (Number(db.settings.reciboSeq) || 0) + 1;
@@ -2476,11 +2500,26 @@ async function handleApi(req, res, url) {
       if (b.fee !== undefined) item.fee = money2(b.fee);
       if (b.paid !== undefined) {
         const nowPaid = Boolean(b.paid);
-        // Se sella la fecha de cobro al pasar de pendiente a cobrado (y se borra
-        // si se revierte), para el libro de ingresos.
-        if (nowPaid && !item.paid) item.paidAt = Date.now();
-        else if (!nowPaid) item.paidAt = null;
-        item.paid = nowPaid;
+        if (nowPaid) {
+          // Cobrado del todo: sella fecha (si no la tenía) y fija el total.
+          if (!item.paid) item.paidAt = Date.now();
+          item.paid = true;
+          item.paidAmount = money2(item.fee) || 0;
+        } else {
+          // Marcar como pendiente: solo pone a cero si estaba cobrado del TODO.
+          // Si había un adelanto parcial, se conserva (no se borra al guardar la
+          // ficha del expediente).
+          if (item.paid) { item.paidAmount = 0; item.paidAt = null; }
+          item.paid = false;
+        }
+      }
+      // Importe cobrado a cuenta (adelanto/pago parcial), fijado directamente.
+      if (b.paidAmount !== undefined) {
+        item.paidAmount = Math.max(0, Math.min(money2(b.paidAmount), money2(item.fee) || 0));
+        const fullyPaid = (money2(item.fee) || 0) > 0 && item.paidAmount >= (money2(item.fee) || 0);
+        if (fullyPaid && !item.paid) item.paidAt = Date.now();
+        item.paid = fullyPaid;
+        if (item.paidAmount > 0 && !item.paidAt) item.paidAt = Date.now();
       }
       if (b.payMethod !== undefined) item.payMethod = PAY_METHODS.includes(b.payMethod) ? b.payMethod : '';
       if (b.taxModel !== undefined) item.taxModel = String(b.taxModel).trim().slice(0, 60);
@@ -2752,18 +2791,19 @@ async function handleApi(req, res, url) {
       const m = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       byMonth[m] = (byMonth[m] || 0) + 1;
       const fee = Number(c.fee) || 0;
+      const feePaid = feePaidOf(c); // incluye adelantos/pagos parciales
       facturado += fee;
-      if (c.paid) {
-        cobrado += fee;
+      if (feePaid > 0) {
+        cobrado += feePaid;
         const key = Object.prototype.hasOwnProperty.call(cobradoByMethod, c.payMethod) ? c.payMethod : 'sin';
-        cobradoByMethod[key] += fee;
+        cobradoByMethod[key] += feePaid;
       }
       incomeByArea[c.type] = incomeByArea[c.type] || { facturado: 0, cobrado: 0 };
       incomeByArea[c.type].facturado += fee;
-      if (c.paid) incomeByArea[c.type].cobrado += fee;
+      incomeByArea[c.type].cobrado += feePaid;
       incomeByMonth[m] = incomeByMonth[m] || { facturado: 0, cobrado: 0 };
       incomeByMonth[m].facturado += fee;
-      if (c.paid) incomeByMonth[m].cobrado += fee;
+      incomeByMonth[m].cobrado += feePaid;
       const tax = Number(c.taxAmount) || 0;
       taxFacturado += tax;
       if (c.taxPaid) taxCobrado += tax;
@@ -2806,7 +2846,7 @@ async function handleApi(req, res, url) {
       const now = Date.now();
       const byClient = new Map();
       for (const c of casesV) {
-        const feeDue = (Number(c.fee) || 0) > 0 && !c.paid ? Number(c.fee) : 0;
+        const feeDue = feeDueOf(c);
         const taxDue = (Number(c.taxAmount) || 0) > 0 && !c.taxPaid ? Number(c.taxAmount) : 0;
         if (!feeDue && !taxDue) continue;
         const client = db.clients.find((x) => x.id === c.clientId);
@@ -2822,7 +2862,9 @@ async function handleApi(req, res, url) {
         e.total += feeDue + taxDue;
         const since = c.updatedAt || c.createdAt || now;
         if (since < e.oldest) e.oldest = since;
-        e.items.push({ caseId: c.id, title: c.title, fee: feeDue, tax: taxDue, taxModel: c.taxModel || '' });
+        // feeTotal/feePaid permiten mostrar los adelantos ya cobrados.
+        e.items.push({ caseId: c.id, title: c.title, fee: feeDue, tax: taxDue, taxModel: c.taxModel || '',
+          feeTotal: money2(Number(c.fee) || 0), feePaid: feePaidOf(c) });
       }
       return [...byClient.values()].map((e) => ({
         ...e,
@@ -2858,8 +2900,10 @@ async function handleApi(req, res, url) {
       const msg = await sendMessageToClient(db, client, lines.join('\n'));
       return json(res, 200, { sent: true, messageStatus: msg.status });
     }
-    // Registrar el cobro de un cliente: marca sus honorarios (y opcionalmente
-    // las tasas) pendientes como pagados, con la forma de cobro (caja/banco).
+    // Registrar el cobro de un cliente: aplica un importe a los honorarios
+    // pendientes (admite ADELANTOS/pagos a plazos con `amount`; si no se indica,
+    // se cobra todo lo pendiente) y, opcionalmente, marca las tasas como
+    // abonadas. Forma de cobro: caja/banco/tarjeta/transferencia.
     if (req.method === 'POST' && id === 'collect') {
       const b = await readBody(req);
       const method = PAY_METHODS.includes(b.payMethod) ? b.payMethod : '';
@@ -2867,28 +2911,48 @@ async function handleApi(req, res, url) {
       const client = db.clients.find((c) => c.id === b.clientId);
       if (!client) return json(res, 404, { error: 'Cliente no encontrado' });
       if (!canSeeClient(client, me)) return json(res, 403, { error: 'No tienes acceso a este cliente' });
+      // Expedientes con honorarios pendientes, del más antiguo al más nuevo:
+      // un adelanto se imputa primero a los trámites más viejos.
+      const feeCases = db.cases
+        .filter((c) => c.clientId === client.id && feeDueOf(c) > 0)
+        .sort((a, c) => (a.createdAt || 0) - (c.createdAt || 0));
+      const totalFeeDue = money2(feeCases.reduce((s, c) => s + feeDueOf(c), 0));
+      // Importe a cobrar: el indicado (adelanto) o, si no se indica, todo lo
+      // pendiente. Nunca más de lo que se debe.
+      const hasAmount = b.amount !== undefined && b.amount !== null && b.amount !== '';
+      let toCollect = hasAmount ? money2(b.amount) : totalFeeDue;
+      if (hasAmount && toCollect <= 0) return json(res, 400, { error: 'Indica un importe de cobro válido' });
+      toCollect = Math.min(toCollect, totalFeeDue);
       let honorarios = 0;
+      let remaining = toCollect;
+      for (const c of feeCases) {
+        if (remaining <= 0) break;
+        const due = feeDueOf(c);
+        const applied = money2(Math.min(due, remaining));
+        c.paidAmount = money2(feePaidOf(c) + applied);
+        c.payMethod = method;
+        c.paidAt = Date.now();
+        c.paid = feeDueOf(c) <= 0; // queda saldado del todo?
+        c.updatedAt = Date.now();
+        honorarios = money2(honorarios + applied);
+        remaining = money2(remaining - applied);
+      }
       let tasas = 0;
-      for (const c of db.cases) {
-        if (c.clientId !== client.id) continue;
-        if ((Number(c.fee) || 0) > 0 && !c.paid) {
-          c.paid = true;
-          c.payMethod = method;
-          c.paidAt = Date.now();
-          honorarios += Number(c.fee) || 0;
-          c.updatedAt = Date.now();
-        }
-        if (b.includeTax && (Number(c.taxAmount) || 0) > 0 && !c.taxPaid) {
-          c.taxPaid = true;
-          c.taxPaidAt = Date.now();
-          tasas += Number(c.taxAmount) || 0;
-          c.updatedAt = Date.now();
+      if (b.includeTax) {
+        for (const c of db.cases) {
+          if (c.clientId !== client.id) continue;
+          if ((Number(c.taxAmount) || 0) > 0 && !c.taxPaid) {
+            c.taxPaid = true;
+            c.taxPaidAt = Date.now();
+            tasas = money2(tasas + (Number(c.taxAmount) || 0));
+            c.updatedAt = Date.now();
+          }
         }
       }
       if (!honorarios && !tasas) return json(res, 404, { error: 'Este cliente no tiene importes pendientes' });
       save();
-      security.audit('cobro_registrado', { clientId: client.id, method, honorarios, tasas, user: sessionUser(req) });
-      return json(res, 200, { honorarios, tasas, method });
+      security.audit('cobro_registrado', { clientId: client.id, method, honorarios, tasas, partial: honorarios < totalFeeDue, user: sessionUser(req) });
+      return json(res, 200, { honorarios, tasas, method, pendiente: money2(totalFeeDue - honorarios) });
     }
   }
 

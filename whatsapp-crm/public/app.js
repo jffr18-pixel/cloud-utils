@@ -1862,12 +1862,15 @@ function reciboField(item) {
   return {
     name: '_recibo', label: 'Recibo de pago', type: 'custom',
     mount(el) {
-      if (!item.paid) {
-        el.innerHTML = `<p class="hint" style="margin:0">El recibo se podrá generar cuando marques el honorario como <strong>cobrado</strong> y guardes.</p>`;
+      // Se puede emitir recibo si hay algún importe cobrado (total o adelanto).
+      const cobrado = item.paid || (Number(item.paidAmount) || 0) > 0;
+      if (!cobrado) {
+        el.innerHTML = `<p class="hint" style="margin:0">El recibo se podrá generar cuando cobres el honorario (total o un adelanto) y guardes.</p>`;
         return;
       }
+      const partial = !item.paid && (Number(item.paidAmount) || 0) > 0;
       el.innerHTML = `<a class="btn small" href="/api/cases/${esc(item.id)}/recibo" target="_blank" rel="noopener">🧾 Generar recibo (PDF)</a>
-        <p class="hint" style="margin:6px 0 0">Justificante del honorario cobrado, con nº de recibo, para dárselo al cliente o enviárselo. El número se asigna una sola vez.</p>`;
+        <p class="hint" style="margin:6px 0 0">Justificante del honorario cobrado${partial ? ' (por el importe adelantado)' : ''}, con nº de recibo, para dárselo al cliente o enviárselo. El número se asigna una sola vez.</p>`;
     },
     getValue() { return undefined; },
   };
@@ -2418,7 +2421,12 @@ async function renderReceivables() {
   $('#cobros-list').innerHTML = r.clients.length ? r.clients.map((e) => {
     const items = e.items.map((it) => {
       const parts = [];
-      if (it.fee) parts.push(`honorarios ${eur(it.fee)}`);
+      if (it.fee) {
+        let s = `honorarios ${eur(it.fee)}`;
+        // Si ya hubo un adelanto, se indica cuánto se cobró y el total.
+        if (it.feePaid > 0) s += ` <span class="cobro-adv">(adelantado ${eur(it.feePaid)} de ${eur(it.feeTotal)})</span>`;
+        parts.push(s);
+      }
       if (it.tax) parts.push(`tasa ${eur(it.tax)}${it.taxModel ? ' · ' + esc(it.taxModel) : ''}`);
       return `<li>${esc(it.title)} — ${parts.join(' + ')}</li>`;
     }).join('');
@@ -2456,23 +2464,31 @@ async function renderReceivables() {
   $('#cobros-list').querySelectorAll('.cobro-collect').forEach((btn) => {
     btn.addEventListener('click', () => {
       const e = r.clients.find((x) => x.clientId === btn.dataset.id);
-      const fields = [{
+      const fields = [];
+      // Importe a cobrar de honorarios: por defecto todo lo pendiente, pero se
+      // puede poner menos para registrar un ADELANTO (pago a plazos).
+      if (e.honorarios > 0) fields.push({
+        name: 'amount', label: `Importe a cobrar de honorarios (€) · pendiente ${eur(e.honorarios)}`,
+        type: 'number', step: '0.01', min: 0, value: e.honorarios,
+      });
+      fields.push({
         name: 'payMethod', label: 'Forma de cobro', type: 'select', value: 'caja',
         options: PAY_METHOD_OPTIONS,
-      }];
+      });
       if (e.tasas > 0) fields.push({
         name: 'includeTax', label: `¿Incluir también las tasas pendientes (${eur(e.tasas)})?`, type: 'select', value: 'no',
         options: [['no', 'No, solo los honorarios'], ['si', 'Sí, marcar tasas como abonadas']],
       });
       openDialog(`Registrar cobro · ${e.name}`, fields, async (v) => {
-        const rr = await api('receivables/collect', {
-          method: 'POST',
-          body: { clientId: e.clientId, payMethod: v.payMethod, includeTax: v.includeTax === 'si' },
-        });
+        const body = { clientId: e.clientId, payMethod: v.payMethod, includeTax: v.includeTax === 'si' };
+        if (v.amount !== undefined && v.amount !== '') body.amount = Number(v.amount);
+        const rr = await api('receivables/collect', { method: 'POST', body });
         await renderReceivables();
         if (state.view === 'cases') await renderCases();
         const mName = (PAY_METHOD_META[v.payMethod] || { label: v.payMethod }).label.toLowerCase();
-        alert(`Cobro registrado: ${eur(rr.honorarios)} en ${mName}${rr.tasas ? ' + ' + eur(rr.tasas) + ' en tasas' : ''} ✅`);
+        let msg = `Cobro registrado: ${eur(rr.honorarios)} en ${mName}${rr.tasas ? ' + ' + eur(rr.tasas) + ' en tasas' : ''}`;
+        if (rr.pendiente > 0) msg += `\nQuedan ${eur(rr.pendiente)} de honorarios pendientes (adelanto).`;
+        alert(msg + ' ✅');
       });
     });
   });

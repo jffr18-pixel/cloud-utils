@@ -176,6 +176,12 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   de cuántos clientes tienen saldo. Con «Registrar cobro» marcas lo pagado
   eligiendo la **forma de cobro (efectivo, transferencia o tarjeta)**, y los
   informes desglosan cuánto has cobrado por cada forma (para cuadrar la caja).
+  **Adelantos / pagos a plazos:** al registrar el cobro puedes indicar un
+  **importe menor que el total** (por ejemplo, 200 € de un trámite de 400 €); el
+  CRM guarda lo cobrado a cuenta, deja el resto como pendiente («adelantado 200 €
+  de 400 €») y, cuando cobras lo que falta, el trámite queda saldado. Los
+  informes y el libro de ingresos cuentan lo realmente cobrado, y el recibo se
+  emite por el importe adelantado.
 - **🤖 Cobros automáticos**: reclama solo, por WhatsApp, el saldo pendiente
   (agrupado por cliente) a quien lo tenga desde hace más de X días (por defecto
   15), sin repetir el aviso antes de N días (por defecto 7). Solo en horario

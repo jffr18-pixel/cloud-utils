@@ -1532,6 +1532,42 @@ async function main() {
     assert(!receivables2.data.clients.some((e) => e.clientId === cobrClient.data.id),
       'tras registrar el cobro, el cliente sale de «por cobrar»');
     await req('DELETE', '/api/clients/' + cobrClient.data.id); // limpieza (no altera el panel)
+
+    // Adelantos / pagos a plazos: cobrar 200 de un trámite de 400 y luego el resto.
+    const advClient = await req('POST', '/api/clients', { name: 'Adelanto Test', phone: '600909090' });
+    const advCase = await req('POST', '/api/cases', { clientId: advClient.data.id, title: 'Arraigo', type: 'extranjeria', fee: 400 });
+    const adv1 = await req('POST', '/api/receivables/collect', { clientId: advClient.data.id, payMethod: 'caja', amount: 200 });
+    assert(adv1.status === 200 && adv1.data.honorarios === 200 && adv1.data.pendiente === 200,
+      'un adelanto cobra el importe indicado y deja el resto pendiente');
+    const advRec = await req('GET', '/api/receivables');
+    const advEntry = advRec.data.clients.find((e) => e.clientId === advClient.data.id);
+    assert(advEntry && advEntry.honorarios === 200, 'tras el adelanto quedan 200 pendientes en «por cobrar»');
+    assert(advEntry.items[0].feePaid === 200 && advEntry.items[0].feeTotal === 400,
+      'el pendiente muestra el adelanto ya cobrado (200 de 400)');
+    const advCaseAfter = (await req('GET', '/api/cases?clientId=' + advClient.data.id)).data[0];
+    assert(advCaseAfter.paid === false && advCaseAfter.paidAmount === 200,
+      'el expediente guarda el importe cobrado a cuenta sin marcarse como cobrado del todo');
+    // El recibo del adelanto justifica lo realmente cobrado (200).
+    const advRecibo = await fetch(`${BASE}/api/cases/${advCase.data.id}/recibo`);
+    assert(advRecibo.status === 200, 'se puede emitir un recibo del adelanto');
+    // Segundo pago: salda el resto y sale de «por cobrar».
+    const adv2 = await req('POST', '/api/receivables/collect', { clientId: advClient.data.id, payMethod: 'caja' });
+    assert(adv2.status === 200 && adv2.data.honorarios === 200 && adv2.data.pendiente === 0,
+      'el segundo pago salda los 200 restantes');
+    const advCaseDone = (await req('GET', '/api/cases?clientId=' + advClient.data.id)).data[0];
+    assert(advCaseDone.paid === true && advCaseDone.paidAmount === 400, 'tras el segundo pago el trámite queda cobrado del todo');
+    await req('DELETE', '/api/clients/' + advClient.data.id);
+
+    // Guardar la ficha del expediente NO borra un adelanto (paid llega como false
+    // desde el formulario, pero el importe a cuenta se conserva).
+    const keepClient = await req('POST', '/api/clients', { name: 'Conserva Adelanto', phone: '600818181' });
+    const keepCase = await req('POST', '/api/cases', { clientId: keepClient.data.id, title: 'Nacionalidad', type: 'extranjeria', fee: 300 });
+    await req('POST', '/api/receivables/collect', { clientId: keepClient.data.id, payMethod: 'caja', amount: 100 });
+    const keepSaved = await req('PUT', `/api/cases/${keepCase.data.id}`, { paid: false, notes: 'Cambio cualquiera' });
+    assert(keepSaved.data.paidAmount === 100 && keepSaved.data.paid === false,
+      'guardar la ficha con «pendiente» conserva el adelanto ya cobrado');
+    await req('DELETE', '/api/clients/' + keepClient.data.id);
+
     // Exportación CSV del informe.
     const repCsv = await fetch(`${BASE}/api/export/informe.csv`);
     assert(repCsv.status === 200 && repCsv.headers.get('content-type').includes('text/csv'),
