@@ -1348,6 +1348,10 @@ async function handleWebhookPayload(db, body) {
     await auto.maybeWelcome(db, item.client, autoSender(db));
     await auto.maybeAutoReply(db, item.client, autoSender(db));
   }
+  // Persistir los indicadores de las automatizaciones (aviso de vacaciones una
+  // vez al día, cooldowns de bienvenida/auto-respuesta…). Sin este guardado se
+  // perderían en cada reinicio y los avisos se repetirían.
+  if (freshIncoming.length) save();
   // Aviso por Telegram de los WhatsApp nuevos (sin bloquear la respuesta).
   notifyTelegramInbound(db, freshIncoming)
     .catch((err) => console.error('Aviso Telegram:', telegram.redact(err && err.message)));
@@ -2369,6 +2373,9 @@ async function handleApi(req, res, url) {
         await auto.maybeAutoReply(db, client, autoSender(db));
       }
     }
+    // Persistir los indicadores de las automatizaciones (p. ej. el aviso de
+    // vacaciones, una vez al día) para que no se repitan tras un reinicio.
+    save();
     return json(res, 201, { ok: true, clientId: client.id });
   }
 

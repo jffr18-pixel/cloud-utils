@@ -2374,6 +2374,37 @@ async function main() {
     const outHol = await autoLib.runScheduled(schedDb, noop, new Date('2026-07-30T10:00:00'));
     assert(outHol.some((a) => a.type === 'docs_follow_up'), 'fuera de vacaciones sí se reclama la documentación');
 
+    // Persistencia del aviso de vacaciones: al recibir un WhatsApp en vacaciones,
+    // el indicador «ya avisado hoy» debe GUARDARSE en disco (si no, se perdería
+    // en cada reinicio y el aviso se repetiría en cada mensaje). Rango = hoy.
+    const nowD = new Date();
+    const hoyIso = `${nowD.getFullYear()}-${String(nowD.getMonth() + 1).padStart(2, '0')}-${String(nowD.getDate()).padStart(2, '0')}`;
+    await req('PUT', '/api/automations', { holiday: { enabled: true, from: hoyIso, to: hoyIso, message: 'Estamos de vacaciones, {nombre}.' } });
+    const holPhone = '655 33 22 11';
+    await req('POST', '/api/simulate-incoming', { phone: holPhone, name: 'Cliente Vacaciones', text: 'Hola' });
+    const holCli = (await req('GET', '/api/clients')).data.find((c) => c.phone === '34655332211');
+    assert(holCli, 'el cliente que escribe en vacaciones se crea');
+    // El indicador debe acabar escrito en db.json (guardado en disco).
+    const onDisk = await (async () => {
+      const until = Date.now() + 3000;
+      while (Date.now() < until) {
+        try {
+          const raw = JSON.parse(fs.readFileSync(path.join(dataDir, 'db.json'), 'utf8'));
+          const c = (raw.clients || []).find((x) => x.id === holCli.id);
+          if (c && c.holidayNotifiedDay === hoyIso) return true;
+        } catch { /* aún escribiéndose */ }
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return false;
+    })();
+    assert(onDisk, 'el aviso de vacaciones se marca «ya enviado hoy» y se guarda en disco (no se repite tras reiniciar)');
+    // Un segundo mensaje el mismo día no genera un segundo aviso de vacaciones.
+    await req('POST', '/api/simulate-incoming', { phone: holPhone, name: 'Cliente Vacaciones', text: 'Otra vez' });
+    const holMsgs = (await req('GET', '/api/messages?clientId=' + holCli.id)).data
+      .filter((m) => m.direction === 'out' && /vacaciones/i.test(m.text || ''));
+    assert(holMsgs.length === 1, 'el aviso de vacaciones se envía una sola vez al día aunque escriban varias veces');
+    await req('PUT', '/api/automations', { holiday: { enabled: false } });
+
     console.log('Asistente (núcleo)');
     const asst = require('./lib/assistant');
     // Lista blanca de Telegram.
