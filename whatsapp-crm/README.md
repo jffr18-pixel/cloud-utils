@@ -256,7 +256,8 @@ Sin dependencias externas: solo necesitas **Node.js 18 o superior**.
   - *Vacaciones / cierre temporal*: entre dos fechas (incluidas), a quien
     escriba se le responde **solo** con un aviso de que la gestoría está
     cerrada (no se le manda el menú, la bienvenida ni la respuesta fuera de
-    horario), como máximo una vez al día por cliente. Variables `{nombre}`,
+    horario), como máximo una vez cada 24 h por cliente (ventana móvil desde el
+    último aviso, no por día natural). Variables `{nombre}`,
     `{desde}` y `{hasta}` (fechas en formato largo). Además, durante el cierre
     **se pausan todos los envíos automáticos por temporizador** (cobros
     automáticos, avisos de renovación/caducidad, reclamos de documentación y

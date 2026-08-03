@@ -2348,12 +2348,12 @@ async function main() {
     assert(holSent && holSent.includes('17 de agosto de 2026') && holSent.includes('Amina'),
       'el aviso de vacaciones se rellena con la fecha de vuelta y el nombre');
     holSent = null;
-    await autoLib.maybeHoliday(holDb, holClient, holSend, new Date('2026-08-05T14:00:00'));
-    assert(holSent === null, 'no se repite el aviso al mismo cliente el mismo día');
-    // Al día siguiente sí se le vuelve a avisar (una vez por día).
-    holSent = null;
     await autoLib.maybeHoliday(holDb, holClient, holSend, new Date('2026-08-06T09:00:00'));
-    assert(holSent !== null, 'al día siguiente se le avisa de nuevo (una vez al día)');
+    assert(holSent === null, 'no se repite el aviso antes de que pasen 24 h (23 h después)');
+    // Pasadas 24 h desde el último aviso, sí se le vuelve a avisar.
+    holSent = null;
+    await autoLib.maybeHoliday(holDb, holClient, holSend, new Date('2026-08-06T11:00:00'));
+    assert(holSent !== null, 'pasadas 24 h desde el último aviso se le avisa de nuevo');
     // Desactivado → no responde aunque la fecha esté en rango.
     const holOff = { settings: { automations: { holiday: { enabled: false, from: '2026-08-01', to: '2026-08-17', message: 'x' } } } };
     assert(autoLib.isHolidayActive(holOff, new Date('2026-08-05T10:00:00')) === false, 'desactivado → no activo');
@@ -2384,25 +2384,26 @@ async function main() {
     await req('POST', '/api/simulate-incoming', { phone: holPhone, name: 'Cliente Vacaciones', text: 'Hola' });
     const holCli = (await req('GET', '/api/clients')).data.find((c) => c.phone === '34655332211');
     assert(holCli, 'el cliente que escribe en vacaciones se crea');
-    // El indicador debe acabar escrito en db.json (guardado en disco).
+    // El indicador (marca de tiempo del último aviso) debe acabar escrito en
+    // db.json (guardado en disco), para que la ventana de 24 h no se pierda.
     const onDisk = await (async () => {
       const until = Date.now() + 3000;
       while (Date.now() < until) {
         try {
           const raw = JSON.parse(fs.readFileSync(path.join(dataDir, 'db.json'), 'utf8'));
           const c = (raw.clients || []).find((x) => x.id === holCli.id);
-          if (c && c.holidayNotifiedDay === hoyIso) return true;
+          if (c && typeof c.holidayNotifiedAt === 'number') return true;
         } catch { /* aún escribiéndose */ }
         await new Promise((r) => setTimeout(r, 100));
       }
       return false;
     })();
-    assert(onDisk, 'el aviso de vacaciones se marca «ya enviado hoy» y se guarda en disco (no se repite tras reiniciar)');
-    // Un segundo mensaje el mismo día no genera un segundo aviso de vacaciones.
+    assert(onDisk, 'el aviso de vacaciones marca la hora del último aviso y se guarda en disco (ventana de 24 h que sobrevive a reinicios)');
+    // Un segundo mensaje dentro de las 24 h no genera un segundo aviso.
     await req('POST', '/api/simulate-incoming', { phone: holPhone, name: 'Cliente Vacaciones', text: 'Otra vez' });
     const holMsgs = (await req('GET', '/api/messages?clientId=' + holCli.id)).data
       .filter((m) => m.direction === 'out' && /vacaciones/i.test(m.text || ''));
-    assert(holMsgs.length === 1, 'el aviso de vacaciones se envía una sola vez al día aunque escriban varias veces');
+    assert(holMsgs.length === 1, 'el aviso de vacaciones se envía una sola vez cada 24 h aunque escriban varias veces');
     await req('PUT', '/api/automations', { holiday: { enabled: false } });
 
     console.log('Asistente (núcleo)');

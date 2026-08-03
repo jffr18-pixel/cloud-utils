@@ -430,15 +430,20 @@ function isHolidayActive(db, now = new Date()) {
   const today = ymd(now);
   return today >= h.from && today <= h.to;
 }
-// Responde con el aviso de vacaciones como máximo UNA VEZ AL DÍA por cliente
-// (aunque escriba varias veces): se guarda el día del último aviso y no se
-// vuelve a enviar hasta el día siguiente.
+// Responde con el aviso de vacaciones como máximo UNA VEZ CADA 24 HORAS por
+// cliente (ventana móvil desde el último aviso, no por día natural): aunque
+// escriba varias veces, no se le vuelve a avisar hasta que pasen 24 h.
 async function maybeHoliday(db, client, send, now = new Date()) {
   if (!isHolidayActive(db, now)) return false;
   const h = getSettings(db).holiday;
-  const today = ymd(now);
-  if (client.holidayNotifiedDay === today) return false; // ya se le avisó hoy
-  client.holidayNotifiedDay = today;
+  const cooldownMs = 24 * 3600 * 1000;
+  // Compatibilidad: si solo existe la marca antigua (por día natural), se toma
+  // como referencia el inicio de ese día para calcular las 24 h.
+  const lastAt = client.holidayNotifiedAt
+    || (client.holidayNotifiedDay ? Date.parse(client.holidayNotifiedDay + 'T00:00:00') : 0);
+  if (lastAt && now.getTime() - lastAt < cooldownMs) return false; // aún no han pasado 24 h
+  client.holidayNotifiedAt = now.getTime();
+  delete client.holidayNotifiedDay; // se abandona la marca antigua por día natural
   await send(client, fillTemplate(h.message, {
     nombre: firstName(client), desde: fmtLongDate(h.from), hasta: fmtLongDate(h.to),
   }));
